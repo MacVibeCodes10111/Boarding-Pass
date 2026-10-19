@@ -2,15 +2,27 @@
 # Release: builds Boarding Pass on GitHub's own Mac and Windows machines and
 # publishes the downloads on the Releases page.
 #
-# Runs when a version tag is pushed (v + the version in src-tauri/tauri.conf.json,
-# e.g. v2.27.0), or by hand from the Actions tab ("Run workflow").
+# Runs when a new version lands on main (the version in src-tauri/tauri.conf.json
+# changes; every update changes it), when a version tag is pushed, or by hand from
+# the Actions tab ("Run workflow"). The release and its tag (v2.27.0, ...) are
+# created here, from that version number. Running again for the same version
+# just replaces the downloads.
 # ============================================================================
 name: Release
 
 on:
   push:
+    branches: [main]
+    paths:
+      - 'src-tauri/tauri.conf.json'
+      - '.github/workflows/release.yml'
     tags: ['v*']
   workflow_dispatch:
+
+# One release build at a time; a newer push waits for the one in progress
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
   contents: write
