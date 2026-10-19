@@ -13,6 +13,7 @@
 # installs a download whose signature matches the public key in tauri.conf.json.
 # The matching private key and its password are the repository secrets
 # TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
+# Without them the build stops at "Check the update key is set up".
 # ============================================================================
 name: Release
 
