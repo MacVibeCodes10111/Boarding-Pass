@@ -4,7 +4,23 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Version 2.27. Free to play. See [Credits and licences](#credits-and-licences).
 
-## Install on a Mac
+## Download
+
+Get the latest version from **[Releases](https://github.com/MacVibeCodes10111/Boarding-Pass/releases/latest)**:
+
+- **Mac** (Apple-chip and Intel, macOS 11 or later): the `.dmg`. Open it and drag Boarding Pass into Applications.
+- **Windows** (64-bit): the `…x64-setup.exe` installer.
+
+The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. You can also build the game yourself, as below.
+
+## What's new in 2.27
+
+- The game is now called **Boarding Pass**. Careers saved under its old name carry over.
+- A **Credits and licences** screen, from the home screen and the Map layers menu, and map credits on the map.
+- The satellite view uses EOX Sentinel-2 imagery, with place names from CARTO and OpenStreetMap.
+- One-click builds: `update.sh` on a Mac, `build-windows.bat` on Windows, and automatic releases on GitHub.
+
+## Build it yourself on a Mac
 
 1. Download this repository: the green **Code** button, then **Download ZIP**. Unzip it in Downloads.
 2. Open **Terminal** (Cmd+Space, type Terminal, press Enter) and paste:
@@ -17,7 +33,7 @@ This copies the game to `~/Documents/boarding-pass`, checks Apple's developer to
 
 The first build takes about 20–30 minutes. Updates are much quicker.
 
-## Install on Windows
+## Build it yourself on Windows
 
 1. Install, once:
    - [Node.js](https://nodejs.org/en/download) (LTS)

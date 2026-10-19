@@ -1,0 +1,80 @@
+# ============================================================================
+# Release: builds Boarding Pass on GitHub's own Mac and Windows machines and
+# publishes the downloads on the Releases page.
+#
+# Runs when a version tag is pushed (v + the version in src-tauri/tauri.conf.json,
+# e.g. v2.27.0), or by hand from the Actions tab ("Run workflow").
+# ============================================================================
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Mac
+            platform: macos-latest
+            # One app for both Apple-chip and Intel Macs, as a .dmg
+            args: --target universal-apple-darwin --bundles app,dmg
+          - name: Windows
+            platform: windows-latest
+            # Installer (.exe) and Windows Installer package (.msi)
+            args: --bundles nsis,msi
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Reuse the Rust build from last time (faster)
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install the game's packages
+        run: npm ci
+
+      - name: Build and publish
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: Boarding Pass v__VERSION__
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
+          releaseBody: |
+            A small airline manager game. Free to play.
+
+            ## Download
+            - **Mac** (Apple-chip and Intel, macOS 11 or later): `Boarding.Pass_…_universal.dmg`
+            - **Windows** (64-bit): `Boarding.Pass_…_x64-setup.exe` (or the `.msi`)
+
+            These builds aren't code-signed, so the first time you open the game:
+            - **Mac:** open the .dmg and drag Boarding Pass into Applications. Open it once; if macOS says it can't check the app, go to **System Settings → Privacy & Security** and click **Open Anyway**. If it says the app is "damaged", run this in Terminal, then open it again:
+              `xattr -cr "/Applications/Boarding Pass.app"`
+            - **Windows:** if SmartScreen appears, click **More info → Run anyway**.
+
+            The game needs the internet for the map. To bring a career across from another computer: there, **Menu → Export save file**; here, **Import save file** on the home screen.
+
+            What's new: see [the README](https://github.com/MacVibeCodes10111/Boarding-Pass#whats-new-in-227). Credits and licences: [THIRD_PARTY_NOTICES.md](https://github.com/MacVibeCodes10111/Boarding-Pass/blob/main/THIRD_PARTY_NOTICES.md).
