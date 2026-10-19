@@ -66,6 +66,8 @@ export const GLOBAL_CSS = `
   ::-webkit-scrollbar-thumb { background: ${C.border}; border-radius: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   .bp-row:hover { background: ${C.panelAlt}; }
+  .bp-saved-item:hover { background: ${C.panelAlt}; }
+  .bp-saved-item button[aria-label^=Delete]:hover { color: ${C.red}; }
   @keyframes bp-panel-in { from { transform: translateX(-14px); opacity: 0; } to { transform: none; opacity: 1; } }
   @keyframes bp-fade-in { from { opacity: 0; } to { opacity: 1; } }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
