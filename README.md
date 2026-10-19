@@ -2,6 +2,8 @@
 
 A small airline manager game for Mac and Windows. Start an airline at a hub, buy or lease aircraft, build a schedule, and watch your flights taxi, take off and fly on a live world map, among thousands of other airlines' aircraft, in 2D or in 3D.
 
+Join the Discord! **[Discord]([https://discord.gg/zCk6hcFkzf])**:
+
 Version 2.27. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Download
