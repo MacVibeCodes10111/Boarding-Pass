@@ -7,6 +7,12 @@
 # the Actions tab ("Run workflow"). The release and its tag (v2.27.0, ...) are
 # created here, from that version number. Running again for the same version
 # just replaces the downloads.
+#
+# Auto-updates: the release also gets latest.json and a signature (.sig) for
+# each download. The game reads latest.json to find new versions, and only
+# installs a download whose signature matches the public key in tauri.conf.json.
+# The matching private key and its password are the repository secrets
+# TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
 # ============================================================================
 name: Release
 
@@ -62,6 +68,17 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
+      - name: Check the update key is set up
+        shell: bash
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          PASS: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEY" ] || [ -z "$PASS" ]; then
+            echo "::error::The update key isn't set up. In the repository, open Settings → Secrets and variables → Actions and add TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD, then run this again (Re-run all jobs)."
+            exit 1
+          fi
+
       - name: Install the game's packages
         run: npm ci
 
@@ -69,12 +86,17 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the update files so installed games trust them
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v__VERSION__
           releaseName: Boarding Pass v__VERSION__
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+          # Windows updates use the .exe installer, which is what most people install
+          updaterJsonPreferNsis: true
           releaseBody: |
             A small airline manager game. Free to play.
 
@@ -87,6 +109,8 @@ jobs:
               `xattr -cr "/Applications/Boarding Pass.app"`
             - **Windows:** if SmartScreen appears, click **More info → Run anyway**.
 
+            **Updates:** from 2.28 on, the game updates itself. When a new version is out it offers it when you start the game; click **Update now** and it saves your career, installs the update and restarts. If you have 2.27 or earlier, download and install this version by hand once.
+
             The game needs the internet for the map. To bring a career across from another computer: there, **Menu → Export save file**; here, **Import save file** on the home screen.
 
-            What's new: see [the README](https://github.com/MacVibeCodes10111/Boarding-Pass#whats-new-in-227). Credits and licences: [THIRD_PARTY_NOTICES.md](https://github.com/MacVibeCodes10111/Boarding-Pass/blob/main/THIRD_PARTY_NOTICES.md).
+            What's new: see [the README](https://github.com/MacVibeCodes10111/Boarding-Pass#whats-new). Credits and licences: [THIRD_PARTY_NOTICES.md](https://github.com/MacVibeCodes10111/Boarding-Pass/blob/main/THIRD_PARTY_NOTICES.md).

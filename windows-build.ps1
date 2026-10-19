@@ -48,7 +48,9 @@ npm install --no-audit --no-fund
 if ($LASTEXITCODE -ne 0) { Stop "Installing the packages failed. Copy the last 30 lines above and send them to Claude." }
 
 Say '3/4  Building Boarding Pass (5 to 15 minutes the first time, faster after)'
-npm run tauri build -- --bundles nsis
+# The update files need the release key, which only GitHub has, so a home
+# build skips them (src-tauri\tauri.local.conf.json).
+npm run tauri build -- --bundles nsis --config src-tauri/tauri.local.conf.json
 if ($LASTEXITCODE -ne 0) { Stop "The build failed. Copy the last 30 lines above and send them to Claude." }
 
 Say '4/4  Done'

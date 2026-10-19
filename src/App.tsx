@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AircraftScheduleModal } from './components/AircraftScheduleModal';
 import { AirportDrawer, type RouteDraft } from './components/AirportDrawer';
 import { AlertModal, AwayReportModal, Toast } from './components/AlertModal';
+import { UpdateBanner } from './components/UpdateBanner';
 import { AirportsPanel } from './components/AirportsPanel';
 import { BankPanel, MilestoneCard } from './components/BankPanel';
 import { BuyAircraftPanel } from './components/BuyAircraftPanel';
@@ -1037,6 +1038,7 @@ export default function App() {
     <>
       {gameAlert && <AlertModal alert={gameAlert} onDismiss={() => setGameAlert(null)} />}
       {toast && <Toast message={toast} />}
+      <UpdateBanner onBeforeInstall={() => screen === 'dashboard' && persistRef.current(true)} />
     </>
   );
 

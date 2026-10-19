@@ -74,7 +74,9 @@ npm install --no-audit --no-fund
 
 # --- 4. Build ---------------------------------------------------------------
 say "4/5  Building the app (5 to 15 minutes the first time, faster after)"
-npm run tauri build
+# The update files need the release key, which only GitHub has, so a home
+# build skips them (src-tauri/tauri.local.conf.json).
+npm run tauri build -- --config src-tauri/tauri.local.conf.json
 
 BUILT="src-tauri/target/release/bundle/macos/$APP_NAME.app"
 [ -d "$BUILT" ] || stop "The build finished but the app wasn't found at $BUILT. Copy the last 30 lines above and send them to Claude."

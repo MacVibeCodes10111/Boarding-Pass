@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 2.27. Free to play. See [Credits and licences](#credits-and-licences).
+Version 2.28. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Download
 
@@ -13,9 +13,15 @@ Get the latest version from **[Releases](https://github.com/MacVibeCodes10111/Bo
 - **Mac** (Apple-chip and Intel, macOS 11 or later): the `.dmg`. Open it and drag Boarding Pass into Applications.
 - **Windows** (64-bit): the `…x64-setup.exe` installer.
 
-The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. You can also build the game yourself, as below.
+The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
-## What's new in 2.27
+## What's new
+
+Version 2.28:
+
+- **The game updates itself.** When a new version is out, the game offers it a few seconds after it starts. Click **Update now** and it saves your career, downloads and installs the update, and restarts. Updates are signed, and the game only installs one signed with the Boarding Pass release key. If you have 2.27 or earlier, download 2.28 from Releases by hand once.
+
+Version 2.27:
 
 - The game is now called **Boarding Pass**. Careers saved under its old name carry over.
 - A **Credits and licences** screen, from the home screen and the Map layers menu, and map credits on the map.
@@ -53,8 +59,10 @@ The first build takes 5–15 minutes. Windows may warn that the app is from an u
 
 ## Update to a new version
 
-- **Mac:** download the new version and run its `update.sh` the same way. It keeps what's already built, so it's quick, and your careers are kept.
-- **Windows:** replace the folder's contents with the new version (keep `node_modules` and `src-tauri\target` to make it quicker) and double-click `build-windows.bat` again.
+- **Downloaded from Releases (2.28 or later):** nothing to do. The game offers each new version when it starts.
+- **Built yourself:** the game offers new versions too; updating replaces your build with the official download. Or rebuild it yourself:
+  - **Mac:** download the new version and run its `update.sh` the same way. It keeps what's already built, so it's quick, and your careers are kept.
+  - **Windows:** replace the folder's contents with the new version (keep `node_modules` and `src-tauri\target` to make it quicker) and double-click `build-windows.bat` again.
 
 ## Playing
 
