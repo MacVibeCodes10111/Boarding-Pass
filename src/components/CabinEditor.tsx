@@ -1,7 +1,35 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { CABIN_PRESET_LABELS, buildCabinPreset, cabinAbreast, calculateCabinUsage, type CabinPreset } from '../game/economics';
 import type { AircraftModel, CabinConfig } from '../game/types';
-import { C, Segmented, Stepper } from '../ui/kit';
+import { Button, C, Segmented, Stepper, inputStyle } from '../ui/kit';
+
+// ---------------------------------------------------------------------------
+// Saved layouts: your own presets per aircraft type, kept on this device (all
+// careers share them). Each one stores the seats and pitches of a layout.
+// ---------------------------------------------------------------------------
+export interface SavedCabin {
+  id: string;
+  name: string;
+  modelId: string;
+  cabin: CabinConfig;
+}
+const SAVED_KEY = 'bp_pc_cabin_presets_v1';
+const MAX_SAVED = 60;
+export function readSavedCabins(): SavedCabin[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(SAVED_KEY) ?? '[]');
+    return Array.isArray(v) ? v.filter((x) => x && typeof x.name === 'string' && typeof x.modelId === 'string' && x.cabin) : [];
+  } catch {
+    return [];
+  }
+}
+function writeSavedCabins(list: SavedCabin[]) {
+  try {
+    localStorage.setItem(SAVED_KEY, JSON.stringify(list.slice(0, MAX_SAVED)));
+  } catch {
+    /* storage full or off: the layouts just aren't remembered */
+  }
+}
 
 const PRESETS: CabinPreset[] = ['dense', 'standard', 'premium'];
 const CLASSES = [
@@ -20,6 +48,24 @@ export function CabinEditor({ model, cabin, onChange }: { model: AircraftModel; 
   const abreast = cabinAbreast(model);
   const presets = useMemo(() => Object.fromEntries(PRESETS.map((p) => [p, buildCabinPreset(model, p)])) as Record<CabinPreset, CabinConfig>, [model]);
   const activePreset = PRESETS.find((p) => sameSeats(presets[p], cabin)) ?? 'custom';
+  const [saved, setSaved] = useState<SavedCabin[]>(readSavedCabins);
+  const mine = saved.filter((s) => s.modelId === model.id);
+  const activeSaved = mine.find((s) => sameSeats(s.cabin, cabin) && s.cabin.busPitchIn === cabin.busPitchIn && s.cabin.firstPitchIn === cabin.firstPitchIn);
+  const [naming, setNaming] = useState<string | null>(null);
+  const valid = calculateCabinUsage(model, cabin).isValid;
+  const saveLayout = () => {
+    const name = (naming ?? '').trim();
+    if (!name) return;
+    const next = [{ id: `C${Date.now().toString(36)}`, name: name.slice(0, 32), modelId: model.id, cabin: { ...cabin } }, ...saved.filter((s) => !(s.modelId === model.id && s.name === name))];
+    setSaved(next);
+    writeSavedCabins(next);
+    setNaming(null);
+  };
+  const removeLayout = (id: string) => {
+    const next = saved.filter((s) => s.id !== id);
+    setSaved(next);
+    writeSavedCabins(next);
+  };
 
   const lengthPct = Math.min(100, (usage.usedMeters / usage.maxMeters) * 100);
   const over = usage.usedMeters > usage.maxMeters;
@@ -41,6 +87,61 @@ export function CabinEditor({ model, cabin, onChange }: { model: AircraftModel; 
           options={PRESETS.map((p) => ({ value: p, label: CABIN_PRESET_LABELS[p].label, title: CABIN_PRESET_LABELS[p].hint }))}
         />
         <span style={{ fontSize: 12, color: C.muted }}>{activePreset === 'custom' ? 'Custom layout' : CABIN_PRESET_LABELS[activePreset].hint}</span>
+      </div>
+
+      {/* Your saved layouts for this aircraft type */}
+      <div className="bp-saved-cabins" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', margin: '-4px 0 12px' }}>
+        <span style={{ fontSize: 12, color: C.muted, marginRight: 2 }}>My layouts</span>
+        {mine.map((s) => {
+          const on = activeSaved?.id === s.id;
+          return (
+            <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, border: `1px solid ${on ? C.brand : C.border}`, background: on ? C.raised : 'transparent' }}>
+              <button
+                type="button"
+                onClick={() => onChange({ ...s.cabin })}
+                title={`${s.cabin.firstSeats + s.cabin.busSeats + s.cabin.premSeats + s.cabin.econSeats} seats: ${s.cabin.firstSeats} first, ${s.cabin.busSeats} business, ${s.cabin.premSeats} premium, ${s.cabin.econSeats} economy`}
+                style={{ background: 'none', border: 'none', color: on ? C.text : C.textDim, fontSize: 12, padding: '3px 4px 3px 10px', cursor: 'pointer' }}
+              >
+                {s.name}
+              </button>
+              <button
+                type="button"
+                aria-label={`Delete layout ${s.name}`}
+                onClick={() => removeLayout(s.id)}
+                style={{ background: 'none', border: 'none', color: C.faint, fontSize: 13, padding: '2px 8px 2px 4px', cursor: 'pointer', lineHeight: 1 }}
+              >
+                ×
+              </button>
+            </span>
+          );
+        })}
+        {naming === null ? (
+          <Button size="sm" variant="ghost" disabled={!valid} title={valid ? `Save this layout for the ${model.name}` : 'Fix the layout before saving it'} onClick={() => setNaming(activePreset === 'custom' ? '' : `${CABIN_PRESET_LABELS[activePreset as CabinPreset].label} copy`)}>
+            {mine.length ? 'Save this layout' : 'Save this layout as a preset'}
+          </Button>
+        ) : (
+          <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+            <input
+              autoFocus
+              value={naming}
+              maxLength={32}
+              placeholder="Name, e.g. Long-haul"
+              aria-label="Layout name"
+              onChange={(e) => setNaming(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') saveLayout();
+                if (e.key === 'Escape') setNaming(null);
+              }}
+              style={{ ...inputStyle, width: 170, padding: '4px 8px', fontSize: 12.5 }}
+            />
+            <Button size="sm" variant="primary" disabled={!naming.trim()} onClick={saveLayout}>
+              Save
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setNaming(null)}>
+              Cancel
+            </Button>
+          </span>
+        )}
       </div>
 
       {/* Strip diagram of the cabin, nose on the left */}

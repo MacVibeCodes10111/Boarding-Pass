@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 2.30. Free to play. See [Credits and licences](#credits-and-licences).
+Version 2.31. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -20,6 +20,11 @@ Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 2.31:
+
+- **Saved cabin layouts.** When you set up a cabin, **Save this layout** keeps it under **My layouts** for that aircraft type, with a name you choose. Tap it to use it again when you buy or refit another one; the × deletes it. Layouts are saved on your device.
+- **Fixed the bottom of the screen in Safari.** On iPhone and iPad, the tab bar and the bottom of panels no longer hide under Safari's toolbar.
 
 Version 2.30:
 

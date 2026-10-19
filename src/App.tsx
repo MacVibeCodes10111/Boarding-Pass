@@ -1176,7 +1176,7 @@ export default function App() {
   const closePanel = () => setPanel(null);
 
   return (
-    <div style={{ position: 'relative', width: '100vw', height: '100vh', background: C.bg, color: C.text, overflow: 'hidden' }}>
+    <div style={{ position: 'relative', width: '100vw', height: '100dvh', background: C.bg, color: C.text, overflow: 'hidden' }}>
       <LiveMap
         visible
         initialCenter={[hubAirport.longitude_deg, hubAirport.latitude_deg]}

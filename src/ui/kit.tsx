@@ -498,7 +498,7 @@ export function ModalShell({
           borderRadius: 12,
           width: '100%',
           maxWidth,
-          maxHeight: 'calc(100vh - 68px)',
+          maxHeight: 'calc(100dvh - 68px)',
           overflowY: 'auto',
           padding: 22,
           boxShadow: '0 24px 60px rgba(0,0,0,0.6)',
