@@ -83,6 +83,34 @@ jobs:
       - name: Install the game's packages
         run: npm ci
 
+      # The two checks below report their errors as annotations (shown on the
+      # run's summary page), so a failure can be read without the full log.
+      - name: Check the update key opens
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          echo "key check" > key-check.txt
+          if ! npx tauri signer sign key-check.txt > key-check.log 2>&1; then
+            echo "::error::The update key or its password didn't work. Check both secrets were pasted exactly, with no extra spaces or line breaks."
+            tail -n 15 key-check.log | sed 's/%/%25/g' | while IFS= read -r l; do [ -n "$l" ] && echo "::error::key: $l"; done
+            exit 1
+          fi
+          echo "The update key opens and signs."
+          rm -f key-check.txt key-check.txt.sig key-check.log
+
+      - name: Compile check
+        shell: bash
+        run: |
+          npm run build > web-build.log 2>&1 || { tail -n 20 web-build.log | sed 's/%/%25/g' | while IFS= read -r l; do [ -n "$l" ] && echo "::error::web: $l"; done; exit 1; }
+          if ! cargo check --manifest-path src-tauri/Cargo.toml --message-format short > cargo-check.log 2>&1; then
+            grep -E "error|warning: unused" cargo-check.log | head -n 25 | sed 's/%/%25/g' | while IFS= read -r l; do echo "::error::rust: $l"; done
+            tail -n 8 cargo-check.log | sed 's/%/%25/g' | while IFS= read -r l; do [ -n "$l" ] && echo "::error::rust: $l"; done
+            exit 1
+          fi
+          echo "The Rust code compiles."
+
       - name: Build and publish
         uses: tauri-apps/tauri-action@v1
         env:
