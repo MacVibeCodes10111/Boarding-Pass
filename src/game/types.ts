@@ -35,6 +35,9 @@ export interface RunwayEndPair {
   he_lat: number;
   he_lon: number;
   he_heading_degT: number;
+  /** Landing threshold this far in from the runway end, feet (v2.29+). */
+  le_displaced_ft?: number;
+  he_displaced_ft?: number;
 }
 
 export interface NavaidWaypoint {
@@ -158,13 +161,20 @@ export interface BankLoan {
   paid: number;
   /** Economy minute the loan was drawn. */
   startMin: number;
+  /**
+   * After a part repayment (v2.29+) the loan is re-set on what's left:
+   * principal, totalRepayable, weeklyPayment and paid then describe the
+   * remainder, and these keep the original amount and what was paid early.
+   */
+  startPrincipal?: number;
+  extraRepaid?: number;
 }
 
 export interface BankLetter {
   id: string;
   /** Economy minute the letter was written. */
   econMin: number;
-  kind: 'welcome' | 'milestone' | 'standing' | 'loan' | 'repaid' | 'notice';
+  kind: 'welcome' | 'milestone' | 'standing' | 'loan' | 'repaid' | 'notice' | 'insolvency' | 'settlement';
   subject: string;
   /** Paragraphs. */
   body: string[];
@@ -190,6 +200,15 @@ export interface CareerState {
   bestWeekNet: number;
   /** New loans carry a surcharge until this week (after an overdraft). */
   surchargeUntilWeek: number;
+  // --- v2.29+ ---
+  /** Weeks in a row that closed with the account overdrawn. */
+  overdrawnWeeks?: number;
+  /** Set when the bank declares the airline insolvent; cleared by a settlement. */
+  insolvent?: { econMin: number; week: number } | null;
+  /** No new loans before this economy minute (after a bank bail-out). */
+  noLoansUntilMin?: number;
+  /** Bankruptcy settlements so far. */
+  bankruptcies?: number;
 }
 
 export interface SaveGameState {

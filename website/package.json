@@ -1,0 +1,15 @@
+{
+  "name": "boarding-pass-website",
+  "private": true,
+  "version": "2.30.0",
+  "type": "module",
+  "description": "The Boarding Pass website (boardingpass.my). The game itself is the project one folder up (play.boardingpass.my).",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^8.0.16"
+  }
+}

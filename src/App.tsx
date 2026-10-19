@@ -13,6 +13,7 @@ import { AlertModal, AwayReportModal, Toast } from './components/AlertModal';
 import { UpdateBanner } from './components/UpdateBanner';
 import { AirportsPanel } from './components/AirportsPanel';
 import { BankPanel, MilestoneCard } from './components/BankPanel';
+import { BankruptcyModal } from './components/BankruptcyModal';
 import { BuyAircraftPanel } from './components/BuyAircraftPanel';
 import { LayersMenu, NavRail, TopBar, type MapStyleChoice, type PanelId } from './components/DashboardChrome';
 import { FleetPanel } from './components/FleetPanel';
@@ -33,10 +34,14 @@ import {
   econMinFromLegacy,
   econMinOfDay,
   econWeekOf,
+  bookFlow,
+  ledgerCashFlow,
   ledgerNet,
+  weeklyCashFlowRate,
   econMapClock,
   utcClockAt,
   type MapSpeed,
+  type CashFlowKind,
   type CatchUpReport,
   type EconomySpeed,
   type WeekLedger,
@@ -45,15 +50,21 @@ import { parseOurAirportsCsvFiles, parseOurAirportsNavaidsCsv } from './game/csv
 import { computeNetworkEconomics, getDefaultCabinForModel, getRouteDemandAndFares, calculateCabinUsage } from './game/economics';
 import {
   BANK,
+  MIN_PART_REPAYMENT,
   borrowBlocker,
   computeCareerMetrics,
+  debtSummary,
   drawLoan,
   freshCareer,
   hydrateCareer,
+  partRepaymentPreview,
   productById,
   repayLoanEarly,
+  repayLoanPart,
   reviewProgramme,
+  settleBankruptcy,
   settleCareerAdvance,
+  type BankruptcyRoute,
   uncollected,
   usdShort,
   welcomeLetter,
@@ -95,6 +106,7 @@ import type {
 } from './game/types';
 import { APP_VERSION } from './version';
 import { C, GLOBAL_CSS } from './ui/kit';
+import { initLayout } from './ui/layout';
 
 const STANDARD_START_CASH = 150_000_000;
 const SANDBOX_START_CASH = 9_999_999_999;
@@ -155,6 +167,9 @@ function useGlobalReset() {
   }, []);
 }
 
+// Phone / tablet / desktop attributes on <html>, before anything renders
+initLayout();
+
 export default function App() {
   useGlobalReset();
 
@@ -174,6 +189,8 @@ export default function App() {
   const [cash, setCash] = useState(STANDARD_START_CASH);
   const cashRef = useRef(cash);
   cashRef.current = cash;
+  const gameModeRef = useRef(gameMode);
+  gameModeRef.current = gameMode;
 
   // Economy clock: total game minutes + the ledger of the week in progress
   const [econ, setEconState] = useState({ min: 0, current: freshLedger() });
@@ -196,6 +213,8 @@ export default function App() {
   const [hideMilestoneCard, setHideMilestoneCard] = useState(() => Boolean(readPrefs().hideMilestoneCard));
   const [econSpeed, setEconSpeed] = useState<EconomySpeed>('normal');
   const [awayReport, setAwayReport] = useState<CatchUpReport | null>(null);
+  // Settlement screen: opens by itself when the airline becomes insolvent
+  const [showSettlement, setShowSettlement] = useState(true);
 
   // Map clock: real UTC (1×) or the economy clock (7×). The map reads it every
   // frame through getMapClock; React state refreshes once a second for the UI.
@@ -356,9 +375,17 @@ export default function App() {
   const airportByIata = useMemo(() => new Map(airports.map((a) => [a.iata_code, a])), [airports]);
   const econById = useMemo(() => computeNetworkEconomics({ hubs, schedule, fleet }), [hubs, schedule, fleet]);
   const canAfford = (cost: number) => gameMode === 'sandbox' || cash >= cost;
-  const spend = (cost: number) => {
-    if (gameMode !== 'sandbox') setCash((c) => c - cost);
+  /**
+   * Moves money in (+) or out (−) of the account and books it into this week's
+   * cash flow (Career mode; Sandbox money is unlimited).
+   */
+  const bookCash = (kind: CashFlowKind, amount: number) => {
+    if (gameModeRef.current === 'sandbox' || amount === 0) return;
+    setCash((c) => c + amount);
+    const cur = econRef.current;
+    setEcon({ min: cur.min, current: bookFlow(cur.current, kind, amount) });
   };
+  const spend = (cost: number) => bookCash('purchase', -cost);
 
   const builtinIconUrls = useMemo(() => {
     const out = {} as Record<RadarIconGroup, string>;
@@ -537,13 +564,13 @@ export default function App() {
 
   const applyAdvance = useCallback(
     (deltaGameMin: number) => {
-      const res = advanceEconomy(econRef.current.min, econRef.current.current, deltaGameMin, ratesRef.current, careerRef.current.loans);
+      const res = advanceEconomy(econRef.current.min, econRef.current.current, deltaGameMin, ratesRef.current, careerRef.current.loans, cashRef.current);
       setEcon({ min: res.econMin, current: res.current });
       if (res.cashDelta !== 0) setCash((c) => c + res.cashDelta);
       if (res.closedWeeks.length > 0) {
         setLedgerHistory((prev) => [...prev, ...res.closedWeeks].slice(-LEDGER_HISTORY_WEEKS));
       }
-      const nextCareer = settleCareerAdvance(careerRef.current, res, cashRef.current + res.cashDelta, airlineNameRef.current);
+      const nextCareer = settleCareerAdvance(careerRef.current, res, cashRef.current + res.cashDelta, airlineNameRef.current, { standard: gameModeRef.current === 'standard' });
       if (nextCareer !== careerRef.current) setCareer(nextCareer);
       return res;
     },
@@ -567,10 +594,9 @@ export default function App() {
       const res = applyAdvance(realSec * rate);
       const closed = res.closedWeeks[res.closedWeeks.length - 1];
       if (closed) {
-        const net = ledgerNet(closed);
         const usd = (v: number) => (Math.round(v) === 0 ? '$0' : `${v > 0 ? '+' : '−'}$${Math.abs(Math.round(v)).toLocaleString()}`);
-        const loans = closed.loanCost ? `, loans ${usd(-closed.loanCost)}` : '';
-        flashToast(`Week ${closed.week} closed. Flights ${usd(closed.flightProfit)}, leases ${usd(-closed.leaseCost)}${loans}, net ${usd(net)}.`, 6000);
+        const od = (closed.cashEnd ?? 0) < 0 && gameModeRef.current === 'standard' ? ' Your account is overdrawn: see the Bank.' : '';
+        flashToast(`Week ${closed.week} closed. Profit ${usd(ledgerNet(closed))}, cash flow ${usd(ledgerCashFlow(closed))}.${od}`, 6000);
       }
     }, ECONOMY_TICK_MS);
     return () => window.clearInterval(id);
@@ -731,11 +757,11 @@ export default function App() {
     if (!s.career && s.gameMode === 'standard') savedCareer = { ...savedCareer, letters: [welcomeLetter(s.airlineName, s.airlineIata, s.hubIata, startMin)] };
     if (gameMinutes > 0) {
       const rates = computeEconomyRates(s.schedule, computeNetworkEconomics({ hubs: s.hubs!, schedule: s.schedule, fleet: s.fleet }), s.fleet);
-      const res = advanceEconomy(startMin, startLedger, gameMinutes, rates, savedCareer.loans);
+      const res = advanceEconomy(startMin, startLedger, gameMinutes, rates, savedCareer.loans, s.cash);
       setEcon({ min: res.econMin, current: res.current });
       setCash(s.cash + res.cashDelta);
       setLedgerHistory([...(s.ledgerHistory ?? []), ...res.closedWeeks].slice(-LEDGER_HISTORY_WEEKS));
-      setCareer(settleCareerAdvance(savedCareer, res, s.cash + res.cashDelta, s.airlineName));
+      setCareer(settleCareerAdvance(savedCareer, res, s.cash + res.cashDelta, s.airlineName, { standard: s.gameMode === 'standard' }));
       setAwayReport(
         awayMs >= 60_000
           ? {
@@ -834,7 +860,7 @@ export default function App() {
       onConfirm: () => {
         const remaining = hubs.filter((h) => h !== airport.iata_code);
         const newPrimary = hubIata === airport.iata_code ? remaining[0] : hubIata;
-        if (gameMode !== 'sandbox') setCash((c) => c + refund);
+        bookCash('sale', refund);
         setHubs(remaining);
         setHubIata(newPrimary);
         setDraft((d) => (d.originIata === airport.iata_code ? { ...d, originIata: newPrimary } : d));
@@ -891,7 +917,7 @@ export default function App() {
       severity: 'warning',
       confirmLabel: owned ? 'Sell aircraft' : 'End lease',
       onConfirm: () => {
-        if (owned && gameMode !== 'sandbox') setCash((c) => c + resale);
+        if (owned) bookCash('sale', resale);
         setFleet((prev) => prev.filter((f) => f.tailNumber !== tailNumber));
         setSchedule((prev) => prev.filter((s) => s.tailNumber !== tailNumber));
         setScheduleModal((m) => (m?.tail === tailNumber ? null : m));
@@ -966,7 +992,7 @@ export default function App() {
 
   const takeLoan = (productId: string, amount: number) => {
     const product = productById(productId);
-    const blocker = borrowBlocker(careerRef.current, fleet, cash, amount);
+    const blocker = borrowBlocker(careerRef.current, fleet, cash, amount, econRef.current.min);
     if (gameMode !== 'standard' || blocker) {
       if (blocker) showAlert('Loan not available', blocker, undefined, 'warning');
       return;
@@ -979,7 +1005,7 @@ export default function App() {
       confirmLabel: 'Sign agreement',
       onConfirm: () => {
         setCareer(next);
-        setCash((c) => c + loan.principal);
+        bookCash('loan', loan.principal);
         flashToast(`${usdShort(loan.principal)} from ${BANK.name} paid into your account (${loan.ref})`, 4500);
       },
     });
@@ -999,10 +1025,79 @@ export default function App() {
       confirmLabel: 'Repay loan',
       onConfirm: () => {
         setCareer(r.career);
-        setCash((c) => c - r.amount);
+        bookCash('repay', -r.amount);
         flashToast(`Loan settled. ${usdShort(r.amount)} paid to ${BANK.name}`);
       },
     });
+  };
+
+  /** Pays part of a loan now (the rest stays on the same end date, with smaller instalments). */
+  const repayLoanPartNow = (loanId: string, amount: number) => {
+    const loan = careerRef.current.loans.find((l) => l.id === loanId);
+    if (!loan || gameMode !== 'standard') return;
+    const pv = partRepaymentPreview(loan, amount);
+    if (pv.pay < MIN_PART_REPAYMENT && !pv.settles) {
+      showAlert('Amount too small', `The smallest part repayment is ${usdShort(MIN_PART_REPAYMENT)}.`, undefined, 'warning');
+      return;
+    }
+    if (cash < pv.pay) {
+      showAlert('Not enough cash', `Paying ${usdShort(pv.pay)} needs that much in your account.`, `You have ${usdShort(cash)}.`, 'warning');
+      return;
+    }
+    if (pv.settles) return repayLoan(loanId);
+    const r = repayLoanPart(careerRef.current, loanId, pv.pay, econRef.current.min, airlineName);
+    if (!r) return;
+    setCareer(r.career);
+    bookCash('repay', -r.amount);
+    flashToast(`Paid ${usdShort(r.amount)} off ${loan.ref}. Instalments are now ${usdShort(pv.weeklyAfter)} a week, ${usdShort(pv.interestSaved)} less interest.`, 5000);
+  };
+
+  // Bankruptcy: what each aircraft earns a week, for the bank's proposal
+  const weeklyProfitByTail = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const fl of schedule) m.set(fl.tailNumber, (m.get(fl.tailNumber) ?? 0) + (econById.get(fl.id)?.profit ?? 0) * daysOrAll(fl.daysOfWeek).filter(Boolean).length);
+    return m;
+  }, [schedule, econById]);
+
+  const debt = debtSummary(career, cash, econ.min);
+  const topBarMoney = {
+    rate: weeklyCashFlowRate(econRates, career.loans, gameMode === 'standard' ? cash : 0),
+    debt: debt.total > 0.5 ? debt : null,
+    insolvent: Boolean(career.insolvent),
+    overdrawnWeeks: career.overdrawnWeeks ?? 0,
+  };
+
+  const scheduledTails = useMemo(() => new Set(schedule.map((f) => f.tailNumber)), [schedule]);
+  // Each new insolvency opens the settlement screen
+  const insolventAt = career.insolvent?.econMin;
+  useEffect(() => {
+    if (insolventAt !== undefined) setShowSettlement(true);
+  }, [insolventAt]);
+
+  /** Settles an insolvency: sell the chosen aircraft (10+ aircraft), or take the bail-out. */
+  const settleInsolvency = (route: BankruptcyRoute, sellTails: string[] = []) => {
+    const c = careerRef.current;
+    if (!c.insolvent || gameMode !== 'standard') return;
+    const before = cashRef.current;
+    let proceeds = 0;
+    if (route === 'sell-half') {
+      const sold = new Set(sellTails);
+      for (const ac of fleet) if (sold.has(ac.tailNumber) && ac.acquisition === 'owned') proceeds += calcAircraftResaleUsd(ac.model);
+      setFleet((prev) => prev.filter((f) => !sold.has(f.tailNumber)));
+      setSchedule((prev) => prev.filter((f) => !sold.has(f.tailNumber)));
+      setScheduleModal((m) => (m && sold.has(m.tail) ? null : m));
+    }
+    const r = settleBankruptcy(c, before, route, econRef.current.min, airlineName, route === 'sell-half' ? { proceeds, count: sellTails.length } : undefined);
+    setCareer(r.career);
+    // Book the sale, then the settlement (debts paid from it, or written off), so cash flow adds up
+    if (proceeds) bookCash('sale', proceeds);
+    bookCash('bailout', r.cashAfter - before - proceeds);
+    flashToast(
+      route === 'bailout'
+        ? `${BANK.name} has cleared your debts. No new loans for 48 hours.`
+        : `${sellTails.length} aircraft sold for ${usdShort(proceeds)}. Your debts are cleared${r.terms.surplus ? ` and ${usdShort(r.terms.surplus)} is yours` : ''}.`,
+      6000
+    );
   };
 
   const collectLetter = (letterId: string) => {
@@ -1010,7 +1105,7 @@ export default function App() {
     const letter = c.letters.find((l) => l.id === letterId);
     if (!letter?.reward || letter.collected || gameMode !== 'standard') return;
     setCareer({ ...c, letters: c.letters.map((l) => (l.id === letterId ? { ...l, collected: true, read: true } : l)) });
-    setCash((v) => v + letter.reward!);
+    bookCash('grant', letter.reward!);
     flashToast(`${usdShort(letter.reward)} paid into your account`);
   };
 
@@ -1133,6 +1228,12 @@ export default function App() {
         onEconSpeed={setEconSpeed}
         weekSoFar={econ.current}
         lastWeek={ledgerHistory[ledgerHistory.length - 1] ?? null}
+        money={topBarMoney}
+        onOpenDebt={() => {
+          if (career.insolvent) return setShowSettlement(true);
+          setBankTab('loans');
+          setPanel('bank');
+        }}
         layers={
           <LayersMenu
             mapStyle={mapStyle}
@@ -1265,8 +1366,11 @@ export default function App() {
           gameMode={gameMode}
           econMin={econ.min}
           initialTab={bankTab}
+          ledgerHistory={ledgerHistory}
           onTakeLoan={takeLoan}
           onRepay={repayLoan}
+          onRepayPart={repayLoanPartNow}
+          onOpenSettlement={() => setShowSettlement(true)}
           onCollect={collectLetter}
           onRead={markLetterRead}
           onClose={closePanel}
@@ -1324,6 +1428,24 @@ export default function App() {
         )}
 
       {awayReport && <AwayReportModal report={awayReport} gameMode={gameMode} onClose={() => setAwayReport(null)} />}
+      {gameMode === 'standard' && career.insolvent && showSettlement && !awayReport && (
+        <BankruptcyModal
+          key={career.insolvent.econMin}
+          career={career}
+          fleet={fleet}
+          cash={cash}
+          weeklyProfitByTail={weeklyProfitByTail}
+          scheduledTails={scheduledTails}
+          onSettle={(route, tails) => {
+            settleInsolvency(route, tails);
+            setShowSettlement(false);
+          }}
+          onLater={() => {
+            setShowSettlement(false);
+            flashToast('The bank lends nothing until you settle. Click Insolvent in the top bar when you are ready.', 5000);
+          }}
+        />
+      )}
       {overlays}
     </div>
   );

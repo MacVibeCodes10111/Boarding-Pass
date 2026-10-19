@@ -195,7 +195,7 @@ export function AircraftScheduleModal({
           {conflictMsg && <ErrorBanner message={conflictMsg} />}
 
           {/* Edit form */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, background: C.bg, padding: 14, borderRadius: 8, border: `1px solid ${C.line}` }}>
+          <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, background: C.bg, padding: 14, borderRadius: 8, border: `1px solid ${C.line}` }}>
             <div>
               <label style={labelStyle}>Flight number</label>
               <input value={editFlightNum} onChange={(e) => setEditFlightNum(e.target.value)} style={{ ...inputStyle, marginBottom: 10, fontWeight: 700 }} />

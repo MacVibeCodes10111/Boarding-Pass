@@ -1,3 +1,4 @@
+import type React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import {
   BANK,
@@ -17,10 +18,18 @@ import {
   goalProgressText,
   goalValue,
   goalsOfStage,
+  INSOLVENCY_WEEKS,
+  MIN_PART_REPAYMENT,
+  debtSummary,
+  loanInterestLeft,
   loanOutstanding,
   loanRatePct,
+  loanRepaidShare,
+  loanStartPrincipal,
   loanTerms,
+  loanWeeksLeft,
   nextGoal,
+  partRepaymentPreview,
   productById,
   standingIndex,
   totalOutstanding,
@@ -31,10 +40,11 @@ import {
   type CareerMetrics,
   type GoalDef,
 } from '../game/career';
-import { econWeekOf } from '../game/clock';
+import { OVERDRAFT_RATE_PCT, econWeekOf, type WeekLedger } from '../game/clock';
+import { MIN_PER_WEEK } from '../game/time';
 import type { BankLetter, CareerState, GameMode, PlayerAircraft } from '../game/types';
 import { Icon } from '../ui/icons';
-import { Button, C, EmptyState, Meter, RAIL_W, Segmented, SidePanel, Stat, inputStyle } from '../ui/kit';
+import { Button, C, EmptyState, Meter, Segmented, SidePanel, Stat, inputStyle } from '../ui/kit';
 
 type Tab = 'programme' | 'loans' | 'letters';
 
@@ -46,8 +56,12 @@ export interface BankPanelProps {
   gameMode: GameMode;
   econMin: number;
   initialTab?: Tab;
+  /** Closed weeks, for the debt chart. */
+  ledgerHistory: WeekLedger[];
   onTakeLoan: (productId: string, amount: number) => void;
   onRepay: (loanId: string) => void;
+  onRepayPart: (loanId: string, amount: number) => void;
+  onOpenSettlement: () => void;
   onCollect: (letterId: string) => void;
   onRead: (letterId: string) => void;
   onClose: () => void;
@@ -234,7 +248,7 @@ function GoalRow({
   const pct = Math.max(0, Math.min(100, (goalValue(goal, metrics) / goal.target) * 100));
   return (
     <div
-      className="bp-row"
+      className="bp-row bp-goal"
       style={{
         display: 'grid',
         gridTemplateColumns: '22px 1fr 170px 120px',
@@ -289,7 +303,8 @@ function GoalRow({
 // ---------------------------------------------------------------------------
 // Loans
 // ---------------------------------------------------------------------------
-function Loans({ career, fleet, cash, econMin, onTakeLoan, onRepay }: BankPanelProps) {
+function Loans(props: BankPanelProps) {
+  const { career, fleet, cash, econMin, onTakeLoan } = props;
   const [productId, setProductId] = useState('fleet');
   const avail = availableCredit(career, fleet);
   const [amountM, setAmountM] = useState(() => Math.max(5, Math.floor(Math.min(avail, 50_000_000) / 1e6)));
@@ -297,46 +312,20 @@ function Loans({ career, fleet, cash, econMin, onTakeLoan, onRepay }: BankPanelP
   const amount = amountM * 1e6;
   const rate = loanRatePct(career, product, econMin);
   const terms = loanTerms(amount, rate, product.termWeeks);
-  const blocker = borrowBlocker(career, fleet, cash, amount);
+  const blocker = borrowBlocker(career, fleet, cash, amount, econMin);
   const loans = activeLoans(career);
   const week = econWeekOf(econMin);
 
   return (
     <div>
+      <DebtTracker {...props} />
       {loans.length > 0 && (
         <section style={{ marginBottom: 20 }}>
           <div style={{ fontSize: 14, fontWeight: 650, marginBottom: 8 }}>Your loans</div>
           <div style={{ border: `1px solid ${C.line}`, borderRadius: 8, overflow: 'hidden' }}>
-            {loans.map((l, i) => {
-              const owed = loanOutstanding(l);
-              const weeksLeft = Math.ceil((l.totalRepayable - l.paid) / l.weeklyPayment);
-              return (
-                <div
-                  key={l.id}
-                  style={{ display: 'grid', gridTemplateColumns: '1fr 180px 150px', gap: 14, alignItems: 'center', padding: '10px 12px', borderTop: i ? `1px solid ${C.line}` : 'none' }}
-                >
-                  <div>
-                    <div style={{ fontSize: 13.5, fontWeight: 600 }}>
-                      {productById(l.product).name} <span style={{ color: C.muted, fontWeight: 500 }}>{l.ref}</span>
-                    </div>
-                    <div className="num" style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
-                      {usdShort(l.principal)} at {l.ratePct}%, {usdShort(l.weeklyPayment)} a week, {weeksLeft} {weeksLeft === 1 ? 'week' : 'weeks'} left
-                    </div>
-                  </div>
-                  <div>
-                    <div className="num" style={{ fontSize: 11.5, color: C.muted, marginBottom: 4 }}>
-                      {usdShort(l.paid)} of {usdShort(l.totalRepayable)} repaid
-                    </div>
-                    <Meter pct={(l.paid / l.totalRepayable) * 100} gradient={C.accent} height={4} />
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <Button size="sm" disabled={cash < owed} title={cash < owed ? 'Not enough cash to settle now' : 'No charge for early repayment'} onClick={() => onRepay(l.id)}>
-                      Repay {usdShort(owed)}
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
+            {loans.map((l, i) => (
+              <LoanRow key={l.id} loan={l} first={i === 0} cash={cash} econMin={econMin} onRepay={props.onRepay} onRepayPart={props.onRepayPart} />
+            ))}
           </div>
         </section>
       )}
@@ -371,7 +360,7 @@ function Loans({ career, fleet, cash, econMin, onTakeLoan, onRepay }: BankPanelP
         })}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, padding: 14, border: `1px solid ${C.line}`, borderRadius: 8 }}>
+      <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, padding: 14, border: `1px solid ${C.line}`, borderRadius: 8 }}>
         <div>
           <div style={{ fontSize: 12, color: C.muted, marginBottom: 6 }}>Amount (you can borrow up to {usdShort(avail)})</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -422,8 +411,199 @@ function Loans({ career, fleet, cash, econMin, onTakeLoan, onRepay }: BankPanelP
         </div>
       </div>
       <div style={{ fontSize: 11.5, color: C.faint, marginTop: 10, lineHeight: 1.5 }}>
-        Your credit line grows as your standing rises and with the aircraft you own outright. If a week closes with your account below zero, new borrowing stops until you are back in credit and new loans cost 2% more for four weeks.
+        Your credit line grows as your standing rises and with the aircraft you own outright. If a week closes with your account below zero, new borrowing stops until you are back in credit, the overdraft is charged {OVERDRAFT_RATE_PCT}% a year and new loans cost 2% more for four weeks. If {INSOLVENCY_WEEKS} weeks in a row close overdrawn, the bank declares your airline insolvent.
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Debt tracker: everything owed, what it costs, when it's gone
+// ---------------------------------------------------------------------------
+function DebtTracker({ career, cash, econMin, ledgerHistory, onOpenSettlement }: BankPanelProps) {
+  const d = debtSummary(career, cash, econMin);
+  const overdrawn = career.overdrawnWeeks ?? 0;
+  const week = econWeekOf(econMin);
+  return (
+    <section style={{ marginBottom: 20 }}>
+      {career.insolvent ? (
+        <Banner tone="red" title="Your airline is insolvent">
+          The account closed {INSOLVENCY_WEEKS} weeks in a row overdrawn. Settle with the bank to clear your debts and borrow again.
+          <div style={{ marginTop: 8 }}>
+            <Button size="sm" variant="primary" onClick={onOpenSettlement}>
+              See the settlement
+            </Button>
+          </div>
+        </Banner>
+      ) : d.overdraft > 0 ? (
+        <Banner tone="amber" title={`Overdrawn by ${usdShort(d.overdraft)}`}>
+          Charged {OVERDRAFT_RATE_PCT}% a year ({usdShort(d.overdraftWeekly)} a week) and no new loans until you're back in credit.{' '}
+          {overdrawn >= 1
+            ? `Last week also closed overdrawn: if this week (week ${week}) closes overdrawn too, the bank declares your airline insolvent.`
+            : `If ${INSOLVENCY_WEEKS} weeks in a row close overdrawn, the bank declares your airline insolvent.`}
+        </Banner>
+      ) : null}
+      <div style={{ fontSize: 14, fontWeight: 650, margin: '0 0 8px' }}>Your debt</div>
+      <div
+        className="bp-debt-grid"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(5, 1fr) 1.6fr',
+          gap: 12,
+          padding: '12px 14px',
+          border: `1px solid ${C.line}`,
+          borderRadius: 8,
+          alignItems: 'center',
+        }}
+      >
+        <Stat label="Total owed" value={usdShort(d.total)} sub={d.overdraft ? `${usdShort(d.principal)} loans + ${usdShort(d.overdraft)} overdraft` : `${d.loans} ${d.loans === 1 ? 'loan' : 'loans'}`} />
+        <Stat label="Interest still due" value={usdShort(d.interestLeft)} sub="if loans run to term" />
+        <Stat label="Instalments" value={usdShort(d.weekly)} sub="per week" />
+        <Stat label="Debt-free" value={d.debtFreeWeek ? `Week ${d.debtFreeWeek}` : d.overdraft ? 'Overdrawn' : 'Now'} sub={d.debtFreeWeek ? `${Math.max(0, d.debtFreeWeek - week)} weeks from now` : undefined} />
+        <Stat label="Repaid early" value={usdShort(loansRepaidEarly(career))} sub="on current loans" />
+        <DebtChart history={ledgerHistory} now={d.total} week={week} />
+      </div>
+    </section>
+  );
+}
+
+const loansRepaidEarly = (c: CareerState) => activeLoans(c).reduce((s, l) => s + (l.extraRepaid ?? 0), 0);
+
+function Banner({ tone, title, children }: { tone: 'red' | 'amber'; title: string; children: React.ReactNode }) {
+  const col = tone === 'red' ? C.red : C.amber;
+  return (
+    <div role="alert" style={{ border: `1px solid ${col}`, background: tone === 'red' ? 'rgba(239,68,68,0.10)' : 'rgba(232,176,75,0.10)', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
+      <div style={{ fontSize: 13.5, fontWeight: 650, color: col }}>{title}</div>
+      <div style={{ fontSize: 12.5, color: C.textDim, marginTop: 3, lineHeight: 1.45 }}>{children}</div>
+    </div>
+  );
+}
+
+/** Debt at the end of each closed week, and now. */
+function DebtChart({ history, now, week }: { history: WeekLedger[]; now: number; week: number }) {
+  const pts = [...history.filter((w) => w.debtEnd !== undefined).map((w) => ({ week: w.week, v: w.debtEnd! + Math.max(0, -(w.cashEnd ?? 0)), now: false })), { week, v: now, now: true }];
+  const max = Math.max(1, ...pts.map((p) => p.v));
+  const H = 46;
+  return (
+    <div aria-label="Debt at the end of each week" style={{ minWidth: 0 }}>
+      <div style={{ fontSize: 11, color: C.faint, marginBottom: 4 }}>{pts.length > 1 ? 'Debt at the end of each week' : 'Debt by week (builds up as weeks close)'}</div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: H }}>
+        {pts.map((p) => (
+          <div
+            key={p.week + (p.now ? 'n' : '')}
+            className="bp-debt-bar"
+            title={`${p.now ? 'Now' : `End of week ${p.week}`}: ${usdShort(p.v)}`}
+            style={{
+              flex: 1,
+              maxWidth: 22,
+              height: Math.max(2, (p.v / max) * H),
+              borderRadius: '3px 3px 0 0',
+              background: p.now ? C.amber : C.accentStrong,
+              opacity: p.v > 0 ? 1 : 0.35,
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LoanRow({
+  loan: l,
+  first,
+  cash,
+  econMin,
+  onRepay,
+  onRepayPart,
+}: {
+  loan: ReturnType<typeof activeLoans>[number];
+  first: boolean;
+  cash: number;
+  econMin: number;
+  onRepay: (id: string) => void;
+  onRepayPart: (id: string, amount: number) => void;
+}) {
+  const owed = loanOutstanding(l);
+  const weeksLeft = loanWeeksLeft(l);
+  const endWeek = econWeekOf(econMin + weeksLeft * MIN_PER_WEEK);
+  const start = loanStartPrincipal(l);
+  const [open, setOpen] = useState(false);
+  const maxM = Math.max(1, Math.floor(Math.min(owed, Math.max(0, cash)) / 1e6));
+  const [payM, setPayM] = useState(() => Math.max(1, Math.min(maxM, Math.round(owed / 4 / 1e6))));
+  const pay = Math.min(payM * 1e6, owed);
+  const pv = partRepaymentPreview(l, pay);
+  const tooLittle = pay < MIN_PART_REPAYMENT && !pv.settles;
+  const short = cash < pay;
+  const wl = Math.ceil(weeksLeft - 1e-6);
+  return (
+    <div className="bp-loan" style={{ padding: '11px 12px', borderTop: first ? 'none' : `1px solid ${C.line}` }}>
+      <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 200px auto', gap: 14, alignItems: 'center' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600 }}>
+            {productById(l.product).name} <span style={{ color: C.muted, fontWeight: 500 }}>{l.ref}</span>
+          </div>
+          <div className="num" style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+            Borrowed {usdShort(start)} at {l.ratePct}%. {usdShort(l.weeklyPayment)} a week, {wl} {wl === 1 ? 'week' : 'weeks'} left (ends week {endWeek}).
+          </div>
+          <div className="num" style={{ fontSize: 12, color: C.textDim, marginTop: 2 }}>
+            Owed now <b style={{ color: C.text }}>{usdShort(owed)}</b>, interest still due {usdShort(loanInterestLeft(l))}
+            {l.extraRepaid ? `, ${usdShort(l.extraRepaid)} paid early` : ''}
+          </div>
+        </div>
+        <div>
+          <div className="num" style={{ fontSize: 11.5, color: C.muted, marginBottom: 4 }}>
+            {Math.round(loanRepaidShare(l) * 100)}% paid off
+          </div>
+          <Meter pct={loanRepaidShare(l) * 100} gradient={C.accent} height={5} />
+        </div>
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+          <Button size="sm" variant="ghost" aria-expanded={open} disabled={cash < MIN_PART_REPAYMENT} title={cash < MIN_PART_REPAYMENT ? 'Not enough cash for a part repayment' : 'Pay some of it off now'} onClick={() => setOpen((o) => !o)}>
+            Pay off part
+          </Button>
+          <Button size="sm" disabled={cash < owed} title={cash < owed ? 'Not enough cash to settle now' : 'No charge for early repayment'} onClick={() => onRepay(l.id)}>
+            Repay {usdShort(owed)}
+          </Button>
+        </div>
+      </div>
+      {open && (
+        <div className="bp-part" style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8, background: C.panelAlt, border: `1px solid ${C.line}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12.5, color: C.textDim }}>Pay</span>
+            <span style={{ color: C.muted }}>$</span>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={payM}
+              aria-label="Part repayment in millions"
+              onChange={(e) => setPayM(Math.max(0, Math.round(Number(e.target.value) || 0)))}
+              style={{ ...inputStyle, width: 90, fontWeight: 650 }}
+            />
+            <span style={{ color: C.muted, fontSize: 12.5 }}>million</span>
+            {[0.1, 0.25, 0.5].map((f) => (
+              <Button key={f} size="sm" variant="ghost" onClick={() => setPayM(Math.max(1, Math.min(maxM, Math.round((owed * f) / 1e6))))}>
+                {f * 100}%
+              </Button>
+            ))}
+            <Button size="sm" variant="ghost" onClick={() => setPayM(Math.max(1, maxM))}>
+              {owed <= cash ? 'All of it' : 'All I can'}
+            </Button>
+            <span style={{ flex: 1 }} />
+            <Button size="sm" variant="primary" disabled={tooLittle || short || pay <= 0} onClick={() => onRepayPart(l.id, pay)}>
+              {pv.settles ? `Repay ${usdShort(pay)} and settle` : `Pay ${usdShort(pay)}`}
+            </Button>
+          </div>
+          <div className="num" style={{ fontSize: 12, color: short || tooLittle ? C.amber : C.muted, marginTop: 7 }}>
+            {short
+              ? `You have ${usdShort(cash)}.`
+              : tooLittle
+                ? `The smallest part repayment is ${usdShort(MIN_PART_REPAYMENT)}.`
+                : pv.settles
+                  ? `Settles the loan: no more instalments, ${usdShort(loanInterestLeft(l))} less interest.`
+                  : `Leaves ${usdShort(pv.principalAfter)} owed. Instalments fall from ${usdShort(l.weeklyPayment)} to ${usdShort(pv.weeklyAfter)} a week, still ending in week ${endWeek}, and you pay ${usdShort(pv.interestSaved)} less interest.`}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -451,7 +631,7 @@ function Letters({ career, gameMode, onCollect, onRead }: BankPanelProps) {
   const open = (id: string) => setOpenId(id);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 14, alignItems: 'start' }}>
+    <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 14, alignItems: 'start' }}>
       <div style={{ border: `1px solid ${C.line}`, borderRadius: 8, overflow: 'hidden', maxHeight: 560, overflowY: 'auto' }}>
         {career.letters.map((l, i) => {
           const sel = l.id === letter?.id;
@@ -570,9 +750,9 @@ export function MilestoneCard({
     <div
       style={{
         position: 'absolute',
-        left: RAIL_W + 12,
-        bottom: 12,
-        width: 300,
+        left: 'calc(var(--bp-rail-w) + 12px)',
+        bottom: 'calc(var(--bp-bottom-h) + 12px)',
+        width: 'min(300px, calc(100vw - 24px))',
         background: C.panel,
         border: `1px solid ${C.border}`,
         borderRadius: 10,

@@ -61,7 +61,7 @@ export function Toast({ message }: { message: string }) {
       role="status"
       style={{
         position: 'fixed',
-        bottom: 22,
+        bottom: 'calc(var(--bp-bottom-h) + 22px)',
         left: '50%',
         transform: 'translateX(-50%)',
         display: 'flex',
@@ -71,12 +71,14 @@ export function Toast({ message }: { message: string }) {
         color: C.text,
         border: `1px solid ${C.border}`,
         padding: '9px 16px',
-        borderRadius: 999,
+        borderRadius: 14,
         fontWeight: 500,
         fontSize: 13,
         zIndex: 250,
         boxShadow: '0 12px 30px rgba(0,0,0,0.5)',
-        maxWidth: '70vw',
+        maxWidth: 'min(calc(100vw - 24px), 620px)',
+        width: 'max-content',
+        lineHeight: 1.4,
         animation: 'bp-fade-in .15s ease-out',
       }}
     >

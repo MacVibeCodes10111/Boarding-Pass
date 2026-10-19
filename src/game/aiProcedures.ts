@@ -12,7 +12,7 @@
 //   only change when a procedure arrives is the exact track near the airport.
 // ============================================================================
 import { calcBearingDeg, calcCoordDistanceNm, offsetLatLonNm, type LonLat } from './geo';
-import { buildTerminalPaths, terminalDistances, type TerminalPaths } from './navdata';
+import { buildTerminalPaths, landingRollNm, terminalDistances, type TerminalPaths } from './navdata';
 import { aiDepartureDay, aiTaxiMin, type AiAirport, type AiFlight, type AiPosition, type AiTraffic } from './aiTraffic';
 import { MIN_PER_DAY } from './time';
 import type { Airport } from './types';
@@ -237,7 +237,7 @@ export class AiPathModel {
     const liftIdx = tp.liftoffIdx;
     const dep = makeTrack(tp.dep, (s) => (s < 0.6 ? 70 : 160 + Math.min(1, s / 30) * 90));
     const liftoffNm = dep.cumNm[liftIdx] ?? 0;
-    const rollNm = Math.max(0.3, Math.min(tp.arrRwy.lengthNm * 0.6, 1.2));
+    const rollNm = landingRollNm(tp.arrRwy);
     const arr = makeTrack(tp.arr, (s, len) => (s > len - rollNm ? 50 : 250 - Math.min(1, s / Math.max(1, len - rollNm)) * 110));
     let finalNm = arr.lenNm - rollNm - 8;
     let best = Infinity;

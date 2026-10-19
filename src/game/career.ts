@@ -6,10 +6,10 @@
 //   the airline's standing, which means a bigger credit line and lower rates.
 //   Everything the bank says arrives as a letter.
 // ============================================================================
-import { econDayOfWeek, econWeekOf, ledgerNet, type WeekLedger } from './clock';
+import { ECONOMY_RATE, OVERDRAFT_RATE_PCT, econDayOfWeek, econWeekOf, ledgerNet, loanInterestShare, loanPrincipalLeft, type WeekLedger } from './clock';
 import type { FlightEconomics } from './economics';
 import { calcAircraftResaleUsd } from './tiers';
-import { daysOrAll } from './time';
+import { MIN_PER_WEEK, daysOrAll } from './time';
 import type { Airport, BankLetter, BankLoan, CareerState, PlayerAircraft, ScheduledFlight } from './types';
 
 export const BANK = {
@@ -48,6 +48,18 @@ export const OVERDRAFT_SURCHARGE_PCT = 2;
 export const OVERDRAFT_SURCHARGE_WEEKS = 4;
 export const MAX_ACTIVE_LOANS = 4;
 export const MIN_LOAN = 5_000_000;
+/** Smallest part repayment. */
+export const MIN_PART_REPAYMENT = 1_000_000;
+
+// Bankruptcy (v2.29+)
+/** Weeks in a row that may close overdrawn before the bank declares the airline insolvent. */
+export const INSOLVENCY_WEEKS = 2;
+/** Airlines this size or bigger settle by selling half the fleet; smaller ones get a bail-out. */
+export const BAILOUT_FLEET_LIMIT = 10;
+/** After a bail-out: no new loans for 2 game weeks (48 real hours at normal speed). */
+export const BAILOUT_LOAN_LOCK_MIN = 2 * MIN_PER_WEEK;
+/** After either settlement, new loans carry the overdraft surcharge this many weeks. */
+export const BANKRUPTCY_SURCHARGE_WEEKS = 8;
 
 // ---------------------------------------------------------------------------
 // Loan products
@@ -96,9 +108,42 @@ export function hydrateCareer(c: Partial<CareerState> | undefined): CareerState 
 
 export const activeLoans = (c: CareerState) => c.loans.filter((l) => l.paid < l.totalRepayable);
 /** Principal still owed (interest for weeks not yet reached is not charged). */
-export const loanOutstanding = (l: BankLoan) => Math.max(0, Math.round(l.principal * (1 - l.paid / l.totalRepayable)));
+export const loanOutstanding = (l: BankLoan) => Math.round(loanPrincipalLeft(l));
 export const totalOutstanding = (c: CareerState) => activeLoans(c).reduce((s, l) => s + loanOutstanding(l), 0);
 export const weeklyInstalments = (c: CareerState) => activeLoans(c).reduce((s, l) => s + l.weeklyPayment, 0);
+/** Weekly instalments still to come on a loan (fractional for the last part-week). */
+export const loanWeeksLeft = (l: BankLoan) => (l.weeklyPayment > 0 ? Math.max(0, (l.totalRepayable - l.paid) / l.weeklyPayment) : 0);
+/** Interest still to pay if the loan runs to term. */
+export const loanInterestLeft = (l: BankLoan) => Math.max(0, (l.totalRepayable - l.paid) * loanInterestShare(l));
+/** The amount first borrowed (before any part repayments). */
+export const loanStartPrincipal = (l: BankLoan) => l.startPrincipal ?? l.principal;
+/** Share of the amount first borrowed that has been paid off, 0..1. */
+export const loanRepaidShare = (l: BankLoan) => {
+  const start = loanStartPrincipal(l);
+  return start > 0 ? Math.max(0, Math.min(1, 1 - loanPrincipalLeft(l) / start)) : 1;
+};
+
+/** Everything the airline owes, for the debt tracker. */
+export function debtSummary(c: CareerState, cash: number, econMin: number) {
+  const loans = activeLoans(c);
+  const principal = loans.reduce((s, l) => s + loanPrincipalLeft(l), 0);
+  const interestLeft = loans.reduce((s, l) => s + loanInterestLeft(l), 0);
+  const weekly = loans.reduce((s, l) => s + l.weeklyPayment, 0);
+  const overdraft = Math.max(0, -cash);
+  const weeksToClear = loans.reduce((m, l) => Math.max(m, loanWeeksLeft(l)), 0);
+  return {
+    loans: loans.length,
+    principal,
+    interestLeft,
+    weekly,
+    overdraft,
+    /** Loans plus the overdraft. */
+    total: principal + overdraft,
+    /** Week the last loan finishes, or null with no loans. */
+    debtFreeWeek: loans.length ? econWeekOf(econMin + weeksToClear * MIN_PER_WEEK) : null,
+    overdraftWeekly: (overdraft * OVERDRAFT_RATE_PCT) / 100 / 52,
+  };
+}
 
 export function standingIndex(c: CareerState): number {
   let k = 0;
@@ -123,8 +168,19 @@ export function loanTerms(principal: number, ratePct: number, termWeeks: number)
   return { totalRepayable, weeklyPayment: totalRepayable / termWeeks, interest: totalRepayable - principal };
 }
 
+/** Real hours (at normal speed) until a bail-out's loan ban ends, or 0. */
+export function loanLockHoursLeft(c: CareerState, econMin: number): number {
+  const left = (c.noLoansUntilMin ?? 0) - econMin;
+  return left > 0 ? left / ECONOMY_RATE.normal / 3600 : 0;
+}
+
 /** Why a loan can't be taken right now, or null. */
-export function borrowBlocker(c: CareerState, fleet: PlayerAircraft[], cash: number, amount: number): string | null {
+export function borrowBlocker(c: CareerState, fleet: PlayerAircraft[], cash: number, amount: number, econMin = 0): string | null {
+  if (c.insolvent) return 'The Bank has declared your airline insolvent. Settle with the Bank first.';
+  if ((c.noLoansUntilMin ?? 0) > econMin) {
+    const h = loanLockHoursLeft(c, econMin);
+    return `After the bail-out, no new loans until ${econDateText(c.noLoansUntilMin!)} (about ${h >= 1 ? `${Math.ceil(h)} hours` : 'an hour'} at normal speed).`;
+  }
   if (cash < 0) return 'New borrowing is suspended while your account is overdrawn.';
   if (activeLoans(c).length >= MAX_ACTIVE_LOANS) return `You can hold up to ${MAX_ACTIVE_LOANS} loans at once. Repay one first.`;
   const avail = availableCredit(c, fleet);
@@ -242,7 +298,7 @@ export const STAGES: StageDef[] = [
 const M = 1_000_000;
 export const GOALS: GoalDef[] = [
   // Stage 1: first steps
-  { id: 's1-aircraft', stage: 1, title: 'Take delivery of your first aircraft', hint: 'Open Buy in the left bar and buy or lease an aircraft.', metric: 'aircraft', target: 1, reward: 8 * M, unit: 'aircraft' },
+  { id: 's1-aircraft', stage: 1, title: 'Take delivery of your first aircraft', hint: 'Open Buy and buy or lease an aircraft.', metric: 'aircraft', target: 1, reward: 8 * M, unit: 'aircraft' },
   { id: 's1-route', stage: 1, title: 'Open your first route', hint: 'Click any airport on the map and schedule a round trip from your hub.', metric: 'routes', target: 1, reward: 8 * M, unit: 'routes' },
   { id: 's1-fleet3', stage: 1, title: 'Operate a fleet of 3 aircraft', hint: 'Owned and leased aircraft both count. A Fleet finance loan can help.', metric: 'aircraft', target: 3, reward: 15 * M, unit: 'aircraft' },
   { id: 's1-routes5', stage: 1, title: 'Fly 5 routes', hint: 'A route is any pair of airports you fly between.', metric: 'routes', target: 5, reward: 15 * M, unit: 'routes' },
@@ -420,8 +476,26 @@ export function overdraftLetter(airlineName: string, closedWeek: WeekLedger, cas
     body: [
       `Dear ${airlineName} management,`,
       `Your operating account closed week ${closedWeek.week} with a balance of ${usdFull(cash)} (net result for the week ${usdFull(ledgerNet(closedWeek))}).`,
-      `Under the terms of your facilities, new borrowing is suspended until the account returns to credit, and new loans will carry a surcharge of ${OVERDRAFT_SURCHARGE_PCT}% a year until the end of week ${untilWeek}. Instalments on existing loans continue as scheduled.`,
+      `Under the terms of your facilities, new borrowing is suspended until the account returns to credit, and new loans will carry a surcharge of ${OVERDRAFT_SURCHARGE_PCT}% a year until the end of week ${untilWeek}. The overdrawn balance is charged interest at ${OVERDRAFT_RATE_PCT}% a year. Instalments on existing loans continue as scheduled.`,
+      `Please note: if the account is still overdrawn when week ${closedWeek.week + INSOLVENCY_WEEKS - 1} closes, the Bank will declare ${airlineName} insolvent and settle your debts under its restructuring terms.`,
       `We recommend reviewing loss-making routes and lease commitments at the earliest opportunity.`,
+      ...signOff,
+    ],
+    read: false,
+  };
+}
+
+export function insolvencyLetter(airlineName: string, week: number, cash: number, owed: number, econMin: number): BankLetter {
+  return {
+    id: letterId(),
+    econMin,
+    kind: 'insolvency',
+    subject: `Notice of insolvency: ${airlineName}`,
+    body: [
+      `Dear ${airlineName} management,`,
+      `Your operating account has now closed ${INSOLVENCY_WEEKS} weeks in a row overdrawn, most recently week ${week} at ${usdFull(cash)}, with ${usdFull(owed)} outstanding on loans. The Bank therefore declares ${airlineName} insolvent.`,
+      `Under the Bank's restructuring terms, an airline operating ${BAILOUT_FLEET_LIMIT} or more aircraft settles by selling half of its fleet; the proceeds go to the Bank, all remaining debts are cleared and any surplus is returned to you. A smaller airline is offered a bail-out: the Bank clears its debts in full, and no new loans are offered for two weeks.`,
+      `Either way, new borrowing will carry a surcharge of ${OVERDRAFT_SURCHARGE_PCT}% a year for ${BANKRUPTCY_SURCHARGE_WEEKS} weeks. No new loans are possible until the settlement is complete.`,
       ...signOff,
     ],
     read: false,
@@ -474,33 +548,50 @@ export const unread = (c: CareerState) => c.letters.filter((l) => !l.read);
 
 /**
  * Applies an economy advance to the bank side: drops loans that were paid off
- * (with a letter), records the best closed week, and sends an overdraft notice
- * when a week closes with the account below zero.
+ * (with a letter), records the best closed week, and counts weeks that close
+ * overdrawn: the first sends a notice, the INSOLVENCY_WEEKS-th in a row makes
+ * the airline insolvent (Career mode only).
  */
 export function settleCareerAdvance(
   career: CareerState,
   res: { econMin: number; loans: BankLoan[]; finishedLoans: BankLoan[]; closedWeeks: WeekLedger[] },
   cashAfter: number,
-  airlineName: string
+  airlineName: string,
+  opts: { standard?: boolean } = {}
 ): CareerState {
   if (career.loans.length === 0 && res.closedWeeks.length === 0) return career;
+  const standard = opts.standard ?? true;
   const letters: BankLetter[] = [];
   for (const l of res.finishedLoans) letters.push(repaidLetter(l, airlineName, res.econMin, false));
   let { bestWeekNet, surchargeUntilWeek } = career;
-  for (const w of res.closedWeeks) bestWeekNet = Math.max(bestWeekNet, ledgerNet(w));
-  const last = res.closedWeeks[res.closedWeeks.length - 1];
-  if (last && cashAfter < 0) {
-    const until = last.week + OVERDRAFT_SURCHARGE_WEEKS;
-    // One notice per overdraft spell; later overdrawn weeks just extend the surcharge
-    if (surchargeUntilWeek < last.week) letters.push(overdraftLetter(airlineName, last, cashAfter, res.econMin, until));
-    surchargeUntilWeek = until;
+  let overdrawn = career.overdrawnWeeks ?? 0;
+  let insolvent = career.insolvent ?? null;
+  const loansLeft = res.loans.filter((l) => l.paid < l.totalRepayable);
+  for (const w of res.closedWeeks) {
+    bestWeekNet = Math.max(bestWeekNet, ledgerNet(w));
+    if (!standard) continue;
+    const endCash = w.cashEnd ?? cashAfter;
+    if (endCash < 0) {
+      overdrawn++;
+      const until = w.week + OVERDRAFT_SURCHARGE_WEEKS;
+      // One notice per overdraft spell; later overdrawn weeks just extend the surcharge
+      if (overdrawn === 1) letters.push(overdraftLetter(airlineName, w, endCash, res.econMin, until));
+      surchargeUntilWeek = Math.max(surchargeUntilWeek, until);
+      if (overdrawn >= INSOLVENCY_WEEKS && !insolvent) {
+        insolvent = { econMin: res.econMin, week: w.week };
+        const owed = loansLeft.reduce((s, l) => s + loanPrincipalLeft(l), 0);
+        letters.push(insolvencyLetter(airlineName, w.week, endCash, owed, res.econMin));
+      }
+    } else overdrawn = 0;
   }
   return {
     ...career,
-    loans: res.loans.filter((l) => l.paid < l.totalRepayable),
+    loans: loansLeft,
     loansRepaid: career.loansRepaid + res.finishedLoans.length,
     bestWeekNet,
     surchargeUntilWeek,
+    overdrawnWeeks: overdrawn,
+    insolvent,
     letters: letters.length ? [...[...letters].reverse(), ...career.letters] : career.letters,
   };
 }
@@ -539,3 +630,131 @@ export function repayLoanEarly(career: CareerState, loanId: string, econMin: num
 }
 
 export const productById = (id: string) => LOAN_PRODUCTS.find((p) => p.id === id) ?? LOAN_PRODUCTS[1];
+
+// ---------------------------------------------------------------------------
+// Part repayments (v2.29+)
+//   Paying part of a loan early takes that much off the principal. The loan is
+//   then re-set on what's left, over the weeks it had left at the same rate, so
+//   the end date stays put and every instalment gets smaller.
+// ---------------------------------------------------------------------------
+export function partRepaymentPreview(l: BankLoan, amount: number) {
+  const owed = loanPrincipalLeft(l);
+  const pay = Math.max(0, Math.min(amount, owed));
+  const weeksLeft = loanWeeksLeft(l);
+  const rest = owed - pay;
+  const totalAfter = rest * (1 + (l.ratePct / 100) * (weeksLeft / 52));
+  const interestBefore = loanInterestLeft(l);
+  const interestAfter = Math.max(0, totalAfter - rest);
+  return {
+    pay,
+    settles: rest < 1,
+    principalAfter: rest,
+    weeklyAfter: weeksLeft > 0 ? totalAfter / weeksLeft : 0,
+    interestSaved: Math.max(0, interestBefore - interestAfter),
+    weeksLeft,
+  };
+}
+
+/** Pays `amount` off a loan now. The caller checks there's enough cash. Paying it all settles it. */
+export function repayLoanPart(career: CareerState, loanId: string, amount: number, econMin: number, airlineName: string) {
+  const loan = career.loans.find((l) => l.id === loanId);
+  if (!loan) return null;
+  const pv = partRepaymentPreview(loan, amount);
+  if (pv.pay <= 0) return null;
+  if (pv.settles) {
+    const full = repayLoanEarly(career, loanId, econMin, airlineName);
+    return full ? { ...full, settled: true } : null;
+  }
+  const weeksLeft = pv.weeksLeft;
+  const totalRepayable = pv.principalAfter * (1 + (loan.ratePct / 100) * (weeksLeft / 52));
+  const next: BankLoan = {
+    ...loan,
+    startPrincipal: loanStartPrincipal(loan),
+    extraRepaid: (loan.extraRepaid ?? 0) + pv.pay,
+    principal: pv.principalAfter,
+    totalRepayable,
+    weeklyPayment: totalRepayable / weeksLeft,
+    paid: 0,
+  };
+  return { amount: pv.pay, settled: false, career: { ...career, loans: career.loans.map((l) => (l.id === loanId ? next : l)) } };
+}
+
+// ---------------------------------------------------------------------------
+// Bankruptcy (v2.29+)
+// ---------------------------------------------------------------------------
+export type BankruptcyRoute = 'sell-half' | 'bailout';
+export const bankruptcyRoute = (fleet: PlayerAircraft[]): BankruptcyRoute => (fleet.length >= BAILOUT_FLEET_LIMIT ? 'sell-half' : 'bailout');
+/** How many aircraft a sell-half settlement takes: at least half, rounded up. */
+export const sellHalfCount = (fleet: PlayerAircraft[]) => Math.ceil(fleet.length / 2);
+
+/**
+ * The aircraft the bank proposes to sell: those with no flights first, then
+ * the ones earning least per week.
+ */
+export function proposedSales(fleet: PlayerAircraft[], weeklyProfitByTail: Map<string, number>, scheduledTails: Set<string>): string[] {
+  return [...fleet]
+    .sort((a, b) => {
+      const ia = scheduledTails.has(a.tailNumber) ? 1 : 0;
+      const ib = scheduledTails.has(b.tailNumber) ? 1 : 0;
+      if (ia !== ib) return ia - ib;
+      return (weeklyProfitByTail.get(a.tailNumber) ?? 0) - (weeklyProfitByTail.get(b.tailNumber) ?? 0) || a.tailNumber.localeCompare(b.tailNumber);
+    })
+    .slice(0, sellHalfCount(fleet))
+    .map((a) => a.tailNumber);
+}
+
+/** What a settlement does to the money, before it's applied. */
+export function settlementTerms(career: CareerState, cash: number, route: BankruptcyRoute, saleProceeds = 0) {
+  const loans = activeLoans(career).reduce((s, l) => s + loanPrincipalLeft(l), 0);
+  const overdraft = Math.max(0, -cash);
+  if (route === 'bailout') return { loans, overdraft, proceeds: 0, cashAfter: Math.max(0, cash), surplus: 0, writtenOff: loans + overdraft };
+  const left = cash + saleProceeds - loans;
+  return { loans, overdraft, proceeds: saleProceeds, cashAfter: Math.max(0, left), surplus: Math.max(0, left), writtenOff: Math.max(0, -left) };
+}
+
+function settlementLetter(airlineName: string, route: BankruptcyRoute, t: ReturnType<typeof settlementTerms>, sold: number, econMin: number, unlockMin: number): BankLetter {
+  const surchargeTo = econWeekOf(econMin) + BANKRUPTCY_SURCHARGE_WEEKS;
+  return {
+    id: letterId(),
+    econMin,
+    kind: 'settlement',
+    subject: route === 'bailout' ? `Bail-out agreement: ${airlineName}` : `Restructuring settlement: ${airlineName}`,
+    body: [
+      `Dear ${airlineName} management,`,
+      route === 'bailout'
+        ? `Under the bail-out agreed today, the Bank has cleared ${usdFull(t.writtenOff)} of debt owed by ${airlineName}: ${usdFull(t.loans)} on loans${t.overdraft ? ` and an overdraft of ${usdFull(t.overdraft)}` : ''}. Your operating account now stands at ${usdFull(t.cashAfter)}.`
+        : `Under the settlement agreed today, ${sold} aircraft have been sold for ${usdFull(t.proceeds)}. The proceeds have settled ${usdFull(t.loans)} owed on loans${t.overdraft ? ` and your overdraft of ${usdFull(t.overdraft)}` : ''}.${t.writtenOff ? ` The Bank has written off the remaining ${usdFull(t.writtenOff)}.` : ''}${t.surplus ? ` The surplus of ${usdFull(t.surplus)} has been paid into your operating account.` : ''}`,
+      route === 'bailout'
+        ? `As a condition of the bail-out, no new loans will be offered until ${econDateText(unlockMin)}, and new borrowing after that carries a surcharge of ${OVERDRAFT_SURCHARGE_PCT}% a year until the end of week ${surchargeTo}.`
+        : `New borrowing carries a surcharge of ${OVERDRAFT_SURCHARGE_PCT}% a year until the end of week ${surchargeTo}.`,
+      `${airlineName} is no longer insolvent. The Bank trusts the airline will trade within its means.`,
+      ...signOff,
+    ],
+    read: false,
+  };
+}
+
+/**
+ * Settles an insolvency: clears every loan and the overdraft. For a sale,
+ * `saleProceeds` is what the sold aircraft fetched (the caller removes them).
+ * Returns the new career and cash.
+ */
+export function settleBankruptcy(career: CareerState, cash: number, route: BankruptcyRoute, econMin: number, airlineName: string, sale?: { proceeds: number; count: number }) {
+  const t = settlementTerms(career, cash, route, sale?.proceeds ?? 0);
+  const unlockMin = route === 'bailout' ? econMin + BAILOUT_LOAN_LOCK_MIN : career.noLoansUntilMin ?? 0;
+  const letter = settlementLetter(airlineName, route, t, sale?.count ?? 0, econMin, unlockMin);
+  return {
+    terms: t,
+    cashAfter: t.cashAfter,
+    career: {
+      ...career,
+      loans: [],
+      insolvent: null,
+      overdrawnWeeks: 0,
+      noLoansUntilMin: unlockMin,
+      surchargeUntilWeek: Math.max(career.surchargeUntilWeek, econWeekOf(econMin) + BANKRUPTCY_SURCHARGE_WEEKS),
+      bankruptcies: (career.bankruptcies ?? 0) + 1,
+      letters: [letter, ...career.letters],
+    } as CareerState,
+  };
+}

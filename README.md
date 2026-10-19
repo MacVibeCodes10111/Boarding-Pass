@@ -4,11 +4,15 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 2.28. Free to play. See [Credits and licences](#credits-and-licences).
+Version 2.30. Free to play. See [Credits and licences](#credits-and-licences).
+
+## Play
+
+**[Play in your browser at play.boardingpass.my](https://play.boardingpass.my)**: phones, tablets and computers, nothing to install. The website is **[boardingpass.my](https://boardingpass.my)**.
 
 ## Download
 
-Get the latest version from **[Releases](https://github.com/MacVibeCodes10111/Boarding-Pass/releases/latest)**:
+Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCodes10111/Boarding-Pass/releases/latest)**:
 
 - **Mac** (Apple-chip and Intel, macOS 11 or later): the `.dmg`. Open it and drag Boarding Pass into Applications.
 - **Windows** (64-bit): the `…x64-setup.exe` installer.
@@ -16,6 +20,18 @@ Get the latest version from **[Releases](https://github.com/MacVibeCodes10111/Bo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 2.30:
+
+- **Play on any device.** The game now works on phones and tablets as well as computers. On a phone the sections are in a tab bar at the bottom, panels fill the screen, the top bar swipes sideways, and tapping a figure shows its details. The 3D view works with your fingers: drag two fingers to tilt, twist to turn, and use the new ▲ and ▼ buttons to raise and lower the camera (on computers too). Tapping an aircraft shows its details in a card at the bottom. Phones start with fewer other aircraft so the map stays smooth. You can add the game to your home screen to play full screen.
+- **The Boarding Pass website** at boardingpass.my, with the game at play.boardingpass.my: play in the browser in one tap, download the apps (always the latest version), see what's new, and join the community.
+
+Version 2.29:
+
+- **Clearer money.** The top bar shows your **profit this week**, your regular **cash flow per week**, and your **debt** (click it to manage your loans). Profit now counts only loan interest as a cost. Cash flow counts every dollar in and out, including full instalments, loans, purchases, sales and grants. The Stats page charts both, week by week.
+- **Pay off loans a bit at a time.** Under Bank → Loans, **Pay off part** takes any amount off a loan. Its instalments get smaller and it still ends on the same week, so you pay less interest. A debt tracker shows what you owe, the interest still due, your weekly instalments, when you'll be debt-free, and your debt week by week.
+- **Overdrafts and bankruptcy.** An overdrawn account now costs 18% a year. If two weeks in a row close overdrawn, the bank declares your airline insolvent. With 10 or more aircraft you settle by selling half the fleet (the bank suggests which, you choose), which clears all your debts. With fewer than 10, the bank bails you out, but lends nothing for 48 hours.
+- **More realistic landings.** Runways now point exactly where they really are, which fixes approaches and landing rolls that ran beside the runway at some airports. Aircraft touch down 1,000 ft past the threshold, respecting displaced thresholds. They turn off after a realistic landing roll, preferring high-speed exits, and never take an exit that leads back down the runway. Takeoffs lift off after a realistic run.
 
 Version 2.28:
 
@@ -73,6 +89,8 @@ The first build takes 5–15 minutes. Windows may warn that the app is from an u
   - Raise or lower the camera: hold the middle mouse button and drag, or Alt-drag (Option-drag on a Mac).
 
 ## For developers
+
+- **Two sites from this repository:** the game (this folder) at play.boardingpass.my and the website (`website/`) at boardingpass.my. How they're set up on Hostinger is in [HOSTING.md](HOSTING.md).
 
 - `npm install`, then `npm run tauri dev` opens the game with live reload.
 - `npm run check` runs the TypeScript check.

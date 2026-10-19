@@ -351,7 +351,53 @@ export class TaxiNetwork {
    * nearby are nodes further out used (a parallel taxiway node would otherwise
    * make the aircraft hop sideways across the grass).
    */
+  /**
+   * How far an exit at runway node i points along the landing direction u:
+   * about +0.9 for a high-speed exit angled forward, 0 for a right-angle one,
+   * negative for one that leads back down the runway. Taken from the taxiway
+   * edge that leaves the runway (the neighbour furthest from the centreline).
+   */
+  private exitForwardness(i: number, P: XY, u: XY): number {
+    const latOf = (x: number, y: number) => Math.abs(u[0] * (y - P[1]) - u[1] * (x - P[0]));
+    const li = latOf(this.xs[i], this.ys[i]);
+    let best = 0;
+    let bestGain = 2;
+    for (const eid of this.adj[i]) {
+      const e = this.edges[eid];
+      const j = e.a === i ? e.b : e.a;
+      // Follow short pieces until the line has moved ~40 m (tile cuts leave many tiny edges)
+      let k = j;
+      let prev = i;
+      for (let hop = 0; hop < 6 && Math.hypot(this.xs[k] - this.xs[i], this.ys[k] - this.ys[i]) < 40; hop++) {
+        const next = this.adj[k].map((id) => (this.edges[id].a === k ? this.edges[id].b : this.edges[id].a)).find((n) => n !== prev);
+        if (next === undefined) break;
+        prev = k;
+        k = next;
+      }
+      const dx = this.xs[k] - this.xs[i];
+      const dy = this.ys[k] - this.ys[i];
+      const gain = latOf(this.xs[k], this.ys[k]) - li;
+      const len = Math.hypot(dx, dy) || 1;
+      if (gain > bestGain) {
+        bestGain = gain;
+        best = (dx * u[0] + dy * u[1]) / len;
+      }
+    }
+    return best;
+  }
+
+  /** Runway entry/exit node per runway point: the same for every gate, so worked out once. */
+  private rwyNodes = new Map<string, number>();
   private runwayNode(P: XY, u: XY, sMin: number, sMax: number, exit: boolean): number {
+    const key = `${P[0].toFixed(1)},${P[1].toFixed(1)},${u[0].toFixed(5)},${u[1].toFixed(5)},${sMin},${sMax},${exit ? 1 : 0}`;
+    const hit = this.rwyNodes.get(key);
+    if (hit !== undefined) return hit;
+    const found = this.findRunwayNode(P, u, sMin, sMax, exit);
+    this.rwyNodes.set(key, found);
+    return found;
+  }
+
+  private findRunwayNode(P: XY, u: XY, sMin: number, sMax: number, exit: boolean): number {
     const tiers = [25, 60, ENTRY_LAT_M];
     const best = tiers.map(() => ({ i: -1, score: Infinity }));
     let nearI = -1;
@@ -371,7 +417,14 @@ export class TaxiNetwork {
       // Arrivals: the first exit ahead (one behind only if there is none ahead, or it
       // would have to roll back and turn round). Departures: join at or just before the
       // threshold, or it would line up and then taxi backwards down the runway.
-      const score = exit ? (s >= -10 ? s : 10_000 - s) + lat * 0.1 : (s <= 15 ? Math.abs(s) : 10_000 + s) + lat * 0.3;
+      // Arrivals also prefer a high-speed exit angled forward (worth ~250 m of extra roll),
+      // and avoid exits that lead back down the runway, which real aircraft can't take
+      // at speed (they would have to stop and turn more than 120°).
+      let score: number;
+      if (exit) {
+        const fwd = lat <= 60 ? this.exitForwardness(i, P, u) : 0;
+        score = (s >= -10 ? s : 10_000 - s) + lat * 0.1 - (fwd > 0.45 ? 250 : 0) + (fwd < -0.35 ? 1500 : 0);
+      } else score = (s <= 15 ? Math.abs(s) : 10_000 + s) + lat * 0.3;
       tiers.forEach((lim, k) => {
         if (lat <= lim && score < best[k].score) best[k] = { i, score };
       });

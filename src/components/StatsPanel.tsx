@@ -9,7 +9,7 @@ import type { WeekLedger } from '../game/clock';
 import type { FlightEconomics } from '../game/economics';
 import { computeAirlineStats, type AirlineStats, type RouteStat, type Slice } from '../game/stats';
 import type { Airport, PlayerAircraft, ScheduledFlight } from '../game/types';
-import { Button, C, EmptyState, SidePanel } from '../ui/kit';
+import { Button, C, EmptyState, Segmented, SidePanel } from '../ui/kit';
 
 // Categorical colours, in a fixed order (checked for colour-blind separation on
 // the panel background); "Other" is always grey.
@@ -165,10 +165,12 @@ function barPath(x: number, base: number, end: number, w: number, r = 4) {
 // ----------------------------------------------------------------------------
 // Weekly results: one bar per week, above or below zero
 // ----------------------------------------------------------------------------
-function WeeklyChart({ weeks }: { weeks: AirlineStats['weekly'] }) {
+type WeekMetric = 'net' | 'cashFlow';
+function WeeklyChart({ weeks: raw, metric }: { weeks: AirlineStats['weekly']; metric: WeekMetric }) {
+  const weeks = raw.map((w) => ({ ...w, net: w[metric] }));
   const [hover, setHover] = useState<number | null>(null);
   const [box, boxW] = useWidth<HTMLDivElement>();
-  const W = Math.max(320, boxW || 640);
+  const W = Math.max(260, boxW || 640);
   const H = 190;
   const padL = 58;
   const padB = 22;
@@ -183,7 +185,7 @@ function WeeklyChart({ weeks }: { weeks: AirlineStats['weekly'] }) {
   const hovered = hover !== null ? weeks[hover] : null;
   return (
     <div ref={box} style={{ position: 'relative', lineHeight: 0 }}>
-      <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} role="img" aria-label="Net result per week" style={{ display: 'block' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} role="img" aria-label={metric === 'net' ? 'Profit per week' : 'Cash flow per week'} style={{ display: 'block' }}>
         {/* Recessive grid: zero line and the top value */}
         <line x1={padL} x2={W} y1={base} y2={base} stroke={C.border} strokeWidth={1} />
         <line x1={padL} x2={W} y1={y(maxV)} y2={y(maxV)} stroke={C.line} strokeWidth={1} strokeDasharray="2 4" />
@@ -434,6 +436,7 @@ export function StatsPanel(props: {
   onClose: () => void;
   onOpenAirports: () => void;
 }) {
+  const [weekMetric, setWeekMetric] = useState<WeekMetric>('net');
   const st = useMemo(
     () =>
       computeAirlineStats({
@@ -464,7 +467,7 @@ export function StatsPanel(props: {
       ) : (
         <div style={{ display: 'grid', gap: 12 }}>
           {/* Headline */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(210px, 1.25fr) repeat(3, minmax(0, 1fr))', gap: 10 }}>
+          <div className="bp-tiles" style={{ display: 'grid', gridTemplateColumns: 'minmax(210px, 1.25fr) repeat(3, minmax(0, 1fr))', gap: 10 }}>
             <div style={{ gridRow: 'span 2', background: C.panelAlt, border: `1px solid ${C.line}`, borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
               <div style={{ fontSize: 12, color: C.muted }}>Profit a week, as scheduled</div>
               <div className="num" style={{ fontSize: 34, fontWeight: 700, color: st.profit >= 0 ? C.green : C.red, letterSpacing: -0.5, marginTop: 2 }}>
@@ -484,15 +487,30 @@ export function StatsPanel(props: {
             <Tile label="Distance flown a week" value={`${num(st.nmFlown)} nm`} sub={`${(st.nmFlown / 21_639).toFixed(1)}× around the world`} />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Card
               title="Weekly results"
               note={st.weekly.length <= 1 ? 'Bars build up as weeks close' : undefined}
               wide
-              table={<DataTable head={['Week', 'Net result']} rows={st.weekly.map((w) => [`Week ${w.week}${w.partial ? ' (so far)' : ''}`, signedUsd(w.net)])} />}
+              table={<DataTable head={['Week', 'Profit', 'Cash flow']} rows={st.weekly.map((w) => [`Week ${w.week}${w.partial ? ' (so far)' : ''}`, signedUsd(w.net), signedUsd(w.cashFlow)])} />}
             >
-              <WeeklyChart weeks={st.weekly} />
-              <div style={{ fontSize: 11.5, color: C.faint, marginTop: 6 }}>Net result after leases and loan instalments. * this week so far.</div>
+              <div style={{ marginBottom: 8 }}>
+                <Segmented<WeekMetric>
+                  value={weekMetric}
+                  onChange={setWeekMetric}
+                  options={[
+                    { value: 'net', label: 'Profit' },
+                    { value: 'cashFlow', label: 'Cash flow' },
+                  ]}
+                />
+              </div>
+              <WeeklyChart weeks={st.weekly} metric={weekMetric} />
+              <div style={{ fontSize: 11.5, color: C.faint, marginTop: 6 }}>
+                {weekMetric === 'net'
+                  ? 'Profit: flights less leases and interest (repaying a loan itself isn’t a cost).'
+                  : 'Cash flow: every dollar in less every dollar out, including full loan instalments, loans drawn, purchases, sales and grants.'}{' '}
+                * this week so far.
+              </div>
             </Card>
 
             <Card title="Fleet by aircraft family" table={sliceTable(st.fleetByFamily, 'Aircraft')}>
@@ -523,7 +541,7 @@ export function StatsPanel(props: {
             </Card>
 
             <Card title="Records">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                 <Record
                   label="Longest route"
                   value={st.longestRoute ? st.longestRoute.label : '–'}

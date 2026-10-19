@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { currentLayout } from '../ui/layout';
 import { BRAND_ORDER } from '../game/aircraftCatalog';
 import { calculateCabinUsage, getDefaultCabinForModel } from '../game/economics';
 import { TIERS, getAircraftTierInfo } from '../game/tiers';
@@ -60,16 +61,19 @@ export function BuyAircraftPanel(props: BuyAircraftPanelProps) {
   const canBuy = sandbox || props.cash >= m.base_price_usd;
   const canLease = sandbox || props.cash >= leaseDeposit;
 
+  const details = useRef<HTMLDivElement | null>(null);
   const select = (x: AircraftModel) => {
     props.onSelectModel(x);
     props.onCabinDraftChange(getDefaultCabinForModel(x));
+    // On a phone the details sit below the catalogue: bring them into view
+    if (currentLayout() === 'phone') window.setTimeout(() => details.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   };
 
   return (
     <SidePanel title="Buy or lease aircraft" subtitle={`New aircraft are delivered to ${props.hubIata}`} width={1060} onClose={props.onClose}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 380px) 1fr', gap: 20, height: '100%', minHeight: 0 }}>
+      <div className="bp-stack bp-buy" style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 380px) 1fr', gap: 20, height: '100%', minHeight: 0 }}>
         {/* Catalogue */}
-        <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <div className="bp-buy-catalogue" style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <SearchInput value={search} onChange={setSearch} placeholder="Search model or type code" />
           <div style={{ display: 'flex', gap: 8, margin: '10px 0', flexWrap: 'wrap' }}>
             <Segmented<Role>
@@ -156,7 +160,7 @@ export function BuyAircraftPanel(props: BuyAircraftPanelProps) {
         </div>
 
         {/* Details */}
-        <div style={{ minHeight: 0, overflowY: 'auto', paddingRight: 4 }}>
+        <div ref={details} className="bp-buy-details" style={{ minHeight: 0, overflowY: 'auto', paddingRight: 4, scrollMarginTop: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <img src={iconForModel(m)} alt="" style={{ width: 52, height: 52 }} />
             <div>
@@ -194,7 +198,7 @@ export function BuyAircraftPanel(props: BuyAircraftPanelProps) {
             <input value={props.tailInput} onChange={(e) => props.onTailInputChange(e.target.value.toUpperCase())} style={{ ...inputStyle, fontWeight: 600 }} />
           </Field>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div style={{ padding: 14, border: `1px solid ${C.line}`, borderRadius: 8 }}>
               <div style={{ fontSize: 12, color: C.muted }}>Buy outright</div>
               <div className="num" style={{ fontSize: 20, fontWeight: 650, margin: '2px 0 10px' }}>

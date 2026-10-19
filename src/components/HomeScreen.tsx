@@ -3,8 +3,13 @@ import { getAirportMaxAircraftTier } from '../game/tiers';
 import type { Airport, GameMode, SaveGameState } from '../game/types';
 import { Icon } from '../ui/icons';
 import { Button, C, Field, SearchInput, Segmented, inputStyle } from '../ui/kit';
+import { useLayout } from '../ui/layout';
 import { APP_VERSION } from '../version';
 import { CreditsModal } from './Credits';
+import { inDesktopApp } from './UpdateBanner';
+
+/** The Boarding Pass website (the game itself is on play.boardingpass.my). */
+const WEBSITE = 'https://boardingpass.my';
 
 export interface HomeScreenProps {
   airlineName: string;
@@ -29,6 +34,7 @@ export function HomeScreen(props: HomeScreenProps) {
   const { airlineName, airlineIata, airlineCallsign, hubIata, gameMode, onChange, airports, airportByIata, savedGames } = props;
   const [hubSearch, setHubSearch] = useState('');
   const [showCredits, setShowCredits] = useState(false);
+  const phone = useLayout() === 'phone';
   const importRef = useRef<HTMLInputElement | null>(null);
   const currentHub = airportByIata.get(hubIata);
   const canLaunch = Boolean(currentHub) && airlineName.trim() !== '' && /^[A-Z0-9]{2,3}$/.test(airlineIata);
@@ -47,17 +53,17 @@ export function HomeScreen(props: HomeScreenProps) {
     <div
       style={{
         width: '100vw',
-        height: '100vh',
+        height: '100dvh',
         overflowY: 'auto',
         color: C.text,
         background: `radial-gradient(1200px 600px at 20% -10%, #1a2a47 0%, transparent 60%), ${C.bg}`,
         display: 'flex',
-        alignItems: 'center',
         justifyContent: 'center',
-        padding: 32,
+        padding: phone ? '20px 14px calc(28px + env(safe-area-inset-bottom, 0px))' : 32,
+        alignItems: phone ? 'flex-start' : 'center',
       }}
     >
-      <div style={{ width: '100%', maxWidth: 1040, display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 28 }}>
+      <div className="bp-stack" style={{ width: '100%', maxWidth: 1040, display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 28, margin: 'auto 0' }}>
         {/* New career */}
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 26 }}>
@@ -71,6 +77,18 @@ export function HomeScreen(props: HomeScreenProps) {
                 <button type="button" onClick={() => setShowCredits(true)} style={{ background: 'none', border: 'none', color: C.accent, fontSize: 13, cursor: 'pointer', padding: 0 }}>
                   Credits and licences
                 </button>
+                {!inDesktopApp() && (
+                  <>
+                    {' · '}
+                    <a href={WEBSITE} style={{ color: C.accent, textDecoration: 'none' }}>
+                      boardingpass.my
+                    </a>
+                    {' · '}
+                    <a href={`${WEBSITE}/#download`} style={{ color: C.accent, textDecoration: 'none' }}>
+                      Get the app
+                    </a>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -78,7 +96,7 @@ export function HomeScreen(props: HomeScreenProps) {
           <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: 22 }}>
             <div style={{ fontSize: 16, fontWeight: 650, marginBottom: 16 }}>Start a new airline</div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 1fr', gap: 12, marginBottom: 16 }}>
+            <div className="bp-home-names" style={{ display: 'grid', gridTemplateColumns: phone ? '1fr 80px' : '1fr 90px 1fr', gap: 12, marginBottom: 16 }}>
               <Field label="Airline name">
                 <input value={airlineName} onChange={(e) => onChange({ airlineName: e.target.value })} style={{ ...inputStyle, fontWeight: 600 }} />
               </Field>

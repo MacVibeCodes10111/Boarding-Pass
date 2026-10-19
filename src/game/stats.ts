@@ -3,7 +3,7 @@
 //   Everything the Stats page shows, worked out from the schedule as it stands
 //   (one scheduled week) plus the economy's closed weeks. Pure functions, no UI.
 // ============================================================================
-import { ledgerNet, type WeekLedger } from './clock';
+import { ledgerCashFlow, ledgerNet, type WeekLedger } from './clock';
 import type { FlightEconomics } from './economics';
 import { calcAircraftScheduleUsage } from './scheduling';
 import { daysOrAll } from './time';
@@ -63,7 +63,7 @@ export interface AirlineStats {
   topRoutes: RouteStat[];
   worstRoutes: RouteStat[];
   utilisation: { tail: string; model: string; usedPct: number; hoursPerDay: number }[];
-  weekly: { week: number; net: number; partial: boolean }[];
+  weekly: { week: number; net: number; cashFlow: number; partial: boolean }[];
   // Records
   longestRoute: RouteStat | null;
   busiestRoute: RouteStat | null;
@@ -183,8 +183,8 @@ export function computeAirlineStats(args: {
   }
 
   const weekly = [
-    ...ledgerHistory.slice(-11).map((w) => ({ week: w.week, net: ledgerNet(w), partial: false })),
-    ...(current ? [{ week: current.week, net: ledgerNet(current), partial: true }] : []),
+    ...ledgerHistory.slice(-11).map((w) => ({ week: w.week, net: ledgerNet(w), cashFlow: ledgerCashFlow(w), partial: false })),
+    ...(current ? [{ week: current.week, net: ledgerNet(current), cashFlow: ledgerCashFlow(current), partial: true }] : []),
   ];
   let bestWeek: AirlineStats['bestWeek'] = null;
   for (const w of ledgerHistory) if (!bestWeek || ledgerNet(w) > bestWeek.net) bestWeek = { week: w.week, net: ledgerNet(w) };

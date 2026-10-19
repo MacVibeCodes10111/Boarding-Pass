@@ -177,7 +177,7 @@ export function FleetPanel(props: FleetPanelProps) {
             {rows.map(({ ac, usage, circuit }, i) => (
               <div
                 key={ac.tailNumber}
-                className="bp-row"
+                className="bp-row bp-fleet-row"
                 style={{
                   display: 'grid',
                   gridTemplateColumns: '28px minmax(150px, 1.4fr) minmax(110px, 1fr) 120px auto',

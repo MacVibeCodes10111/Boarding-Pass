@@ -47,6 +47,7 @@ import { TIERS, getAircraftTierInfo, getAirportMaxAircraftTier } from '../game/t
 import { dayIndexOf, daysOrAll, formatClockShort, formatDurationHm, MIN_PER_DAY } from '../game/time';
 import type { Airport, PlayerAircraft, RadarIconGroup, ScheduledFlight } from '../game/types';
 import { C } from '../ui/kit';
+import { currentLayout, isTouchFirst } from '../ui/layout';
 
 const EMPTY_FC = { type: 'FeatureCollection', features: [] as any[] };
 
@@ -839,6 +840,15 @@ function layoutOrbit(popup: any) {
 function attachOrbit(map: any, popup: any) {
   const root: HTMLElement | undefined = popup.getElement?.();
   if (!root) return;
+  // Phones: no room to float the box beside the aircraft, so it sits as a sheet above the tab bar.
+  // Touch tablets: a card in the corner (no mouse to drag it out from under a finger or off the edge).
+  const layout = currentLayout();
+  if (layout === 'phone' || isTouchFirst()) {
+    root.classList.add('bp-sheet-popup');
+    if (layout !== 'phone') root.classList.add('bp-sheet-side');
+    popup.setOffset?.([0, 0]);
+    return;
+  }
   const ns = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(ns, 'svg');
   svg.setAttribute('class', 'bp-orbit-leader');
@@ -848,12 +858,15 @@ function attachOrbit(map: any, popup: any) {
   svg.appendChild(line);
   root.prepend(svg);
   const box = root.querySelector('.maplibregl-popup-content') as HTMLElement | null;
-  if (box) box.title = 'Drag to move this box around the aircraft. Double-click to put it back on top.';
+  if (box) {
+    box.title = 'Drag to move this box around the aircraft. Double-click to put it back on top.';
+    box.style.touchAction = 'none'; // a finger drags the box, not the map
+  }
   layoutOrbit(popup);
   (popup as any).__relayout = () => layoutOrbit(popup);
 
   let dragging = false;
-  const onMove = (e: MouseEvent) => {
+  const onMove = (e: PointerEvent) => {
     if (!dragging) return;
     const rect = map.getContainer().getBoundingClientRect();
     const plane = map.project(popup.getLngLat());
@@ -864,22 +877,24 @@ function attachOrbit(map: any, popup: any) {
     if (!dragging) return;
     dragging = false;
     root.classList.remove('bp-orbit-dragging');
-    window.removeEventListener('mousemove', onMove);
-    window.removeEventListener('mouseup', onUp);
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
     try {
       localStorage.setItem(ORBIT_PREF, String(orbitAngle));
     } catch {
       /* storage unavailable */
     }
   };
-  box?.addEventListener('mousedown', (e: MouseEvent) => {
-    if ((e.target as HTMLElement).closest('.maplibregl-popup-close-button') || e.button !== 0) return;
+  box?.addEventListener('pointerdown', (e: PointerEvent) => {
+    if ((e.target as HTMLElement).closest('.maplibregl-popup-close-button, button, a, input') || e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     dragging = true;
     root.classList.add('bp-orbit-dragging');
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
   });
   box?.addEventListener('dblclick', (e: MouseEvent) => {
     e.stopPropagation();
@@ -1281,9 +1296,42 @@ export function LiveMap(props: LiveMapProps) {
           const camEl = document.createElement('div');
           camEl.className = 'bp-camera-alt';
           camEl.title = CAMERA_READOUT_TITLE;
-          camEl.style.cssText = `position:absolute;right:10px;bottom:38px;z-index:2;font-size:11.5px;color:${C.textDim};background:rgba(12,19,32,0.72);padding:2px 8px;border-radius:6px;pointer-events:auto;font-variant-numeric:tabular-nums;`;
+          camEl.style.cssText = `position:absolute;right:10px;bottom:calc(38px + var(--bp-bottom-h));z-index:2;font-size:11.5px;color:${C.textDim};background:rgba(12,19,32,0.72);padding:2px 4px 2px 8px;border-radius:8px;pointer-events:auto;font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:6px;`;
+          const camText = document.createElement('span');
+          camEl.appendChild(camText);
+          // Raise / lower buttons: the touch-screen way to change the camera height (hold to keep going)
+          const camBtn = (label: string, aria: string, f: number) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'bp-cam-btn';
+            b.textContent = label;
+            b.setAttribute('aria-label', aria);
+            b.title = aria;
+            b.style.cssText = `width:30px;height:28px;border-radius:6px;border:1px solid ${C.border};background:${C.raised};color:${C.text};font-size:14px;line-height:1;cursor:pointer;padding:0;touch-action:none;`;
+            let timer = 0;
+            const stepCam = () => {
+              userMoveAt.current = performance.now();
+              setCameraHeight(map, cameraStart(map), f);
+            };
+            const stop = () => {
+              window.clearInterval(timer);
+              timer = 0;
+            };
+            b.addEventListener('pointerdown', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              stepCam();
+              stop();
+              timer = window.setInterval(stepCam, 90);
+            });
+            for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, stop);
+            b.addEventListener('click', (e) => e.stopPropagation());
+            return b;
+          };
+          camEl.appendChild(camBtn('▲', 'Raise the camera', 1.12));
+          camEl.appendChild(camBtn('▼', 'Lower the camera', 1 / 1.12));
           map.getContainer?.()?.appendChild(camEl);
-          const showCam = () => (camEl.textContent = `Camera ${formatCameraHeight(cameraAltitudeM(map))}`);
+          const showCam = () => (camText.textContent = `Camera ${formatCameraHeight(cameraAltitudeM(map))}`);
           showCam();
           if (!latest.current.threeD) camEl.style.display = 'none';
           map.on('move', showCam);
@@ -1342,7 +1390,7 @@ export function LiveMap(props: LiveMapProps) {
     if (!threeD) THREE_D_SOURCES.forEach((id) => map.getSource(id)?.setData(EMPTY_FC));
     // Tilt, turn and camera height belong to the 3D view; the flat map stays flat and north-up
     const camEl = map.getContainer?.()?.querySelector?.('.bp-camera-alt') as HTMLElement | null;
-    if (camEl) camEl.style.display = threeD ? '' : 'none';
+    if (camEl) camEl.style.display = threeD ? 'flex' : 'none';
     const rotation = (on: boolean) => {
       try {
         if (on) {
@@ -1449,9 +1497,10 @@ export function LiveMap(props: LiveMapProps) {
       const wx = getAirportWeather(a, mapDay, wxMin);
       if (showApproaches && (important || a.max_runway_length_ft >= 6000)) {
         const rwy = getActiveRunwayForAirport(a, mapDay, wxMin);
-        const left = offsetLatLonNm(rwy.thresholdLat, rwy.thresholdLon, (rwy.reciprocalDegT - 4.5 + 360) % 360, 9.5);
-        const right = offsetLatLonNm(rwy.thresholdLat, rwy.thresholdLon, (rwy.reciprocalDegT + 4.5) % 360, 9.5);
-        const thr = [rwy.thresholdLon, rwy.thresholdLat];
+        // From the landing threshold (displaced thresholds included)
+        const left = offsetLatLonNm(rwy.landLat, rwy.landLon, (rwy.reciprocalDegT - 4.5 + 360) % 360, 9.5);
+        const right = offsetLatLonNm(rwy.landLat, rwy.landLon, (rwy.reciprocalDegT + 4.5) % 360, 9.5);
+        const thr = [rwy.landLon, rwy.landLat];
         ilsFeatures.push({
           type: 'Feature',
           geometry: { type: 'Polygon', coordinates: [[thr, left, right, thr]] },
@@ -1599,7 +1648,8 @@ export function LiveMap(props: LiveMapProps) {
     // Level of detail
     let lodKey: AiDetail | null = null;
     let lod = AI_DETAIL_LEVELS.auto;
-    let budget = lod.budget;
+    // Phones start lighter; Auto then follows the frame rate as usual
+    let budget = currentLayout() === 'phone' ? Math.min(lod.budget, 700) : lod.budget;
     let lastBudgetReported = budget;
     // 3D view
     let ai3dZoom = -1;

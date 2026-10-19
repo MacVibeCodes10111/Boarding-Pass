@@ -45,8 +45,13 @@ export const C = {
 
 /** Global CSS: font, focus rings, hover feedback, panel animation. */
 export const GLOBAL_CSS = `
-  html, body, #root { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden;
-    background: ${C.bg}; color: ${C.text}; font-family: ${FONT}; font-size: 13px; -webkit-font-smoothing: antialiased; }
+  /* Layout sizes; the phone layout (ui/layout.ts) swaps the side rail for a bottom tab bar */
+  :root { --bp-top-h: 52px; --bp-rail-w: 72px; --bp-bottom-h: 0px; }
+  html[data-layout=phone] { --bp-top-h: 50px; --bp-rail-w: 0px; --bp-bottom-h: calc(58px + env(safe-area-inset-bottom, 0px)); }
+  html, body, #root { margin: 0; padding: 0; width: 100vw; height: 100vh; height: 100dvh; overflow: hidden;
+    background: ${C.bg}; color: ${C.text}; font-family: ${FONT}; font-size: 13px; -webkit-font-smoothing: antialiased;
+    -webkit-text-size-adjust: 100%; overscroll-behavior: none; }
+  body { -webkit-tap-highlight-color: transparent; }
   * { box-sizing: border-box; }
   input, select, button, textarea { font-family: inherit; }
   .num, .bp-num { font-variant-numeric: tabular-nums; }
@@ -73,6 +78,48 @@ export const GLOBAL_CSS = `
   .bp-orbit-leader { position: absolute; left: 50%; top: 50%; width: 1px; height: 1px; overflow: visible; pointer-events: none; z-index: -1; }
   .bp-orbit-leader line { stroke: ${C.brand}; stroke-width: 1.5; stroke-dasharray: 3 3; opacity: 0.85; }
   .maplibregl-popup-close-button { color: ${C.muted}; font-size: 18px; padding: 2px 8px; }
+
+  /* Touch screens: no sticky hover, roomier controls */
+  html[data-input=touch] button:not(:disabled):hover { filter: none; }
+  html[data-input=touch] .maplibregl-ctrl-group button { width: 38px; height: 38px; }
+  html[data-input=touch] .maplibregl-popup-close-button { font-size: 24px; padding: 4px 12px; }
+  .bp-scroll-x { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .bp-scroll-x::-webkit-scrollbar { display: none; }
+
+  /* Phones */
+  @keyframes bp-sheet-in { from { transform: translateY(18px); opacity: 0; } to { transform: none; opacity: 1; } }
+  html[data-layout=phone] .bp-hide-phone { display: none !important; }
+  html[data-layout=phone] .bp-sidepanel { width: 100vw !important; box-shadow: none !important; border-right: none !important; animation: bp-sheet-in .16s ease-out !important; }
+  html[data-layout=phone] .bp-panel-head { padding: 12px 14px 10px !important; }
+  html[data-layout=phone] .bp-panel-body { padding: 12px 12px 20px !important; }
+  /* Grids inside panels and dialogs: stat rows become two columns, marked layouts stack */
+  html[data-layout=phone] :is(.bp-panel-body, [role=dialog]) [style*="grid-template-columns: repeat("] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  html[data-layout=phone] .bp-stack { grid-template-columns: minmax(0, 1fr) !important; }
+  html[data-layout=phone] .bp-wrap { display: flex !important; flex-wrap: wrap; row-gap: 6px !important; }
+  html[data-layout=phone] .bp-wrap > * { min-width: 0; }
+  html[data-layout=phone] .bp-modal-backdrop { padding: 10px 8px calc(10px + env(safe-area-inset-bottom, 0px)) !important; align-items: stretch !important; }
+  html[data-layout=phone] .bp-modal-backdrop > [role=dialog] { padding: 16px !important; max-height: calc(100dvh - 20px) !important; }
+  html[data-layout=phone] .bp-drawer { left: 0 !important; right: 0 !important; width: 100vw !important; top: var(--bp-top-h) !important;
+    bottom: var(--bp-bottom-h) !important; border-radius: 0 !important; border-left: none !important; border-right: none !important; animation: bp-sheet-in .16s ease-out !important; }
+  html[data-layout=phone] .maplibregl-popup { max-width: calc(100vw - 16px) !important; }
+  .bp-sheet-popup { position: fixed !important; left: 8px !important; right: 8px !important; top: auto !important;
+    bottom: calc(var(--bp-bottom-h) + 8px) !important; transform: none !important; max-width: none !important; z-index: 30; }
+  .bp-sheet-popup.bp-sheet-side { left: auto !important; right: 12px !important; width: min(380px, calc(100vw - 24px)); bottom: 46px !important; }
+  .bp-sheet-popup .maplibregl-popup-tip { display: none !important; }
+  .bp-sheet-popup .maplibregl-popup-content { width: 100%; max-height: 46dvh; overflow-y: auto; overscroll-behavior: contain; }
+  html[data-layout=phone] .bp-buy { height: auto !important; }
+  html[data-layout=phone] .bp-buy-catalogue { max-height: 52dvh; }
+  html[data-layout=phone] .bp-buy-details { overflow: visible !important; }
+  html[data-layout=phone] .bp-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  html[data-layout=phone] .bp-tiles > :first-child { grid-column: 1 / -1; }
+  html[data-layout=phone] .bp-fleet-row { grid-template-columns: 28px minmax(0, 1fr) auto !important; }
+  html[data-layout=phone] .bp-fleet-row > :nth-child(3), html[data-layout=phone] .bp-fleet-row > :nth-child(4) { grid-column: 2 / -1; }
+  html[data-layout=phone] .bp-debt-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  html[data-layout=phone] .bp-debt-grid > :last-child { grid-column: 1 / -1; }
+  html[data-layout=phone] .bp-goal { grid-template-columns: 22px minmax(0, 1fr) !important; }
+  html[data-layout=phone] .bp-goal > :nth-child(n+3) { grid-column: 2; }
+  html[data-layout=phone] .bp-goal > :nth-child(4) { text-align: left !important; }
+  html[data-layout=phone] .maplibregl-ctrl-bottom-left, html[data-layout=phone] .maplibregl-ctrl-bottom-right { margin-bottom: var(--bp-bottom-h); }
 `;
 
 export const inputStyle: React.CSSProperties = {
@@ -428,6 +475,7 @@ export function ModalShell({
 
   return (
     <div
+      className="bp-modal-backdrop"
       onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}
       style={{
         position: 'fixed',
@@ -491,12 +539,13 @@ export function SidePanel({
   return (
     <section
       aria-label={title}
+      className="bp-sidepanel"
       style={{
         position: 'absolute',
-        top: TOPBAR_H,
-        left: RAIL_W,
-        bottom: 0,
-        width: `min(${width}px, calc(100vw - ${RAIL_W + 24}px))`,
+        top: 'var(--bp-top-h)',
+        left: 'var(--bp-rail-w)',
+        bottom: 'var(--bp-bottom-h)',
+        width: `min(${width}px, calc(100vw - var(--bp-rail-w) - 24px))`,
         background: C.panel,
         borderRight: `1px solid ${C.line}`,
         boxShadow: '12px 0 40px rgba(0,0,0,0.45)',
@@ -506,7 +555,7 @@ export function SidePanel({
         animation: 'bp-panel-in .16s ease-out',
       }}
     >
-      <header style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px 14px', borderBottom: `1px solid ${C.line}` }}>
+      <header className="bp-panel-head" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px 14px', borderBottom: `1px solid ${C.line}` }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 650, color: C.text, letterSpacing: '-0.01em' }}>{title}</h2>
           {subtitle && <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>{subtitle}</div>}
@@ -521,7 +570,9 @@ export function SidePanel({
           <Icon name="close" size={18} />
         </button>
       </header>
-      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '16px 20px 24px' }}>{children}</div>
+      <div className="bp-panel-body" style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '16px 20px 24px', overscrollBehavior: 'contain' }}>
+        {children}
+      </div>
     </section>
   );
 }

@@ -18,7 +18,7 @@ import {
 import { airportRestrictionFor, calcHubPurchasePriceUsd, calcHubSaleRefundUsd, getAirportMaxAircraftTier } from '../game/tiers';
 import { formatClockShort, formatMoneyM } from '../game/time';
 import type { Airport, Fares, PlayerAircraft, ScheduledFlight, WeekDays } from '../game/types';
-import { Button, C, DayPicker, Field, Pill, SectionTitle, Segmented, TOPBAR_H, inputStyle } from '../ui/kit';
+import { Button, C, DayPicker, Field, Pill, SectionTitle, Segmented, inputStyle } from '../ui/kit';
 import { ErrorBanner, FaresEditor } from './AircraftScheduleModal';
 import { RouteDemandBar } from './RouteDemandBar';
 import { ScheduleTimeline } from './ScheduleTimeline';
@@ -189,12 +189,14 @@ export function AirportDrawer({
   return (
     <aside
       aria-label={`${airport.iata_code} airport`}
+      className="bp-drawer"
       style={{
         position: 'absolute',
-        top: TOPBAR_H + 12,
+        top: 'calc(var(--bp-top-h) + 12px)',
         right: 12,
         bottom: 12,
-        width: 440,
+        width: 'min(440px, calc(100vw - var(--bp-rail-w) - 24px))',
+        overscrollBehavior: 'contain',
         background: C.panel,
         border: `1px solid ${C.border}`,
         borderRadius: 12,

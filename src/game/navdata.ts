@@ -226,6 +226,14 @@ export interface ActiveRunwaySelection {
   associatedNavaid: NavaidWaypoint | null;
   /** Length of the chosen runway, nm. */
   lengthNm: number;
+  /**
+   * Where landings cross the threshold: the runway end, or further in where the
+   * threshold is displaced (v2.29+). Takeoffs still use the whole runway.
+   */
+  landLon: number;
+  landLat: number;
+  /** Runway available for landing, from the landing threshold on, nm. */
+  landingLengthNm: number;
 }
 
 /**
@@ -235,12 +243,12 @@ export interface ActiveRunwaySelection {
  */
 export function getActiveRunwayForAirport(airport: Airport, simDay = 1, simMin = 720, purpose: 'arrival' | 'departure' = 'arrival'): ActiveRunwaySelection {
   const wx = getAirportWeather(airport, simDay, simMin);
-  let best = { ident: '', hdg: 0, lon: airport.longitude_deg, lat: airport.latitude_deg, headwind: -Infinity, crosswind: 0, lenFt: 8000 };
+  let best = { ident: '', hdg: 0, lon: airport.longitude_deg, lat: airport.latitude_deg, headwind: -Infinity, crosswind: 0, lenFt: 8000, dispFt: 0 };
 
   for (const pair of getAirportRunways(airport)) {
     const ends = [
-      { ident: pair.le_ident, hdg: pair.le_heading_degT, lon: pair.le_lon, lat: pair.le_lat, lenFt: pair.length_ft },
-      { ident: pair.he_ident, hdg: pair.he_heading_degT, lon: pair.he_lon, lat: pair.he_lat, lenFt: pair.length_ft },
+      { ident: pair.le_ident, hdg: pair.le_heading_degT, lon: pair.le_lon, lat: pair.le_lat, lenFt: pair.length_ft, dispFt: pair.le_displaced_ft ?? 0 },
+      { ident: pair.he_ident, hdg: pair.he_heading_degT, lon: pair.he_lon, lat: pair.he_lat, lenFt: pair.length_ft, dispFt: pair.he_displaced_ft ?? 0 },
     ];
     for (const end of ends) {
       const diffRad = ((wx.windDirDeg - end.hdg) * Math.PI) / 180;
@@ -257,8 +265,8 @@ export function getActiveRunwayForAirport(airport: Airport, simDay = 1, simMin =
     let alt: typeof best | null = null;
     for (const pair of getAirportRunways(airport)) {
       for (const end of [
-        { ident: pair.le_ident, hdg: pair.le_heading_degT, lon: pair.le_lon, lat: pair.le_lat, lenFt: pair.length_ft },
-        { ident: pair.he_ident, hdg: pair.he_heading_degT, lon: pair.he_lon, lat: pair.he_lat, lenFt: pair.length_ft },
+        { ident: pair.le_ident, hdg: pair.le_heading_degT, lon: pair.le_lon, lat: pair.le_lat, lenFt: pair.length_ft, dispFt: pair.le_displaced_ft ?? 0 },
+        { ident: pair.he_ident, hdg: pair.he_heading_degT, lon: pair.he_lon, lat: pair.he_lat, lenFt: pair.length_ft, dispFt: pair.he_displaced_ft ?? 0 },
       ]) {
         if (end.ident === best.ident) continue;
         const d = Math.abs(((end.hdg - best.hdg + 540) % 360) - 180);
@@ -267,7 +275,11 @@ export function getActiveRunwayForAirport(airport: Airport, simDay = 1, simMin =
     }
     if (alt) best = alt;
   }
-  const headingDegT = Math.round(best.hdg);
+  // Kept to a tenth of a degree: whole degrees put a long landing roll tens of metres off the centreline
+  const headingDegT = Math.round(best.hdg * 10) / 10;
+  const lenFt = best.lenFt || 8000;
+  const dispFt = Math.max(0, Math.min(best.dispFt || 0, lenFt * 0.5));
+  const [landLon, landLat] = dispFt > 0 ? offsetLatLonNm(best.lat, best.lon, headingDegT, dispFt / 6076.12) : [best.lon, best.lat];
   const assocList = navaidsByAirportIcao.get(airport.icao_code) ?? [];
   const associatedNavaid =
     assocList.find((n) => n.type.includes('VOR') || n.type === 'DME') ?? assocList[0] ?? null;
@@ -281,14 +293,17 @@ export function getActiveRunwayForAirport(airport: Airport, simDay = 1, simMin =
   return {
     ident: best.ident,
     headingDegT,
-    reciprocalDegT: (headingDegT + 180) % 360,
+    reciprocalDegT: Math.round(((headingDegT + 180) % 360) * 10) / 10,
     thresholdLon: best.lon,
     thresholdLat: best.lat,
     headwindKts: Math.round(best.headwind),
     crosswindKts: Math.round(best.crosswind),
     approachType,
     associatedNavaid,
-    lengthNm: Math.max(0.5, (best.lenFt || 8000) / 6076.12),
+    lengthNm: Math.max(0.5, lenFt / 6076.12),
+    landLon,
+    landLat,
+    landingLengthNm: Math.max(0.4, (lenFt - dispFt) / 6076.12),
   };
 }
 
@@ -448,7 +463,7 @@ function departureLegs(origin: Airport, rwy: ActiveRunwaySelection, exit: LonLat
   const f = localFrame(origin.latitude_deg, origin.longitude_deg);
   const u = unitFromHdg(rwy.headingDegT);
   const T = f.toXY([rwy.thresholdLon, rwy.thresholdLat]);
-  const liftoff = add(T, u, rwy.lengthNm * 0.62);
+  const liftoff = add(T, u, liftoffNm(rwy));
   const climbOut = add(liftoff, u, Math.max(1.6, 4 * scale)); // ~1,500–2,000 ft before turning
   const X = f.toXY(exit);
   // Big course reversals get an extra point so the turn is a wide arc, not a hairpin
@@ -475,7 +490,7 @@ function arrivalLegs(dest: Airport, rwy: ActiveRunwaySelection, entry: LonLat, b
   const f = localFrame(dest.latitude_deg, dest.longitude_deg);
   const u = unitFromHdg(rwy.headingDegT); // landing direction
   const v: XY = [u[1], -u[0]]; // right of the landing direction
-  const T = f.toXY([rwy.thresholdLon, rwy.thresholdLat]);
+  const T = f.toXY([rwy.landLon, rwy.landLat]); // landing threshold
   const E = f.toXY(entry);
   const inbound = norm(sub(T, E));
   const along = inbound[0] * u[0] + inbound[1] * u[1]; // 1 = arriving straight along the runway
@@ -499,20 +514,33 @@ function arrivalLegs(dest: Airport, rwy: ActiveRunwaySelection, entry: LonLat, b
     legs.push(add(add(T, u, -(finalLen + 1.5 * s)), v, side * 5.5 * s)); // end of downwind
   }
   const finalIdx = legs.length; // FI index in raw
-  legs.push(FI, FAF, T);
-  const stop = add(T, u, rolloutNm(rwy));
-  legs.push(stop);
+  // Over the threshold at ~50 ft, touchdown at the aiming point, then the landing roll to the turn-off
+  const TD = add(T, u, touchdownOffsetNm(rwy));
+  legs.push(FI, FAF, T, TD, add(TD, u, landingRollNm(rwy)));
   const radii = legs.map((_, i) => (i === 1 ? 4 + 2 * s : 2.2 * s + 0.6));
   const pts = filletPath(legs, radii).slice(1); // `before` only shapes the turn at the entry
   return { pts: pts.map(f.toLL), pattern, finalIdxRaw: finalIdx, threshold: f.toLL(T), finalPoint: f.toLL(FI) };
 }
 
-/** Length of the landing roll, nm (the aircraft then turns off the runway). */
-const rolloutNm = (rwy: ActiveRunwaySelection) => Math.min(rwy.lengthNm * 0.6, 1.2);
+/**
+ * Touchdown: the aiming point, 1,000 ft past the landing threshold (less on a
+ * short runway), where a 3° glide path that crosses the threshold at 50 ft meets
+ * the ground.
+ */
+export const touchdownOffsetNm = (rwy: ActiveRunwaySelection) => Math.min(1000 / 6076.12, rwy.landingLengthNm * 0.18);
+/**
+ * Landing roll from touchdown to where the aircraft turns off, nm: about
+ * 1,300 m on a long runway (an airliner slowing to exit speed), less on a short
+ * one. The taxi network then picks the nearest exit there.
+ */
+export const landingRollNm = (rwy: ActiveRunwaySelection) =>
+  Math.max(0.3, Math.min(0.7, (rwy.landingLengthNm - touchdownOffsetNm(rwy)) * 0.5));
+/** Takeoff run to lift-off, nm: about 1,800 m on a long runway, at most 62% of a short one. */
+export const liftoffNm = (rwy: ActiveRunwaySelection) => Math.min(rwy.lengthNm * 0.62, 1.0);
 
 /** Where the landing roll on a runway ends. */
 export function rolloutEndPoint(rwy: ActiveRunwaySelection): LonLat {
-  return offsetLatLonNm(rwy.thresholdLat, rwy.thresholdLon, rwy.headingDegT, rolloutNm(rwy));
+  return offsetLatLonNm(rwy.landLat, rwy.landLon, rwy.headingDegT, touchdownOffsetNm(rwy) + landingRollNm(rwy));
 }
 
 /**
@@ -656,7 +684,7 @@ function computeProcedureGeometry(
   const sidEndNm = cumulativeNm[dep.pts.length - 1];
   const starStartNm = cumulativeNm[dep.pts.length + cruise.length];
   const liftoffNm = cumulativeNm[dep.liftoffIdx];
-  const touchdownNm = total - Math.max(0.3, Math.min(arrRwy.lengthNm * 0.6, 1.2));
+  const touchdownNm = total - landingRollNm(arrRwy);
   // Start of final: the arc into the final approach course ends at FI
   let finalStartNm = touchdownNm - 6;
   const fiLL = arr.finalPoint;

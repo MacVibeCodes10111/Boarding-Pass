@@ -61,6 +61,18 @@ function headingFromRunwayIdent(ident: string): number | null {
   return n >= 1 && n <= 36 ? n * 10 : null;
 }
 
+const D2R = Math.PI / 180;
+/** Initial great-circle bearing from one point to another, degrees true. */
+function bearingDeg(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const p1 = lat1 * D2R;
+  const p2 = lat2 * D2R;
+  const dl = (lon2 - lon1) * D2R;
+  const y = Math.sin(dl) * Math.cos(p2);
+  const x = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
+  return ((Math.atan2(y, x) / D2R) + 360) % 360;
+}
+const angleDiff = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
+
 interface RunwaySummary {
   count: number;
   maxLenFt: number;
@@ -82,6 +94,8 @@ function parseRunways(runwaysCsvText: string): Map<number, RunwaySummary> {
     heLat: t.col('he_latitude_deg'),
     heLon: t.col('he_longitude_deg'),
     heHdg: t.col('he_heading_degT'),
+    leDisp: t.col('le_displaced_threshold_ft'),
+    heDisp: t.col('he_displaced_threshold_ft'),
   };
 
   for (const r of t.rows) {
@@ -104,18 +118,37 @@ function parseRunways(runwaysCsvText: string): Map<number, RunwaySummary> {
     if (!leIdent || leLat === null || leLon === null || heLat === null || heLon === null) continue;
     if (summary.pairs.length >= 8) continue;
 
-    const leHdg = num(r[c.leHdg]) ?? headingFromRunwayIdent(leIdent) ?? 90;
-    const heHdg = num(r[c.heHdg]) ?? headingFromRunwayIdent(heIdent) ?? (leHdg + 180) % 360;
+    // The runway's direction comes from its two ends: the listed headings are often
+    // a few degrees out (and sometimes far out), which put approaches and landing
+    // rolls beside the runway. Ends whose coordinates are the wrong way round for
+    // the runway number (e.g. "18" pointing north) are swapped back.
+    let ends = { leLat, leLon, heLat, heLon };
+    let leHdg = bearingDeg(leLat, leLon, heLat, heLon);
+    const identHdg = headingFromRunwayIdent(leIdent);
+    if (identHdg !== null && angleDiff(leHdg, identHdg) > 90) {
+      ends = { leLat: heLat, leLon: heLon, heLat: leLat, heLon: leLon };
+      leHdg = (leHdg + 180) % 360;
+    }
+    if (!Number.isFinite(leHdg) || (ends.leLat === ends.heLat && ends.leLon === ends.heLon)) {
+      leHdg = num(r[c.leHdg]) ?? identHdg ?? 90;
+    }
+    const heHdg = (leHdg + 180) % 360;
+    const disp = (v: string | undefined) => {
+      const d = num(v);
+      return d && d > 0 && d < lenFt * 0.5 ? d : undefined;
+    };
     summary.pairs.push({
       le_ident: leIdent,
       he_ident: heIdent || '—',
       length_ft: lenFt,
-      le_lat: leLat,
-      le_lon: leLon,
-      le_heading_degT: leHdg,
-      he_lat: heLat,
-      he_lon: heLon,
-      he_heading_degT: heHdg,
+      le_lat: ends.leLat,
+      le_lon: ends.leLon,
+      le_heading_degT: Math.round(leHdg * 10) / 10,
+      he_lat: ends.heLat,
+      he_lon: ends.heLon,
+      he_heading_degT: Math.round(heHdg * 10) / 10,
+      le_displaced_ft: disp(r[c.leDisp]),
+      he_displaced_ft: disp(r[c.heDisp]),
     });
   }
   return byAirport;

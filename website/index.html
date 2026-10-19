@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Boarding Pass: a free airline manager game</title>
+    <meta name="description" content="Run an airline and watch it fly. Boarding Pass is a free airline manager game: play in your browser on any device, or download it for Mac and Windows." />
+    <meta name="theme-color" content="#0c1320" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Boarding Pass" />
+    <meta property="og:description" content="A free airline manager game. Build an airline and watch it fly the world." />
+    <meta property="og:image" content="https://boardingpass.my/og-image.png" />
+    <meta property="og:url" content="https://boardingpass.my/" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=B612+Mono:wght@400;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to the page</a>
+    <header class="site-head">
+      <a class="brand" href="/" aria-label="Boarding Pass home">
+        <img src="/src/icon.png" alt="" width="34" height="34" />
+        <span>Boarding Pass</span>
+      </a>
+      <nav aria-label="Site">
+        <a href="#features">The game</a>
+        <a href="#download">Download</a>
+        <a href="#whats-new">What's new</a>
+        <a href="#community">Community</a>
+      </nav>
+      <a class="btn btn-play btn-small" href="https://play.boardingpass.my" data-play>Play now</a>
+    </header>
+
+    <main id="main">
+      <!-- Hero: the boarding pass. Its stub is the way in. -->
+      <section class="hero">
+        <div class="worldmap" aria-hidden="true"><!--worldmap--></div>
+        <div class="hero-inner">
+          <div class="hero-copy">
+            <h1>Run an airline.<br />Watch it fly.</h1>
+            <p class="lede">
+              Boarding Pass is a free airline manager game. Pick a hub, buy your first aircraft and build a schedule, then watch every flight taxi out, take off
+              and cross a live map of the world, among thousands of other airlines' flights.
+            </p>
+            <div class="cta">
+              <a class="btn btn-play" href="https://play.boardingpass.my" data-play>Play in your browser</a>
+              <a class="btn btn-ghost" href="#download" data-os-download>Download the app</a>
+            </div>
+            <p class="fineprint">Free, no account, no ads. Works on phones, tablets and computers. Your careers save in your browser.</p>
+          </div>
+
+          <a class="ticket" href="https://play.boardingpass.my" data-play aria-label="Board now: play Boarding Pass in your browser">
+            <span class="ticket-main">
+              <span class="ticket-airline"><img src="/src/icon.png" alt="" width="30" height="30" /> Boarding Pass</span>
+              <span class="ticket-route">
+                <span class="code">HUB</span>
+                <span class="flightline" aria-hidden="true"><span></span></span>
+                <span class="code">ANY</span>
+              </span>
+              <span class="ticket-places"><span>Your hub</span><span>Anywhere</span></span>
+              <span class="ticket-fields">
+                <span><small>Passenger</small>You</span>
+                <span><small>Flight</small><b data-version-flight>BP 230</b></span>
+                <span><small>Fare</small>Free</span>
+                <span><small>Seat</small>Any device</span>
+              </span>
+            </span>
+            <span class="ticket-stub">
+              <small>Gate</small>
+              <span class="gate">play.<wbr />boardingpass.my</span>
+              <span class="stub-cta">Board now</span>
+              <span class="barcode" aria-hidden="true"></span>
+            </span>
+          </a>
+        </div>
+      </section>
+
+      <!-- The game -->
+      <section id="features" class="section">
+        <h2>What you'll be doing</h2>
+        <p class="section-lede">A tycoon game with a flight tracker built in. The money side is a real business to run; the map side is the reward for running it well.</p>
+        <div class="features">
+          <article>
+            <h3>Start at a real airport</h3>
+            <p><span data-airports>3,244</span> airports with scheduled service, each with its real runways, sized by the largest aircraft they take. Buy or lease from 98 aircraft types and fit out the cabin.</p>
+          </article>
+          <article>
+            <h3>Build the schedule</h3>
+            <p>Pick routes, departure times, days and fares. Demand depends on the cities, the distance and what you charge; the week view shows every aircraft's day at a glance.</p>
+          </article>
+          <article>
+            <h3>Watch every flight</h3>
+            <p>Your aircraft push back, taxi on the airport's real taxiways, take off from the runway the wind favours and land with the weather. Tilt into 3D to see them at cruising altitude.</p>
+          </article>
+          <article>
+            <h3>Share the sky</h3>
+            <p>Up to 10,000 other aircraft fly real airline routes around you, queue at the same runways and fight you for gates.</p>
+          </article>
+          <article>
+            <h3>Keep the books</h3>
+            <p>Weekly profit and cash flow, loans you can pay down a bit at a time, a bank that rewards milestones, and bankruptcy if you overreach.</p>
+          </article>
+          <article>
+            <h3>Play anywhere</h3>
+            <p>In the browser on a phone, tablet or computer, or as an app for Mac and Windows that keeps itself up to date. Add it to your home screen to play full screen.</p>
+          </article>
+        </div>
+      </section>
+
+      <!-- Download -->
+      <section id="download" class="section">
+        <h2>Play or download</h2>
+        <p class="section-lede">The browser version is the quickest way in. The apps are the same game, with saves that live on your computer.</p>
+        <div class="downloads">
+          <a class="dl dl-web" href="https://play.boardingpass.my" data-play>
+            <span class="dl-name">In your browser</span>
+            <span class="dl-meta">Phones, tablets and computers. Nothing to install.</span>
+            <span class="dl-go">Play now</span>
+          </a>
+          <a class="dl" href="https://github.com/MacVibeCodes10111/Boarding-Pass/releases/latest" data-asset="mac">
+            <span class="dl-name">Mac</span>
+            <span class="dl-meta">Apple-chip and Intel, macOS 11 or later. <span data-asset-file="mac">.dmg</span></span>
+            <span class="dl-go">Download for Mac</span>
+          </a>
+          <a class="dl" href="https://github.com/MacVibeCodes10111/Boarding-Pass/releases/latest" data-asset="win">
+            <span class="dl-name">Windows</span>
+            <span class="dl-meta">64-bit Windows 10 or 11. <span data-asset-file="win">Installer (.exe)</span></span>
+            <span class="dl-go">Download for Windows</span>
+          </a>
+        </div>
+        <p class="fineprint dl-note">
+          <span data-release-line>The latest version is on the <a href="https://github.com/MacVibeCodes10111/Boarding-Pass/releases/latest">Releases page</a>.</span>
+          The apps aren't code-signed yet, so the first time you open one your computer asks whether to trust it: on a Mac, System Settings → Privacy &amp; Security → Open Anyway; on
+          Windows, More info → Run anyway.
+        </p>
+      </section>
+
+      <!-- What's new: from the README on GitHub, shown as a departures board -->
+      <section id="whats-new" class="section">
+        <h2>What's new</h2>
+        <div class="board" role="table" aria-label="Recent versions">
+          <div class="board-row board-head" role="row">
+            <span role="columnheader">Flight</span>
+            <span role="columnheader">What's on board</span>
+            <span role="columnheader">Status</span>
+          </div>
+          <div class="board-rows" data-board>
+            <div class="board-row" role="row">
+              <span role="cell" class="flight">BP 230</span>
+              <span role="cell">Play on any device, and the Boarding Pass website</span>
+              <span role="cell" class="status now">Boarding</span>
+            </div>
+          </div>
+        </div>
+        <div class="notes" data-notes></div>
+      </section>
+
+      <!-- Community -->
+      <section id="community" class="section community">
+        <div>
+          <h2>Fly with other players</h2>
+          <p class="section-lede">Share your airline, report a bug, or ask for the feature you want next. New versions are announced on the Discord first.</p>
+        </div>
+        <div class="community-links">
+          <a class="btn btn-play" href="https://discord.gg/zCk6hcFkzf" rel="noopener">Join the Discord</a>
+          <a class="btn btn-ghost" href="https://github.com/MacVibeCodes10111/Boarding-Pass" rel="noopener">Source code on GitHub</a>
+          <a class="btn btn-ghost" href="https://github.com/MacVibeCodes10111/Boarding-Pass/issues" rel="noopener">Report a bug</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-foot">
+      <div class="foot-brand">
+        <img src="/src/icon.png" alt="" width="28" height="28" />
+        <span>Boarding Pass is free and stays free. © 2026 Ermek Baker-Niffka, MIT licence.</span>
+      </div>
+      <nav aria-label="Footer">
+        <a href="https://play.boardingpass.my" data-play>Play</a>
+        <a href="#download">Download</a>
+        <a href="/credits.html">Credits and licences</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="https://discord.gg/zCk6hcFkzf" rel="noopener">Discord</a>
+        <a href="https://github.com/MacVibeCodes10111/Boarding-Pass" rel="noopener">GitHub</a>
+      </nav>
+      <p class="foot-small">
+        Maps © CARTO, © OpenStreetMap contributors. Satellite imagery EOxCloudless by EOX IT Services GmbH. Airport data from OurAirports, routes from OpenFlights. Not
+        affiliated with any airline, aircraft maker or airport.
+      </p>
+    </footer>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

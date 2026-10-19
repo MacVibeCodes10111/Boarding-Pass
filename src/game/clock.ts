@@ -63,15 +63,60 @@ export const ECONOMY_RATE: Record<EconomySpeed, number> = {
 /** Longest stretch of game time settled after the app was closed. */
 export const MAX_CATCH_UP_GAME_MIN = 4 * MIN_PER_WEEK;
 
+/** One-off money movements, booked into the week they happen in (v2.29+). */
+export type CashFlowKind = 'loan' | 'repay' | 'purchase' | 'sale' | 'grant' | 'bailout';
+export const CASH_FLOW_LABELS: Record<CashFlowKind, string> = {
+  loan: 'Loans drawn',
+  repay: 'Extra loan repayments',
+  purchase: 'Aircraft and hubs bought',
+  sale: 'Aircraft and hubs sold',
+  grant: 'Bank grants',
+  bailout: 'Debts cleared by the bank',
+};
+
 export interface WeekLedger {
   week: number; // 1-based
   flightProfit: number; // operating profit of all flights
   leaseCost: number; // positive number = money paid out
-  /** Loan instalments paid (v2.8+). */
+  /** Loan instalments paid (v2.8+): principal and interest. */
   loanCost?: number;
+  /** The interest part of loanCost (v2.29+). */
+  interestCost?: number;
+  /** Interest charged on an overdrawn account (v2.29+). */
+  overdraftCost?: number;
+  /** One-off money in (+) and out (−) by kind (v2.29+). */
+  flows?: Partial<Record<CashFlowKind, number>>;
+  /** Balances when the week closed (v2.29+). */
+  cashEnd?: number;
+  debtEnd?: number;
 }
 
-export const ledgerNet = (w: WeekLedger) => w.flightProfit - w.leaseCost - (w.loanCost ?? 0);
+/**
+ * Net profit: flights less leases and interest. Repaying a loan's principal
+ * isn't a cost (it lowers the debt), so only the interest part of instalments
+ * counts. Weeks from before v2.29 didn't split it out, so they count the whole
+ * instalment as before.
+ */
+export const ledgerNet = (w: WeekLedger) =>
+  w.flightProfit - w.leaseCost - (w.interestCost ?? w.loanCost ?? 0) - (w.overdraftCost ?? 0);
+
+/** One-off money in and out during the week, net. */
+export const ledgerOneOffs = (w: WeekLedger) => Object.values(w.flows ?? {}).reduce((s, v) => s + (v ?? 0), 0);
+
+/**
+ * Cash flow: every dollar in less every dollar out during the week, so it is
+ * exactly how much the cash balance moved. Includes full loan instalments,
+ * loans drawn, purchases, sales and grants.
+ */
+export const ledgerCashFlow = (w: WeekLedger) =>
+  w.flightProfit - w.leaseCost - (w.loanCost ?? 0) - (w.overdraftCost ?? 0) + ledgerOneOffs(w);
+
+/** Books a one-off amount (+ in, − out) into a week. */
+export const bookFlow = (w: WeekLedger, kind: CashFlowKind, amount: number): WeekLedger =>
+  amount === 0 ? w : { ...w, flows: { ...w.flows, [kind]: (w.flows?.[kind] ?? 0) + amount } };
+
+/** Yearly rate charged on an overdrawn account, %. */
+export const OVERDRAFT_RATE_PCT = 18;
 
 /** Economy time is stored as total game minutes since the career began. */
 export const econDayOf = (econMin: number) => Math.floor(econMin / MIN_PER_DAY) + 1;
@@ -83,11 +128,28 @@ export const econMinOfDay = (econMin: number) => econMin % MIN_PER_DAY;
 export const econMinFromLegacy = (simDay: number, simMin: number) =>
   Math.max(0, (Math.max(1, simDay) - 1) * MIN_PER_DAY + Math.max(0, simMin));
 
+/** Share of a flat-rate loan's repayments that is interest. */
+export const loanInterestShare = (l: BankLoan) => (l.totalRepayable > 0 ? Math.max(0, (l.totalRepayable - l.principal) / l.totalRepayable) : 0);
+/** Principal still owed on a loan. */
+export const loanPrincipalLeft = (l: BankLoan) => (l.totalRepayable > 0 ? Math.max(0, l.principal * (1 - l.paid / l.totalRepayable)) : 0);
+
 export interface EconomyRates {
   /** Sum of every flight's profit × departures per week. */
   weeklyFlightProfit: number;
   /** Lease payments per game day. */
   dailyLeaseCost: number;
+}
+
+/**
+ * The airline's regular cash flow per week at today's schedule: flights, less
+ * leases, loan instalments and (when overdrawn) overdraft interest. One-offs
+ * such as purchases aren't in it.
+ */
+export function weeklyCashFlowRate(rates: EconomyRates, loans: BankLoan[], cash: number) {
+  const instalments = loans.filter((l) => l.paid < l.totalRepayable).reduce((s, l) => s + l.weeklyPayment, 0);
+  const leases = rates.dailyLeaseCost * 7;
+  const overdraft = cash < 0 ? (-cash * OVERDRAFT_RATE_PCT) / 100 / 52 : 0;
+  return { flights: rates.weeklyFlightProfit, leases, instalments, overdraft, net: rates.weeklyFlightProfit - leases - instalments - overdraft };
 }
 
 export function computeEconomyRates(
@@ -113,6 +175,9 @@ export interface EconomyAdvance {
   flightProfit: number;
   leaseCost: number;
   loanCost: number;
+  /** Interest part of loanCost. */
+  interestCost: number;
+  overdraftCost: number;
   /** Loans after this advance's instalments (finished ones have paid === totalRepayable). */
   loans: BankLoan[];
   /** Loans that were paid off during this advance. */
@@ -129,13 +194,18 @@ export function advanceEconomy(
   current: WeekLedger,
   deltaMin: number,
   rates: EconomyRates,
-  loansIn: BankLoan[] = []
+  loansIn: BankLoan[] = [],
+  /** Cash at the start: an overdrawn account is charged interest, and closed weeks record their balances. */
+  cashIn?: number
 ): EconomyAdvance {
   const closedWeeks: WeekLedger[] = [];
   let t = econMin;
   const week = econWeekOf(econMin);
-  const fresh = (w: number): WeekLedger => ({ week: w, flightProfit: 0, leaseCost: 0, loanCost: 0 });
-  let ledger: WeekLedger = current.week === week ? { ...current, loanCost: current.loanCost ?? 0 } : fresh(week);
+  const fresh = (w: number): WeekLedger => ({ week: w, flightProfit: 0, leaseCost: 0, loanCost: 0, interestCost: 0, overdraftCost: 0 });
+  let ledger: WeekLedger =
+    current.week === week ? { ...current, loanCost: current.loanCost ?? 0, interestCost: current.interestCost ?? 0, overdraftCost: current.overdraftCost ?? 0 } : fresh(week);
+  let cash = cashIn ?? 0;
+  const overdraftPerMin = OVERDRAFT_RATE_PCT / 100 / (52 * MIN_PER_WEEK);
 
   const profitPerMin = rates.weeklyFlightProfit / MIN_PER_WEEK;
   const leasePerMin = rates.dailyLeaseCost / MIN_PER_DAY;
@@ -145,6 +215,8 @@ export function advanceEconomy(
   let flightProfit = 0;
   let leaseCost = 0;
   let loanCost = 0;
+  let interestCost = 0;
+  let overdraftCost = 0;
 
   while (remaining > 0) {
     const weekEnd = ledger.week * MIN_PER_WEEK;
@@ -154,24 +226,40 @@ export function advanceEconomy(
     for (const l of active) step = Math.min(step, ((l.totalRepayable - l.paid) * MIN_PER_WEEK) / l.weeklyPayment);
     step = Math.max(step, 1e-9);
     let loanStep = 0;
+    let interestStep = 0;
     for (const l of active) {
       const pay = Math.min(l.totalRepayable - l.paid, (l.weeklyPayment / MIN_PER_WEEK) * step);
       l.paid += pay;
       loanStep += pay;
+      // Flat-rate loans: every instalment is principal and interest in the same proportion
+      interestStep += pay * loanInterestShare(l);
       if (l.totalRepayable - l.paid < 0.01) {
         l.paid = l.totalRepayable;
         finishedLoans.push(l);
       }
     }
+    const opStep = (profitPerMin - leasePerMin) * step - loanStep;
+    // Overdraft interest on the balance halfway through the step (only when a balance was given)
+    const mid = cash + opStep / 2;
+    const odStep = cashIn !== undefined && mid < 0 ? -mid * overdraftPerMin * step : 0;
+    cash += opStep - odStep;
     ledger.flightProfit += profitPerMin * step;
     ledger.leaseCost += leasePerMin * step;
     ledger.loanCost = (ledger.loanCost ?? 0) + loanStep;
+    ledger.interestCost = (ledger.interestCost ?? 0) + interestStep;
+    ledger.overdraftCost = (ledger.overdraftCost ?? 0) + odStep;
     flightProfit += profitPerMin * step;
     leaseCost += leasePerMin * step;
     loanCost += loanStep;
+    interestCost += interestStep;
+    overdraftCost += odStep;
     t += step;
     remaining -= step;
     if (t >= weekEnd - 1e-9) {
+      if (cashIn !== undefined) {
+        ledger.cashEnd = cash;
+        ledger.debtEnd = loans.reduce((s, l) => s + loanPrincipalLeft(l), 0);
+      }
       closedWeeks.push(ledger);
       ledger = fresh(ledger.week + 1);
     }
@@ -181,10 +269,12 @@ export function advanceEconomy(
     econMin: t,
     current: ledger,
     closedWeeks,
-    cashDelta: flightProfit - leaseCost - loanCost,
+    cashDelta: flightProfit - leaseCost - loanCost - overdraftCost,
     flightProfit,
     leaseCost,
     loanCost,
+    interestCost,
+    overdraftCost,
     loans,
     finishedLoans,
   };
