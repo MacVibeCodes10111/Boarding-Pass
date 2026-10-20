@@ -5,9 +5,9 @@ Boarding Pass is two sites built from this one repository:
 | Address | What it is | Built from | Hostinger settings |
 |---|---|---|---|
 | **boardingpass.my** | The website: home page, downloads, what's new, community, credits, privacy | the `website` folder | Root directory `website`, build command `npm run build`, output directory `dist` |
-| **play.boardingpass.my** | The game, in the browser | the top of the repository | Root directory empty (or `/`), build command `npm run build`, output directory `dist` |
+| **play.boardingpass.my** | The game, in the browser | the `play-build` branch (built by GitHub) | A Hostinger website with **Git** deployment of branch `play-build`; no build step |
 
-Both are Hostinger **Node.js web apps** connected to the GitHub repository `MacVibeCodes10111/Boarding-Pass`, branch `main`. Every push to `main` rebuilds both. The website links to the game at `https://play.boardingpass.my`, and the game's home screen links back to `https://boardingpass.my`.
+boardingpass.my is a Hostinger **Node.js web app** on branch `main`. play.boardingpass.my is a plain Hostinger website that copies the branch `play-build`: on every push to `main`, the **Play build** workflow (`.github/workflows/play-build.yml`) builds the game on GitHub and replaces `play-build` with the finished files, so Hostinger has nothing to build. (A plain website can't run `npm run build`; copying `main` itself gives a blank page with "'text/plain' is not a valid JavaScript MIME type".) The website links to the game at `https://play.boardingpass.my`, and the game's home screen links back to `https://boardingpass.my`.
 
 ## Set it up (once)
 
@@ -15,15 +15,13 @@ Do the game first, so it is never offline.
 
 ### 1. Put the game on play.boardingpass.my
 
-1. In hPanel, open **Websites → Add website → Node.js web app**.
-2. Choose **Import Git repository**. GitHub is already connected; pick **Boarding-Pass**.
-3. When it asks for the domain, choose a **subdomain** of boardingpass.my and type `play`. If it only lists whole domains, first create the subdomain under **Domains → boardingpass.my → Subdomains** (name `play`), then start again from step 1.
-4. Check the build settings Hostinger fills in:
-   - Framework: **Vite**
-   - Branch: **main**
-   - Root directory: **empty** (or `/`). Hostinger may suggest `website`, because the repository has two projects: change it back to empty for the game.
-   - Build command: `npm run build`, output directory: `dist`, Node.js **22**
-5. Click **Deploy**. When it says Completed, open `https://play.boardingpass.my`: you should see the game's home screen.
+1. Open the **play.boardingpass.my** website in hPanel and go to its **Deployments** (or **Advanced → Git**) settings, connected to GitHub's **Boarding-Pass** repository.
+2. Change the **branch** from `main` to **`play-build`**. Leave the install folder as Hostinger set it.
+3. Click **Deploy** (or Redeploy). The log copies the files in a few seconds; there's no npm step, and that's correct.
+4. Open `https://play.boardingpass.my`: you should see the game's home screen. If you still see a blank page, clear the cache in hPanel (**Cache → Clear cache**) and reload.
+5. If Hostinger has an **Auto deployment** switch or webhook for this site, turn it on, so each new `play-build` goes live by itself. Otherwise, press Deploy after each update.
+
+If the play-build branch is missing on GitHub, open the repository's **Actions** tab, pick **Play build** and click **Run workflow**.
 
 ### 2. Turn boardingpass.my into the website
 
@@ -41,7 +39,7 @@ If Hostinger doesn't let you change the root directory of an existing app: in hP
 
 ## Every update after that
 
-Nothing to do: pushing to `main` rebuilds both sites, and the website reads the latest version and the What's new list from GitHub by itself. To change the website's text, edit the files in `website/` (the home page is `website/index.html`).
+Nothing to do: pushing to `main` rebuilds the website, the Play build workflow refreshes `play-build` for the game about a minute later, and the website reads the latest version and the What's new list from GitHub by itself. To change the website's text, edit the files in `website/` (the home page is `website/index.html`).
 
 ## Notes
 

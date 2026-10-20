@@ -1,0 +1,81 @@
+# ============================================================================
+# Play build: the browser version of the game, ready to serve.
+#
+# On every push to main this builds the game (npm ci, npm run build) and puts
+# the finished files from dist/ on the branch "play-build", replacing what was
+# there. That branch holds only built files, so any web host that just copies
+# a branch's files (like Hostinger's Git deployment for play.boardingpass.my)
+# serves a working game, with no build step of its own.
+#
+# Don't edit the play-build branch by hand: every push to main overwrites it.
+# ============================================================================
+name: Play build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Only the newest push matters; an older build still running is cancelled
+concurrency:
+  group: play-build
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build the browser version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Server settings for the built files
+        # Apache/LiteSpeed (Hostinger): the right file type for the web app
+        # manifest, and index.html always re-checked so new versions show up
+        # straight away. Built scripts have their version in the file name, so
+        # they can be cached for a long time.
+        run: |
+          cat > dist/.htaccess <<'EOF'
+          AddType application/manifest+json .webmanifest
+          AddType application/javascript .js .mjs
+          <IfModule mod_headers.c>
+            <FilesMatch "^(index\.html|manifest\.webmanifest)$">
+              Header set Cache-Control "no-cache"
+            </FilesMatch>
+            <FilesMatch "\.(js|css)$">
+              Header set Cache-Control "public, max-age=31536000, immutable"
+            </FilesMatch>
+          </IfModule>
+          EOF
+          cat > dist/README.md <<EOF
+          # play-build
+
+          Built files of the browser version of Boarding Pass, made by the
+          "Play build" workflow from main (commit ${GITHUB_SHA::7}). Every push
+          to main replaces this branch. The source is on the main branch.
+          EOF
+
+      - name: Publish to the play-build branch
+        working-directory: dist
+        run: |
+          git init -q -b play-build
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Play build of ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" play-build
+          echo "Published $(git ls-files | wc -l) files to play-build" >> "$GITHUB_STEP_SUMMARY"
