@@ -219,7 +219,7 @@ export function ScheduleTimeline({
             <div style={{ fontSize: 11, fontWeight: 600, color: candidateDays[dIdx] ? C.textSoft : C.faint }}>{dayName}</div>
             <div style={{ position: 'relative', height: '100%', background: C.panel, border: `1px solid ${C.line}`, borderRadius: 4, overflow: 'hidden' }}>
               {[3, 6, 9, 12, 15, 18, 21].map((h) => (
-                <div key={h} style={{ position: 'absolute', left: `${(h / 24) * 100}%`, top: 0, bottom: 0, width: 1, background: 'rgba(51,65,85,0.35)', pointerEvents: 'none' }} />
+                <div key={h} style={{ position: 'absolute', left: `${(h / 24) * 100}%`, top: 0, bottom: 0, width: 1, background: `${C.border}80`, pointerEvents: 'none' }} />
               ))}
 
               {occupiedPieces
@@ -245,7 +245,7 @@ export function ScheduleTimeline({
                   ) : (
                     <div
                       key={`occt-${p.flight.id}-${i}`}
-                      style={{ ...blockStyle(p.start, p.end, 4), background: TURN_STRIPES('rgba(148,163,184,0.2)', 'rgba(30,41,59,0.5)'), border: `1px dotted ${C.faint}`, zIndex: 1, pointerEvents: 'none' }}
+                      style={{ ...blockStyle(p.start, p.end, 4), background: TURN_STRIPES(`${C.muted}33`, `${C.panelAlt}80`), border: `1px dotted ${C.faint}`, zIndex: 1, pointerEvents: 'none' }}
                     />
                   )
                 )}
@@ -270,7 +270,7 @@ export function ScheduleTimeline({
                   ) : (
                     <div
                       key={`candt-${i}`}
-                      style={{ ...blockStyle(p.start, p.end, 3), background: TURN_STRIPES('rgba(245,165,36,0.3)', 'rgba(12,19,32,0.6)'), border: 'none', zIndex: 3, pointerEvents: 'none' }}
+                      style={{ ...blockStyle(p.start, p.end, 3), background: TURN_STRIPES(`${C.brand}4d`, `${C.bg}99`), border: 'none', zIndex: 3, pointerEvents: 'none' }}
                     />
                   )
                 )}

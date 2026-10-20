@@ -16,6 +16,7 @@ import { BankPanel, MilestoneCard } from './components/BankPanel';
 import { BankruptcyModal } from './components/BankruptcyModal';
 import { BuyAircraftPanel } from './components/BuyAircraftPanel';
 import { LayersMenu, NavRail, TopBar, type MapStyleChoice, type PanelId } from './components/DashboardChrome';
+import { AppearanceHost } from './components/Appearance';
 import { FleetPanel } from './components/FleetPanel';
 import { HomeScreen } from './components/HomeScreen';
 import { LiveMap, type AiDensity, type AiDetail, type AiDrawStats } from './components/LiveMap';
@@ -71,7 +72,6 @@ import {
 } from './game/career';
 import { calcDistanceNm } from './game/geo';
 import {
-  PLANE_TINT,
   RADAR_GROUPS,
   drawRadarSilhouetteOnCanvas,
   getRadarIconGroup,
@@ -105,7 +105,7 @@ import type {
   ScheduledFlight,
 } from './game/types';
 import { APP_VERSION } from './version';
-import { C, GLOBAL_CSS } from './ui/kit';
+import { C, applyThemeToDocument, useThemeVersion } from './ui/kit';
 import { initLayout } from './ui/layout';
 
 const STANDARD_START_CASH = 150_000_000;
@@ -159,19 +159,42 @@ const makeDraft = (originIata: string, airlineIata: string): RouteDraft => ({
 
 function useGlobalReset() {
   useEffect(() => {
-    if (document.getElementById('bp-global-reset')) return;
-    const style = document.createElement('style');
-    style.id = 'bp-global-reset';
-    style.innerHTML = GLOBAL_CSS;
-    document.head.appendChild(style);
+    applyThemeToDocument();
   }, []);
 }
 
 // Phone / tablet / desktop attributes on <html>, before anything renders
 initLayout();
 
+/**
+ * A new airline set up on the website ("Print your boarding pass"): its name,
+ * code, callsign and hub arrive in the address and fill in the home screen.
+ * (Its colours arrive the same way and are applied by the theme code.)
+ */
+const LAUNCH = (() => {
+  const out: { name?: string; code?: string; callsign?: string; hub?: string } = {};
+  try {
+    const q = new URLSearchParams(location.search);
+    const clean = (v: string | null, re: RegExp, max: number) => (v && re.test(v.trim()) ? v.trim().slice(0, max) : undefined);
+    out.name = clean(q.get('airline'), /^[\p{L}\p{N} .,'&-]{2,40}$/u, 40);
+    out.code = clean(q.get('code')?.toUpperCase() ?? null, /^[A-Z0-9]{2,3}$/, 3);
+    out.callsign = clean(q.get('callsign')?.toUpperCase() ?? null, /^[A-Z0-9 ]{2,20}$/, 20);
+    out.hub = clean(q.get('hub')?.toUpperCase() ?? null, /^[A-Z]{3}$/, 3);
+    if (Object.values(out).some(Boolean)) {
+      const u = new URL(location.href);
+      ['airline', 'code', 'callsign', 'hub'].forEach((k) => u.searchParams.delete(k));
+      history.replaceState(null, '', u.pathname + u.search + u.hash);
+    }
+  } catch {
+    /* no address parameters */
+  }
+  return out;
+})();
+
 export default function App() {
   useGlobalReset();
+  // A theme change re-renders everything with the new colours (ui/theme.ts)
+  useThemeVersion();
 
   // ---------------------------------------------------------------------------
   // Core game state
@@ -180,10 +203,10 @@ export default function App() {
   // The map is always on screen; everything else opens as a panel over it.
   const [panel, setPanel] = useState<PanelId | null>(null);
 
-  const [airlineName, setAirlineName] = useState('Jetstream Airlines');
-  const [airlineIata, setAirlineIata] = useState('JT');
-  const [airlineCallsign, setAirlineCallsign] = useState('JETSTREAM');
-  const [hubIata, setHubIata] = useState('BOS');
+  const [airlineName, setAirlineName] = useState(LAUNCH.name ?? 'Jetstream Airlines');
+  const [airlineIata, setAirlineIata] = useState(LAUNCH.code ?? 'JT');
+  const [airlineCallsign, setAirlineCallsign] = useState(LAUNCH.callsign ?? (LAUNCH.name ? LAUNCH.name.split(/\s+/)[0].toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 20) || 'JETSTREAM' : 'JETSTREAM'));
+  const [hubIata, setHubIata] = useState(LAUNCH.hub ?? 'BOS');
   const [hubs, setHubs] = useState<string[]>(['BOS']);
   const [gameMode, setGameMode] = useState<GameMode>('standard');
   const [cash, setCash] = useState(STANDARD_START_CASH);
@@ -389,9 +412,10 @@ export default function App() {
 
   const builtinIconUrls = useMemo(() => {
     const out = {} as Record<RadarIconGroup, string>;
-    RADAR_GROUPS.forEach((g) => (out[g] = drawRadarSilhouetteOnCanvas(g, PLANE_TINT, 64).toDataURL()));
+    RADAR_GROUPS.forEach((g) => (out[g] = drawRadarSilhouetteOnCanvas(g, C.fleet, 64).toDataURL()));
     return out;
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [C.fleet]);
 
   const iconForModel = useCallback(
     (m: AircraftModel): string => {
@@ -1134,6 +1158,7 @@ export default function App() {
       {gameAlert && <AlertModal alert={gameAlert} onDismiss={() => setGameAlert(null)} />}
       {toast && <Toast message={toast} />}
       <UpdateBanner onBeforeInstall={() => screen === 'dashboard' && persistRef.current(true)} />
+      <AppearanceHost mapStyle={mapStyle} onMapStyle={setMapStyle} />
     </>
   );
 

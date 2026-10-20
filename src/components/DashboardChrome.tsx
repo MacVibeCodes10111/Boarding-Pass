@@ -1,4 +1,5 @@
 import { CreditsModal } from './Credits';
+import { openAppearance } from './Appearance';
 import type React from 'react';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -594,7 +595,16 @@ export function LayersMenu(props: {
             zIndex: 60,
           }}
         >
-          <MenuSection title="Map" first>
+          <MenuSection
+            title="Map"
+            first
+            aside={
+              <button type="button" onClick={() => { setOpen(false); openAppearance(); }} title="Theme and colours of the game" style={{ background: 'none', border: 'none', color: C.accent, fontSize: 11.5, cursor: 'pointer', padding: 0, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                <span aria-hidden style={{ width: 10, height: 10, borderRadius: '50%', background: C.brand, boxShadow: `0 0 0 1.5px ${C.fleet}` }} />
+                Appearance
+              </button>
+            }
+          >
             <Segmented<MapStyleChoice>
               size="sm"
               block
@@ -691,7 +701,7 @@ export function LayersMenu(props: {
                       marginTop: 8,
                       padding: '8px 10px',
                       borderRadius: 7,
-                      background: '#2b2110',
+                      background: `${C.amber}17`,
                       border: `1px solid ${C.amberStrong}66`,
                       color: C.amber,
                       fontSize: 11.5,

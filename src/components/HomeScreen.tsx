@@ -6,6 +6,7 @@ import { Button, C, Field, SearchInput, Segmented, inputStyle } from '../ui/kit'
 import { useLayout } from '../ui/layout';
 import { APP_VERSION } from '../version';
 import { CreditsModal } from './Credits';
+import { openAppearance } from './Appearance';
 import { inDesktopApp } from './UpdateBanner';
 
 /** The Boarding Pass website (the game itself is on play.boardingpass.my). */
@@ -56,7 +57,7 @@ export function HomeScreen(props: HomeScreenProps) {
         height: '100dvh',
         overflowY: 'auto',
         color: C.text,
-        background: `radial-gradient(1200px 600px at 20% -10%, #1a2a47 0%, transparent 60%), ${C.bg}`,
+        background: `radial-gradient(1200px 600px at 20% -10%, ${C.raised} 0%, transparent 60%), ${C.bg}`,
         display: 'flex',
         justifyContent: 'center',
         padding: phone ? '20px 14px calc(28px + env(safe-area-inset-bottom, 0px))' : 32,
@@ -76,6 +77,10 @@ export function HomeScreen(props: HomeScreenProps) {
                 Version {APP_VERSION}. {airports.length.toLocaleString()} airports, {props.aircraftCount} aircraft types.{' '}
                 <button type="button" onClick={() => setShowCredits(true)} style={{ background: 'none', border: 'none', color: C.accent, fontSize: 13, cursor: 'pointer', padding: 0 }}>
                   Credits and licences
+                </button>
+                {' · '}
+                <button type="button" onClick={openAppearance} style={{ background: 'none', border: 'none', color: C.accent, fontSize: 13, cursor: 'pointer', padding: 0 }}>
+                  Appearance
                 </button>
                 {!inDesktopApp() && (
                   <>
@@ -109,7 +114,7 @@ export function HomeScreen(props: HomeScreenProps) {
                 />
               </Field>
               <Field label="Radio callsign">
-                <input value={airlineCallsign} onChange={(e) => onChange({ airlineCallsign: e.target.value.toUpperCase() })} style={inputStyle} />
+                <input value={airlineCallsign} onChange={(e) => onChange({ airlineCallsign: e.target.value.toUpperCase() })} style={{ ...inputStyle }} />
               </Field>
             </div>
 

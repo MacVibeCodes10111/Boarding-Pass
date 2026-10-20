@@ -7,46 +7,97 @@ import React, { useEffect, useState } from 'react';
 import { DAY_LETTERS } from '../game/time';
 import type { WeekDays } from '../game/types';
 import { Icon } from './icons';
+import { DEFAULT_PALETTE, buildPalette, loadThemeSpec, saveThemeSpec, themeFromUrl, type Palette, type ThemeSpec } from './theme';
 
 export const FONT = `'Segoe UI Variable Text', 'Segoe UI', Inter, system-ui, -apple-system, sans-serif`;
 
-export const C = {
-  // surfaces
-  bg: '#0c1320',
-  panel: '#131c2e',
-  panelAlt: '#172235',
-  raised: '#1d2a40',
-  line: '#212c42',
-  lineSoft: '#1b2538',
-  border: '#2b3852',
-  // text
-  text: '#e7ecf5',
-  textSoft: '#d3dae6',
-  textDim: '#b4bfd0',
-  muted: '#8d99ae',
-  faint: '#5f6b82',
-  // accents
-  brand: '#f5a524', // your airline: fleet, primary actions, selection
-  brandInk: '#1d1405', // text on brand
-  accent: '#8fb8de', // information, secondary emphasis
-  accentStrong: '#3d6b96',
-  yellow: '#f5a524',
-  // money & status
-  green: '#3ecf8e',
-  greenStrong: '#1f9d6a',
-  amber: '#e8b04b',
-  amberStrong: '#d9932b',
-  red: '#f0565b',
-  redSoft: '#f7a1a4',
-  redDeep: '#3a1a22',
-  purple: '#a78bfa',
-  orange: '#f59e0b',
-};
+export const C: Palette = { ...DEFAULT_PALETTE };
+/** The map's own colours (route lines, labels, halos): they suit the map styles, not the interface theme. */
+export const MAP_C: Readonly<Palette> = Object.freeze({ ...DEFAULT_PALETTE });
 
-/** Global CSS: font, focus rings, hover feedback, panel animation. */
-export const GLOBAL_CSS = `
+// ---------------------------------------------------------------------------
+// Themes (ui/theme.ts). C holds the current colours. A theme change rewrites C
+// in place, refreshes the shared style objects below and the global CSS, and
+// re-renders the app (App subscribes with useThemeVersion), so it applies live.
+// ---------------------------------------------------------------------------
+let themeSpec: ThemeSpec = (() => {
+  const fromUrl = typeof location !== 'undefined' ? themeFromUrl(location.search) : null;
+  if (fromUrl) {
+    saveThemeSpec(fromUrl);
+    try {
+      const u = new URL(location.href);
+      ['theme', 'bg', 'hl', 'ac'].forEach((k) => u.searchParams.delete(k));
+      history.replaceState(null, '', u.pathname + u.search + u.hash);
+    } catch {
+      /* address left as it is */
+    }
+  }
+  return fromUrl ?? loadThemeSpec();
+})();
+Object.assign(C, buildPalette(themeSpec));
+
+const liveStyles: { refresh: () => void }[] = [];
+/**
+ * A style object that follows the theme: its fields read the current theme's
+ * values (getters), so spreading it (`{ ...inputStyle }`) always gives the
+ * current colours. Pass it spread, not by reference, so React sees the change.
+ */
+function live<T extends object>(make: () => T): T {
+  let cur = make() as Record<string, unknown>;
+  const obj = {} as Record<string, unknown>;
+  for (const k of Object.keys(cur)) Object.defineProperty(obj, k, { enumerable: true, get: () => cur[k] });
+  liveStyles.push({ refresh: () => (cur = make() as Record<string, unknown>) });
+  return obj as T;
+}
+let themeVersion = 0;
+const themeListeners = new Set<() => void>();
+
+export const getThemeSpec = () => themeSpec;
+
+/** Apply a theme now (and remember it on this device unless `preview`). */
+export function setTheme(spec: ThemeSpec, opts: { preview?: boolean } = {}) {
+  themeSpec = spec;
+  if (!opts.preview) saveThemeSpec(spec);
+  Object.assign(C, buildPalette(spec));
+  liveStyles.forEach((l) => l.refresh());
+  applyThemeToDocument();
+  themeVersion++;
+  themeListeners.forEach((f) => f());
+}
+
+/** Global CSS, page colours and the browser's theme colour. */
+export function applyThemeToDocument() {
+  if (typeof document === 'undefined') return;
+  let style = document.getElementById('bp-global-reset');
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'bp-global-reset';
+    document.head.appendChild(style);
+  }
+  style.innerHTML = globalCss();
+  document.documentElement.style.colorScheme = C.scheme;
+  document.documentElement.dataset.theme = C.scheme;
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', C.bg);
+}
+
+/** Re-renders the calling component when the theme changes; returns a counter. */
+export function useThemeVersion(): number {
+  const [v, setV] = useState(themeVersion);
+  useEffect(() => {
+    const f = () => setV(themeVersion);
+    themeListeners.add(f);
+    f();
+    return () => {
+      themeListeners.delete(f);
+    };
+  }, []);
+  return v;
+}
+
+/** Global CSS: font, focus rings, hover feedback, panel animation (from the current theme). */
+export const globalCss = () => `
   /* Layout sizes; the phone layout (ui/layout.ts) swaps the side rail for a bottom tab bar */
-  :root { --bp-top-h: 52px; --bp-rail-w: 72px; --bp-bottom-h: 0px; }
+  :root { --bp-top-h: 52px; --bp-rail-w: 72px; --bp-bottom-h: 0px; color-scheme: ${C.scheme}; }
   html[data-layout=phone] { --bp-top-h: 50px; --bp-rail-w: 0px; --bp-bottom-h: calc(58px + env(safe-area-inset-bottom, 0px)); }
   html, body, #root { margin: 0; padding: 0; width: 100vw; height: 100vh; height: 100dvh; overflow: hidden;
     background: ${C.bg}; color: ${C.text}; font-family: ${FONT}; font-size: 13px; -webkit-font-smoothing: antialiased;
@@ -80,6 +131,8 @@ export const GLOBAL_CSS = `
   .bp-orbit-leader { position: absolute; left: 50%; top: 50%; width: 1px; height: 1px; overflow: visible; pointer-events: none; z-index: -1; }
   .bp-orbit-leader line { stroke: ${C.brand}; stroke-width: 1.5; stroke-dasharray: 3 3; opacity: 0.85; }
   .maplibregl-popup-close-button { color: ${C.muted}; font-size: 18px; padding: 2px 8px; }
+  .bp-camera-alt { color: ${C.textDim}; background: ${C.panel}b8; }
+  .bp-cam-btn { border: 1px solid ${C.border}; background: ${C.raised}; color: ${C.text}; }
 
   /* Touch screens: no sticky hover, roomier controls */
   html[data-input=touch] button:not(:disabled):hover { filter: none; }
@@ -124,7 +177,7 @@ export const GLOBAL_CSS = `
   html[data-layout=phone] .maplibregl-ctrl-bottom-left, html[data-layout=phone] .maplibregl-ctrl-bottom-right { margin-bottom: var(--bp-bottom-h); }
 `;
 
-export const inputStyle: React.CSSProperties = {
+export const inputStyle: React.CSSProperties = live(() => ({
   width: '100%',
   padding: '7px 9px',
   background: C.bg,
@@ -132,36 +185,36 @@ export const inputStyle: React.CSSProperties = {
   borderRadius: 6,
   color: C.text,
   fontSize: 13,
-};
+}));
 
-export const labelStyle: React.CSSProperties = {
+export const labelStyle: React.CSSProperties = live(() => ({
   display: 'block',
   fontSize: 12,
   color: C.muted,
   fontWeight: 600,
   marginBottom: 4,
-};
+}));
 
-export const panelStyle: React.CSSProperties = {
+export const panelStyle: React.CSSProperties = live(() => ({
   background: C.panel,
   border: `1px solid ${C.line}`,
   borderRadius: 10,
   padding: 16,
-};
+}));
 
-export const cardStyle: React.CSSProperties = {
+export const cardStyle: React.CSSProperties = live(() => ({
   background: C.bg,
   border: `1px solid ${C.line}`,
   borderRadius: 8,
   padding: '10px 12px',
-};
+}));
 
 // ----------------------------------------------------------------------------
 // Buttons
 // ----------------------------------------------------------------------------
 type ButtonVariant = 'primary' | 'success' | 'danger' | 'warning' | 'ghost' | 'subtle' | 'violet';
 
-const VARIANTS: Record<ButtonVariant, React.CSSProperties> = {
+const VARIANTS: Record<ButtonVariant, React.CSSProperties> = live(() => ({
   primary: { background: C.brand, color: C.brandInk, border: `1px solid ${C.brand}` },
   success: { background: C.greenStrong, color: '#fff', border: `1px solid ${C.greenStrong}` },
   danger: { background: 'transparent', color: C.red, border: `1px solid ${C.red}66` },
@@ -169,7 +222,7 @@ const VARIANTS: Record<ButtonVariant, React.CSSProperties> = {
   violet: { background: C.accentStrong, color: '#fff', border: `1px solid ${C.accentStrong}` },
   subtle: { background: C.raised, color: C.textSoft, border: `1px solid ${C.border}` },
   ghost: { background: 'transparent', color: C.muted, border: '1px solid transparent' },
-};
+}));
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
@@ -408,7 +461,7 @@ export function Stepper({
 export function Field({ label, hint, children, style }: { label: string; hint?: string; children: React.ReactNode; style?: React.CSSProperties }) {
   return (
     <div style={style}>
-      <label style={labelStyle}>{label}</label>
+      <label style={{ ...labelStyle }}>{label}</label>
       {children}
       {hint && <div style={{ fontSize: 11.5, color: C.faint, marginTop: 4 }}>{hint}</div>}
     </div>

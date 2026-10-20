@@ -46,7 +46,7 @@ import { CAMERA_READOUT_TITLE, isHeightDragStart } from '../game/platform';
 import { TIERS, getAircraftTierInfo, getAirportMaxAircraftTier } from '../game/tiers';
 import { dayIndexOf, daysOrAll, formatClockShort, formatDurationHm, MIN_PER_DAY } from '../game/time';
 import type { Airport, PlayerAircraft, RadarIconGroup, ScheduledFlight } from '../game/types';
-import { C } from '../ui/kit';
+import { C, MAP_C, useThemeVersion } from '../ui/kit';
 import { currentLayout, isTouchFirst } from '../ui/layout';
 
 const EMPTY_FC = { type: 'FeatureCollection', features: [] as any[] };
@@ -189,7 +189,7 @@ function applyMapTheme(map: any, id: MapStyleId) {
   set('ai-planes-dot', 'circle-color', '#475569');
   set('navaids-labels', 'text-color', '#6d28d9');
   set('navaids-points', 'circle-color', '#ffffff');
-  set('routes-arc', 'line-color', C.accentStrong);
+  set('routes-arc', 'line-color', MAP_C.accentStrong);
   set('track-remaining', 'line-color', '#475569');
   set('ground-planes-symbol', 'text-color', ['case', ['==', ['get', 'kind'], 'player'], '#b45309', '#475569']);
 }
@@ -214,7 +214,7 @@ const AI_ICON_SCALE: Record<RadarIconGroup, number> = {
   large_jet: 0.62, heavy_twin: 0.64, trijet: 0.63, a340: 0.64, b747: 0.66, a380: 0.68, high_quad: 0.66,
 };
 
-const POPUP_CSS = `font-family:inherit;font-size:12.5px;line-height:1.45;color:${C.text};min-width:250px;`;
+const popupCss = () => `font-family:inherit;font-size:12.5px;line-height:1.45;color:${C.text};min-width:250px;`;
 const muted = (t: string) => `<span style="color:${C.muted}">${t}</span>`;
 const kv = (k: string, v: string) =>
   `<div><div style="font-size:11px;color:${C.faint}">${k}</div><div style="font-weight:600;font-variant-numeric:tabular-nums">${v}</div></div>`;
@@ -233,7 +233,7 @@ function buildAiPopupHtml(t: AiTraffic, f: AiFlight, pos: AiPosition): string {
     (pos as AiPosition & { phaseLabel?: string }).phaseLabel ||
     (pos.altitudeFt === 0 ? (pos.progress < 0.5 ? 'Taking off' : 'Landed') : pos.progress < 0.15 ? 'Climbing' : pos.progress > 0.82 ? 'Descending' : 'Cruising');
   const pct = Math.round(pos.progress * 100);
-  return `<div style="${POPUP_CSS}">
+  return `<div style="${popupCss()}">
     <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
       <b style="font-size:15px">${e(f.flightNumber)}</b>${muted(e(al.name))}
     </div>
@@ -328,7 +328,7 @@ function buildPlanePopupHtml(raw: Record<string, any>): string {
        <div style="display:flex;gap:10px;font-size:11.5px;color:${C.muted};font-variant-numeric:tabular-nums;flex-wrap:wrap">
          ${Number(raw.capFirst) ? `<span>First ${p.soldFirst}/${p.capFirst}</span>` : ''}${Number(raw.capBus) ? `<span>Business ${p.soldBus}/${p.capBus}</span>` : ''}${Number(raw.capPrem) ? `<span>Premium ${p.soldPrem}/${p.capPrem}</span>` : ''}<span>Economy ${p.soldEcon}/${p.capEcon}</span><span>Cargo ${p.soldCargoTons}/${p.maxCargoTons} t</span>
        </div>`;
-  return `<div style="${POPUP_CSS}min-width:280px">
+  return `<div style="${popupCss()}min-width:280px">
     <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
       <b style="font-size:15px;color:${C.brand}">${p.callsign}</b>${muted(`${p.flightNumber}, ${p.tailNumber}`)}
     </div>
@@ -404,7 +404,7 @@ function addLayers(map: any) {
     type: 'circle',
     source: 'navaids-source',
     minzoom: 5.6,
-    paint: { 'circle-radius': 3.5, 'circle-color': C.bg, 'circle-stroke-color': C.purple, 'circle-stroke-width': 1.6 },
+    paint: { 'circle-radius': 3.5, 'circle-color': MAP_C.bg, 'circle-stroke-color': MAP_C.purple, 'circle-stroke-width': 1.6 },
   });
   map.addLayer({
     id: 'navaids-labels',
@@ -418,33 +418,33 @@ function addLayers(map: any) {
       'text-anchor': 'top',
       'text-optional': true,
     },
-    paint: { 'text-color': '#d8b4fe', 'text-halo-color': C.bg, 'text-halo-width': 1.4 },
+    paint: { 'text-color': '#d8b4fe', 'text-halo-color': MAP_C.bg, 'text-halo-width': 1.4 },
   });
   map.addLayer({
     id: 'routes-arc',
     type: 'line',
     source: 'routes',
-    paint: { 'line-color': C.accent, 'line-width': 2.2, 'line-opacity': 0.88 },
+    paint: { 'line-color': MAP_C.accent, 'line-width': 2.2, 'line-opacity': 0.88 },
   });
   map.addLayer({
     id: 'preview-route-arc',
     type: 'line',
     source: 'preview-route',
-    paint: { 'line-color': C.amberStrong, 'line-width': 2.5, 'line-dasharray': [2, 2], 'line-opacity': 0.95 },
+    paint: { 'line-color': MAP_C.amberStrong, 'line-width': 2.5, 'line-dasharray': [2, 2], 'line-opacity': 0.95 },
   });
   // FR24-style trail for the selected plane: solid behind it, dashed ahead
   map.addLayer({
     id: 'track-remaining',
     type: 'line',
     source: 'track-remaining',
-    paint: { 'line-color': C.textDim, 'line-width': 1.6, 'line-dasharray': [2, 2], 'line-opacity': 0.75 },
+    paint: { 'line-color': MAP_C.textDim, 'line-width': 1.6, 'line-dasharray': [2, 2], 'line-opacity': 0.75 },
   });
   map.addLayer({
     id: 'track-flown',
     type: 'line',
     source: 'track-flown',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': C.orange, 'line-width': 2.6, 'line-opacity': 0.9 },
+    paint: { 'line-color': C.fleet, 'line-width': 2.6, 'line-opacity': 0.9 },
   });
   map.addLayer({
     id: 'airports-circle',
@@ -491,8 +491,8 @@ function addLayers(map: any) {
       'text-optional': true,
     },
     paint: {
-      'text-color': ['case', ['==', ['get', 'is_selected'], 1], C.yellow, ['==', ['get', 'is_hub'], 1], C.green, C.textDim],
-      'text-halo-color': C.bg,
+      'text-color': ['case', ['==', ['get', 'is_selected'], 1], MAP_C.yellow, ['==', ['get', 'is_hub'], 1], MAP_C.green, MAP_C.textDim],
+      'text-halo-color': MAP_C.bg,
       'text-halo-width': 1.5,
     },
   });
@@ -514,7 +514,7 @@ function addLayers(map: any) {
       'text-anchor': 'top',
       'text-optional': true,
     },
-    paint: { 'text-color': C.muted, 'text-halo-color': C.bg, 'text-halo-width': 1.4, 'icon-opacity': 0.9 },
+    paint: { 'text-color': MAP_C.muted, 'text-halo-color': MAP_C.bg, 'text-halo-width': 1.4, 'icon-opacity': 0.9 },
   });
   map.addLayer({
     id: 'ai-planes-dot',
@@ -551,8 +551,8 @@ function addLayers(map: any) {
       'text-optional': true,
     },
     paint: {
-      'text-color': ['case', ['==', ['get', 'kind'], 'player'], C.brand, C.muted],
-      'text-halo-color': C.bg,
+      'text-color': ['case', ['==', ['get', 'kind'], 'player'], C.fleet, MAP_C.muted],
+      'text-halo-color': MAP_C.bg,
       'text-halo-width': 1.4,
       'icon-opacity': ['case', ['==', ['get', 'kind'], 'player'], 1, 0.92],
     },
@@ -583,7 +583,7 @@ function addLayers(map: any) {
       'text-anchor': 'top',
       'text-optional': true,
     },
-    paint: { 'text-color': C.orange, 'text-halo-color': C.bg, 'text-halo-width': 1.6 },
+    paint: { 'text-color': C.fleet, 'text-halo-color': MAP_C.bg, 'text-halo-width': 1.6 },
   });
   // 3D view: aircraft floating at their height, lines down to their shadows, and
   // the selected aircraft's route at altitude with a curtain beneath it
@@ -627,7 +627,7 @@ function addLayers(map: any) {
       'text-pitch-alignment': 'viewport',
       'text-rotation-alignment': 'viewport',
     },
-    paint: { 'text-color': ['get', 'color'], 'text-halo-color': C.bg, 'text-halo-width': 1.5 },
+    paint: { 'text-color': ['get', 'color'], 'text-halo-color': MAP_C.bg, 'text-halo-width': 1.5 },
   });
 }
 
@@ -666,7 +666,6 @@ function groundUnder(map: any, at: LonLat, heightM: number, w: number, h: number
   }
 }
 const PLANE_3D_PX = 44; // nose to tail on screen, before the icon-size setting
-const PLAYER_3D_COLOR = C.brand;
 
 type TimedPoint = RoutePoint & { t: number };
 /** A floating 3D aircraft on screen. */
@@ -954,7 +953,7 @@ function installMapContent(map: any, styleId: MapStyleId, threeD: boolean) {
     putImage(map, `ap-icon-hub-${t}`, createAirportMapIconImageData('hub', t));
     putImage(map, `ap-icon-selected-${t}`, createAirportMapIconImageData('selected', t));
   });
-  RADAR_GROUPS.forEach((g) => putImage(map, mapImageName(iconKey.group(g)), createRadarGroupImageData(g), MAP_ICON_PIXEL_RATIO));
+  RADAR_GROUPS.forEach((g) => putImage(map, mapImageName(iconKey.group(g)), createRadarGroupImageData(g, C.fleet), MAP_ICON_PIXEL_RATIO));
   RADAR_GROUPS.forEach((g) => putImage(map, `ai-${g}`, createRadarGroupImageData(g, aiTintFor(styleId)), MAP_ICON_PIXEL_RATIO));
   (Object.keys(WX_TAG_COLORS) as (keyof typeof WX_TAG_COLORS)[]).forEach((c) => putImage(map, `wx-${c}`, createWxTagImageData(c), 2));
   addBuildings(map, styleId); // first, so the game's layers draw over them
@@ -1296,7 +1295,7 @@ export function LiveMap(props: LiveMapProps) {
           const camEl = document.createElement('div');
           camEl.className = 'bp-camera-alt';
           camEl.title = CAMERA_READOUT_TITLE;
-          camEl.style.cssText = `position:absolute;right:10px;bottom:calc(38px + var(--bp-bottom-h));z-index:2;font-size:11.5px;color:${C.textDim};background:rgba(12,19,32,0.72);padding:2px 4px 2px 8px;border-radius:8px;pointer-events:auto;font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:6px;`;
+          camEl.style.cssText = `position:absolute;right:10px;bottom:calc(38px + var(--bp-bottom-h));z-index:2;font-size:11.5px;padding:2px 4px 2px 8px;border-radius:8px;pointer-events:auto;font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:6px;`; // colours: .bp-camera-alt in the theme CSS
           const camText = document.createElement('span');
           camEl.appendChild(camText);
           // Raise / lower buttons: the touch-screen way to change the camera height (hold to keep going)
@@ -1307,7 +1306,7 @@ export function LiveMap(props: LiveMapProps) {
             b.textContent = label;
             b.setAttribute('aria-label', aria);
             b.title = aria;
-            b.style.cssText = `width:30px;height:28px;border-radius:6px;border:1px solid ${C.border};background:${C.raised};color:${C.text};font-size:14px;line-height:1;cursor:pointer;padding:0;touch-action:none;`;
+            b.style.cssText = `width:30px;height:28px;border-radius:6px;font-size:14px;line-height:1;cursor:pointer;padding:0;touch-action:none;`; // colours: .bp-cam-btn in the theme CSS
             let timer = 0;
             const stepCam = () => {
               userMoveAt.current = performance.now();
@@ -1439,6 +1438,27 @@ export function LiveMap(props: LiveMapProps) {
     Object.entries(customIcons).forEach(([key, icon]) => putImage(map, mapImageName(key), icon.imageData));
   }, [customIcons, mapReady, styleRev, mapRef]);
 
+  // Theme change (Appearance): your aircraft take the new colour. The rest of the map keeps its own palette.
+  const themeVersion = useThemeVersion();
+  const fleetShown = useRef(C.fleet);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!mapReady || !map || fleetShown.current === C.fleet) return;
+    fleetShown.current = C.fleet;
+    try {
+      RADAR_GROUPS.forEach((g) => {
+        const k = iconKey.group(g);
+        if (!customIcons[k]) putImage(map, mapImageName(k), createRadarGroupImageData(g, C.fleet), MAP_ICON_PIXEL_RATIO);
+      });
+      if (map.getLayer('track-flown')) map.setPaintProperty('track-flown', 'line-color', C.fleet);
+      if (map.getLayer('live-planes-symbol')) map.setPaintProperty('live-planes-symbol', 'text-color', C.fleet);
+      if (map.getLayer('ground-planes-symbol') && latest.current.mapStyle !== 'light')
+        map.setPaintProperty('ground-planes-symbol', 'text-color', ['case', ['==', ['get', 'kind'], 'player'], C.fleet, MAP_C.muted]);
+    } catch {
+      /* the map is reloading its style; installMapContent uses the new colour */
+    }
+  }, [themeVersion, mapReady, styleRev, mapRef, customIcons]);
+
   // ---------------------------------------------------------------------------
   // 3. Airports (with their weather tag when Weather is on; it changes hourly)
   // ---------------------------------------------------------------------------
@@ -1507,7 +1527,7 @@ export function LiveMap(props: LiveMapProps) {
           properties: {
             iata: a.iata_code,
             rwy: rwy.ident,
-            cone_color: wx.flightCategory === 'IFR' ? C.red : wx.flightCategory === 'MVFR' ? C.accent : '#10b981',
+            cone_color: wx.flightCategory === 'IFR' ? MAP_C.red : wx.flightCategory === 'MVFR' ? MAP_C.accent : '#10b981',
           },
         });
       }
@@ -2118,8 +2138,8 @@ export function LiveMap(props: LiveMapProps) {
         features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: pos.coordinates }, properties: props });
         if (k3 && agl > 0) {
           const p3 = { ...props, kind: 'player', at_lng: pos.coordinates[0], at_lat: pos.coordinates[1] };
-          pushPlane3d({ at: pos.coordinates, bearing, aglFt: agl, sizePx: PLANE_3D_PX * info.iconScale, color: PLAYER_3D_COLOR, props: p3 }, k3, bodies3d, stems3d);
-          playerLabels3d.push({ at: pos.coordinates, aglFt: agl, sizePx: PLANE_3D_PX * info.iconScale, props: { ...p3, label: info.flight.flightNumber, color: C.orange } });
+          pushPlane3d({ at: pos.coordinates, bearing, aglFt: agl, sizePx: PLANE_3D_PX * info.iconScale, color: C.fleet, props: p3 }, k3, bodies3d, stems3d);
+          playerLabels3d.push({ at: pos.coordinates, aglFt: agl, sizePx: PLANE_3D_PX * info.iconScale, props: { ...p3, label: info.flight.flightNumber, color: C.fleet } });
         }
         drawnTails.add(info.flight.tailNumber);
         if (info.flight.id === st.trackedFlightId) {
@@ -2216,7 +2236,7 @@ export function LiveMap(props: LiveMapProps) {
             if (k3 && pos.altitudeFt > 0) {
               const sizePx = PLANE_3D_PX * (AI_ICON_SCALE[f.group] ?? 0.56) * st.planeIconScale;
               pushPlane3d({ at: pos.coordinates, bearing: pos.bearing, aglFt: pos.altitudeFt, sizePx, color: aiColor, props: { kind: 'ai', aiId: f.id } }, k3, ai3d, f.id === trackedAiId ? aiStems : undefined);
-              aiLabels3d.push({ at: pos.coordinates, aglFt: pos.altitudeFt, sizePx, props: { kind: 'ai', aiId: f.id, label: f.flightNumber, color: latest.current.mapStyle === 'light' ? '#475569' : C.muted } });
+              aiLabels3d.push({ at: pos.coordinates, aglFt: pos.altitudeFt, sizePx, props: { kind: 'ai', aiId: f.id, label: f.flightNumber, color: latest.current.mapStyle === 'light' ? '#475569' : MAP_C.muted } });
             }
           }
           // Zoomed out, the selected AI aircraft still shows while it is on the ground
@@ -2410,7 +2430,7 @@ export function LiveMap(props: LiveMapProps) {
             const ribbon: any[] = [];
             const curtain: any[] = [];
             const mine = route3d.key.startsWith('p:');
-            pushRoute3d(route3d.pts, split, k3, { flown: mine ? C.orange : C.accent, ahead: C.textDim }, ribbon, curtain);
+            pushRoute3d(route3d.pts, split, k3, { flown: mine ? C.fleet : MAP_C.accent, ahead: MAP_C.textDim }, ribbon, curtain);
             map.getSource('route-3d')?.setData({ type: 'FeatureCollection', features: ribbon });
             map.getSource('route-3d-curtain')?.setData({ type: 'FeatureCollection', features: curtain });
             route3dDrawn = drawKey;

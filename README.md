@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 2.33. Free to play. See [Credits and licences](#credits-and-licences).
+Version 2.34. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -20,6 +20,12 @@ Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 2.34:
+
+- **Themes and your own colours.** A new Appearance window (in Map layers, or on the home screen) has five themes, among them Studio black and Studio white with one colour of your choice. A colour picker sets the background, the highlight and your aircraft freely. The whole game changes straight away, and the choice is kept on your device.
+- **Print your boarding pass on the website.** At boardingpass.my, name your airline, pick your hub and paint the livery. Save the ticket as a picture to share, or board: the game starts with your airline and colours filled in.
+- **A route planner on the website.** Pick any two of the game's airports to see the distance, the flight time and which aircraft can fly it, with a stop suggested when it's too far. The What's new board now flips like an airport departures board.
 
 Version 2.33:
 

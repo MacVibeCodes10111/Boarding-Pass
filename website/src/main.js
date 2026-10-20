@@ -1,6 +1,11 @@
 // Boarding Pass website: live download links and version from the latest GitHub
-// release, "What's new" from the README on GitHub, and the aircraft on the map.
+// release, "What's new" from the README on GitHub (on a split-flap board), the
+// aircraft on the map, the boarding pass printer and the route planner.
 // Everything here is an extra: the page works (with plain links) without it.
+import { initPass } from './pass.js';
+import { initRoute } from './route.js';
+import { reduceMotion } from './shared.js';
+
 const REPO = 'MacVibeCodes10111/Boarding-Pass';
 const RELEASES = `https://github.com/${REPO}/releases/latest`;
 
@@ -39,7 +44,11 @@ function fillDownloads(rel) {
   }
   if (version) {
     const flight = `BP ${version.split('.').slice(0, 2).join('')}`;
-    document.querySelectorAll('[data-version-flight]').forEach((el) => (el.textContent = flight));
+    // (a ticket showing your own airline keeps its own flight number)
+    document.querySelectorAll('[data-version-flight]').forEach((el) => {
+      el.dataset.versionValue = flight;
+      if (!el.dataset.personal) el.textContent = flight;
+    });
     const line = document.querySelector('[data-release-line]');
     if (line) line.innerHTML = `Version ${version}, released ${new Date(rel.published_at).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}. Every version is on the <a href="${RELEASES.replace('/latest', '')}">Releases page</a>. The apps update themselves.`;
   }
@@ -97,11 +106,76 @@ function fillBoard(versions, released) {
     return `<div class="board-row" role="row"><span role="cell" class="flight">BP ${v.version.split('.').slice(0, 2).join('')}</span><span role="cell">${inline(what)}</span><span role="cell" class="status ${status[1]}">${status[0]}</span></div>`;
   });
   board.innerHTML = rows.join('');
+  flap(board);
   const latest = versions.find((v) => (released ? num(v.version) <= num(released) : true)) || versions[0];
   if (notes && latest) {
     notes.innerHTML = `<h3>In version ${esc(latest.version)}</h3><ul>${latest.items.map((i) => `<li>${i.title ? `<strong>${inline(i.title)}.</strong> ` : ''}${inline(i.text)}</li>`).join('')}</ul>`;
   }
 }
+
+// ------------------------------------------------------------ split-flap: letters spin into place, left to right
+const FLAPS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+function flap(root) {
+  if (reduceMotion() || !('IntersectionObserver' in window)) return;
+  const cells = [...root.querySelectorAll('[role=cell]')];
+  const finals = cells.map((c) => c.innerHTML);
+  const texts = cells.map((c) => c.textContent);
+  // The real text stays in place (for screen readers and anyone scrolling fast); it flips once the board is on screen
+  const run = () => {
+    root.setAttribute('aria-busy', 'true');
+    cells.forEach((c) => (c.dataset.flapped = ''));
+    const t0 = performance.now();
+    const tick = (t) => {
+      let busy = false;
+      cells.forEach((c, i) => {
+        if (c.dataset.flapped === '1') return;
+        const txt = texts[i];
+        const start = (i % 3) * 90 + Math.floor(i / 3) * 140; // row by row, columns a little apart
+        let s = '';
+        let settled = 0;
+        for (let k = 0; k < txt.length; k++) {
+          const ch = txt[k];
+          const spinFrom = start + k * 11; // each letter starts spinning a moment after the one before
+          const stopAt = spinFrom + 140; // and lands after a few flips
+          const dt = t - t0;
+          if (ch === ' ' || dt >= stopAt) {
+            s += ch;
+            settled++;
+          } else s += dt >= spinFrom ? FLAPS[(Math.random() * FLAPS.length) | 0] : ' ';
+        }
+        if (settled === txt.length) {
+          c.innerHTML = finals[i];
+          c.dataset.flapped = '1';
+        } else {
+          c.textContent = s;
+          busy = true;
+        }
+      });
+      if (busy) requestAnimationFrame(tick);
+      else root.removeAttribute('aria-busy');
+    };
+    requestAnimationFrame(tick);
+  };
+  const io = new IntersectionObserver((es) => {
+    if (es.some((e) => e.isIntersecting)) {
+      io.disconnect();
+      run();
+    }
+  }, { threshold: 0.3 });
+  io.observe(root);
+}
+
+// ------------------------------------------------------------ clock on the board (UTC, like the game's map)
+(() => {
+  const el = document.querySelector('[data-utc]');
+  if (!el) return;
+  const show = () => (el.textContent = new Date().toISOString().slice(11, 19));
+  show();
+  setInterval(show, 1000);
+})();
+
+initPass();
+initRoute();
 
 (async () => {
   let released = '';

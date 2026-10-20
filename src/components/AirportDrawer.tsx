@@ -332,7 +332,7 @@ export function AirportDrawer({
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px', gap: 10, marginBottom: 10 }}>
               <Field label="From" hint={aircraft && acFlights.length > 0 ? `${aircraft.tailNumber} is at ${lastOf(aircraft)} at the end of its day` : undefined}>
-                <select value={draft.originIata} onChange={(e) => updateDraft({ originIata: e.target.value })} style={inputStyle}>
+                <select value={draft.originIata} onChange={(e) => updateDraft({ originIata: e.target.value })} style={{ ...inputStyle }}>
                   {originOptions.map((code) => {
                     const ap = airportByIata.get(code);
                     return ap ? (

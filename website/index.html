@@ -28,6 +28,8 @@
       </a>
       <nav aria-label="Site">
         <a href="#features">The game</a>
+        <a href="#pass">Your airline</a>
+        <a href="#route">Route planner</a>
         <a href="#download">Download</a>
         <a href="#whats-new">What's new</a>
         <a href="#community">Community</a>
@@ -53,18 +55,22 @@
             <p class="fineprint">Free, no account, no ads. Works on phones, tablets and computers. Your careers save in your browser.</p>
           </div>
 
-          <a class="ticket" href="https://play.boardingpass.my" data-play aria-label="Board now: play Boarding Pass in your browser">
+          <a class="ticket" href="https://play.boardingpass.my" data-play data-ticket aria-label="Board now: play Boarding Pass in your browser">
             <span class="ticket-main">
-              <span class="ticket-airline"><img src="/src/icon.png" alt="" width="30" height="30" /> Boarding Pass</span>
-              <span class="ticket-route">
-                <span class="code">HUB</span>
-                <span class="flightline" aria-hidden="true"><span></span></span>
-                <span class="code">ANY</span>
+              <span class="ticket-livery" aria-hidden="true"></span>
+              <span class="ticket-airline">
+                <span class="ticket-logo" data-t-logo><img src="/src/icon.png" alt="" width="30" height="30" /></span>
+                <span data-t-airline>Boarding Pass</span>
               </span>
-              <span class="ticket-places"><span>Your hub</span><span>Anywhere</span></span>
+              <span class="ticket-route">
+                <span class="code" data-t-from>HUB</span>
+                <span class="flightline" aria-hidden="true"><span class="ticket-plane" data-takeoff title="Clear for takeoff"></span></span>
+                <span class="code" data-t-to>ANY</span>
+              </span>
+              <span class="ticket-places"><span data-t-from-city>Your hub</span><span>Anywhere</span></span>
               <span class="ticket-fields">
-                <span><small>Passenger</small>You</span>
-                <span><small>Flight</small><b data-version-flight>BP 230</b></span>
+                <span><small>Passenger</small><b data-t-passenger>You</b></span>
+                <span><small>Flight</small><b data-t-flight data-version-flight>BP 230</b></span>
                 <span><small>Fare</small>Free</span>
                 <span><small>Seat</small>Any device</span>
               </span>
@@ -73,7 +79,7 @@
               <small>Gate</small>
               <span class="gate">play.<wbr />boardingpass.my</span>
               <span class="stub-cta">Board now</span>
-              <span class="barcode" aria-hidden="true"></span>
+              <svg class="barcode" data-t-barcode viewBox="0 0 140 40" preserveAspectRatio="none" aria-hidden="true"></svg>
             </span>
           </a>
         </div>
@@ -111,6 +117,113 @@
         </div>
       </section>
 
+      <!-- Print your boarding pass: name the airline, pick the hub, paint the livery; the game starts with it -->
+      <section id="pass" class="section pass">
+        <h2>Print your boarding pass</h2>
+        <p class="section-lede">Name your airline, pick the airport it flies from and paint the livery. Board, and the game starts with all of it filled in.</p>
+        <div class="kiosk">
+          <form class="kiosk-form" data-pass-form autocomplete="off" onsubmit="return false">
+            <fieldset class="step">
+              <legend><span class="step-n" aria-hidden="true">1</span> Name your airline</legend>
+              <div class="field-row">
+                <label class="field field-grow"><span>Airline name</span><input name="airline" maxlength="40" placeholder="Jetstream Airlines" /></label>
+                <label class="field field-code"><span>Code</span><input name="code" maxlength="3" placeholder="JT" autocapitalize="characters" /></label>
+              </div>
+            </fieldset>
+            <fieldset class="step">
+              <legend><span class="step-n" aria-hidden="true">2</span> Pick your hub</legend>
+              <div class="field combo" data-combo="hub">
+                <span>Airport</span>
+                <input name="hub" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="hub-list" placeholder="Search by city or airport code, e.g. Lisbon or LIS" />
+                <ul class="combo-list" id="hub-list" role="listbox" hidden></ul>
+              </div>
+            </fieldset>
+            <fieldset class="step">
+              <legend><span class="step-n" aria-hidden="true">3</span> Paint the livery</legend>
+              <div class="liveries" role="radiogroup" aria-label="Livery" data-liveries></div>
+              <div class="wells">
+                <button type="button" class="well" data-well="bg" aria-expanded="false"><span class="well-swatch"></span><span><b>Background</b><small data-well-hex="bg"></small></span></button>
+                <button type="button" class="well" data-well="hl" aria-expanded="false"><span class="well-swatch"></span><span><b>Highlight</b><small data-well-hex="hl"></small></span></button>
+              </div>
+              <div class="picker" data-picker hidden>
+                <div class="pk-sv" role="slider" tabindex="0" aria-label="Saturation and brightness"><span class="pk-knob"></span></div>
+                <div class="pk-hue" role="slider" tabindex="0" aria-label="Hue" aria-valuemin="0" aria-valuemax="360"><span class="pk-knob"></span></div>
+                <div class="pk-row">
+                  <input class="pk-hex" aria-label="Colour code" maxlength="7" spellcheck="false" />
+                  <div class="pk-pops" data-pops></div>
+                </div>
+              </div>
+              <p class="fineprint">The game uses these colours for its whole interface, and your aircraft fly in the highlight. You can change them any time in the game's Appearance menu.</p>
+            </fieldset>
+          </form>
+          <div class="kiosk-out">
+            <div class="kiosk-slot" aria-hidden="true"></div>
+            <a class="ticket ticket-print" href="https://play.boardingpass.my" data-play data-ticket aria-label="Board now with your airline: play in your browser">
+              <span class="ticket-main">
+                <span class="ticket-livery" aria-hidden="true"></span>
+                <span class="ticket-airline">
+                  <span class="ticket-logo" data-t-logo><img src="/src/icon.png" alt="" width="30" height="30" /></span>
+                  <span data-t-airline>Boarding Pass</span>
+                </span>
+                <span class="ticket-route">
+                  <span class="code" data-t-from>HUB</span>
+                  <span class="flightline" aria-hidden="true"><span class="ticket-plane" data-takeoff title="Clear for takeoff"></span></span>
+                  <span class="code" data-t-to>ANY</span>
+                </span>
+                <span class="ticket-places"><span data-t-from-city>Your hub</span><span>Anywhere</span></span>
+                <span class="ticket-fields">
+                  <span><small>Passenger</small><b data-t-passenger>You</b></span>
+                  <span><small>Flight</small><b data-t-flight data-version-flight>BP 230</b></span>
+                  <span><small>Fare</small>Free</span>
+                  <span><small>Seat</small>Any device</span>
+                </span>
+              </span>
+              <span class="ticket-stub">
+                <small>Gate</small>
+                <span class="gate">play.<wbr />boardingpass.my</span>
+                <span class="stub-cta">Board now</span>
+                <svg class="barcode" data-t-barcode viewBox="0 0 140 40" preserveAspectRatio="none" aria-hidden="true"></svg>
+              </span>
+            </a>
+            <div class="kiosk-actions">
+              <a class="btn btn-play" href="https://play.boardingpass.my" data-board-link>Board now</a>
+              <button type="button" class="btn btn-ghost" data-save-png>Save as image</button>
+              <button type="button" class="btn btn-ghost" data-copy-link>Copy link</button>
+            </div>
+            <p class="fineprint kiosk-note" data-pass-note aria-live="polite">Your pass is kept in this browser, so the ticket at the top of the page is yours too.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Route planner: two airports, the great circle, and the aircraft that can fly it -->
+      <section id="route" class="section route">
+        <h2>Plan a route</h2>
+        <p class="section-lede">Pick any two of the game's <span data-airports>3,244</span> airports to see how far apart they are and which aircraft can fly between them.</p>
+        <div class="planner">
+          <div class="planner-controls">
+            <div class="field combo" data-combo="from">
+              <span>From</span>
+              <input role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="from-list" placeholder="City or code" value="" />
+              <ul class="combo-list" id="from-list" role="listbox" hidden></ul>
+            </div>
+            <button type="button" class="swap" data-swap aria-label="Swap the airports" title="Swap">⇄</button>
+            <div class="field combo" data-combo="to">
+              <span>To</span>
+              <input role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="to-list" placeholder="City or code" value="" />
+              <ul class="combo-list" id="to-list" role="listbox" hidden></ul>
+            </div>
+            <button type="button" class="btn btn-ghost btn-small" data-surprise>Surprise me</button>
+          </div>
+          <div class="planner-body">
+            <div class="route-map" data-route-map aria-hidden="true"></div>
+            <div class="readout" data-readout aria-live="polite">
+              <p class="readout-empty">Choose two airports. Try New York to Singapore, or press Surprise me.</p>
+            </div>
+          </div>
+          <div class="fleet-fit" data-fleet-fit></div>
+        </div>
+      </section>
+
       <!-- Download -->
       <section id="download" class="section">
         <h2>Play or download</h2>
@@ -143,6 +256,7 @@
       <section id="whats-new" class="section">
         <h2>What's new</h2>
         <div class="board" role="table" aria-label="Recent versions">
+          <div class="board-top" aria-hidden="true"><span>Departures</span><span class="board-clock"><span data-utc>00:00:00</span> UTC</span></div>
           <div class="board-row board-head" role="row">
             <span role="columnheader">Flight</span>
             <span role="columnheader">What's on board</span>

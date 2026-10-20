@@ -3,12 +3,12 @@ import type { GameAlert, GameMode } from '../game/types';
 import { Icon } from '../ui/icons';
 import { Button, C, ModalShell } from '../ui/kit';
 
-const SEVERITY_COLOR = { error: C.red, warning: C.amberStrong, info: C.accent } as const;
+const severityColor = (s: 'error' | 'warning' | 'info') => ({ error: C.red, warning: C.amberStrong, info: C.accent })[s];
 
 /** In-game notice. With `onConfirm` it becomes a Cancel / confirm dialog. */
 export function AlertModal({ alert, onDismiss }: { alert: GameAlert; onDismiss: () => void }) {
   const severity = alert.severity ?? 'error';
-  const color = SEVERITY_COLOR[severity];
+  const color = severityColor(severity);
   return (
     <ModalShell onClose={onDismiss} maxWidth={440} zIndex={300}>
       <div style={{ display: 'flex', gap: 12 }}>
