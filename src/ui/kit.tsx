@@ -7,9 +7,22 @@ import React, { useEffect, useState } from 'react';
 import { DAY_LETTERS } from '../game/time';
 import type { WeekDays } from '../game/types';
 import { Icon } from './icons';
+import './fonts';
 import { DEFAULT_PALETTE, buildPalette, loadThemeSpec, saveThemeSpec, themeFromUrl, type Palette, type ThemeSpec } from './theme';
 
-export const FONT = `'Segoe UI Variable Text', 'Segoe UI', Inter, system-ui, -apple-system, sans-serif`;
+// Look (v2.35): a flight-tracker cockpit. Floating, see-through panels over the
+// map, a toolbar along the bottom, condensed sign-style headings and numbers.
+export const FONT = `'Barlow', 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif`;
+/** Headings, big numbers, toolbar labels */
+export const DISPLAY = `'Barlow Condensed', 'Barlow', 'Segoe UI', system-ui, sans-serif`;
+/** A floating panel's surface: the theme's panel colour, see-through with the map blurred behind it. */
+export const glass = (alpha = 'e6'): React.CSSProperties => ({
+  background: `${C.panel}${alpha}`,
+  backdropFilter: 'blur(16px) saturate(1.2)',
+  WebkitBackdropFilter: 'blur(16px) saturate(1.2)',
+  border: `1px solid ${C.border}aa`,
+  boxShadow: '0 10px 30px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.04)',
+});
 
 export const C: Palette = { ...DEFAULT_PALETTE };
 /** The map's own colours (route lines, labels, halos): they suit the map styles, not the interface theme. */
@@ -97,15 +110,21 @@ export function useThemeVersion(): number {
 /** Global CSS: font, focus rings, hover feedback, panel animation (from the current theme). */
 export const globalCss = () => `
   /* Layout sizes; the phone layout (ui/layout.ts) swaps the side rail for a bottom tab bar */
-  :root { --bp-top-h: 52px; --bp-rail-w: 72px; --bp-bottom-h: 0px; color-scheme: ${C.scheme}; }
-  html[data-layout=phone] { --bp-top-h: 50px; --bp-rail-w: 0px; --bp-bottom-h: calc(58px + env(safe-area-inset-bottom, 0px)); }
+  /* Layout sizes. Desktop and tablet: a floating top bar (10 + 50 px) and a floating toolbar at the bottom; panels float between them, --bp-gap from the edges */
+  :root { --bp-top-h: 68px; --bp-rail-w: 0px; --bp-bottom-h: 86px; --bp-gap: 10px; color-scheme: ${C.scheme}; }
+  html[data-layout=phone] { --bp-top-h: 50px; --bp-rail-w: 0px; --bp-bottom-h: calc(60px + env(safe-area-inset-bottom, 0px)); --bp-gap: 0px; }
   html, body, #root { margin: 0; padding: 0; width: 100vw; height: 100vh; height: 100dvh; overflow: hidden;
-    background: ${C.bg}; color: ${C.text}; font-family: ${FONT}; font-size: 13px; -webkit-font-smoothing: antialiased;
+    background: ${C.bg}; color: ${C.text}; font-family: ${FONT}; font-size: 14px; -webkit-font-smoothing: antialiased;
     -webkit-text-size-adjust: 100%; overscroll-behavior: none; }
   body { -webkit-tap-highlight-color: transparent; }
   * { box-sizing: border-box; }
   input, select, button, textarea { font-family: inherit; }
   .num, .bp-num { font-variant-numeric: tabular-nums; }
+  h1, h2, h3, .bp-display { font-family: ${DISPLAY}; letter-spacing: 0.005em; }
+  .bp-glass { background: ${C.panel}e6; backdrop-filter: blur(16px) saturate(1.2); -webkit-backdrop-filter: blur(16px) saturate(1.2);
+    border: 1px solid ${C.border}aa; box-shadow: 0 10px 30px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.04); }
+  /* List rows are tiles */
+  .bp-row { border-radius: 8px; }
   button { transition: background-color .12s, border-color .12s, color .12s, filter .12s; }
   button:not(:disabled):hover { filter: brightness(1.12); }
   button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid ${C.brand}; outline-offset: 1px; }
@@ -113,8 +132,8 @@ export const globalCss = () => `
   input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   input[type=number] { -moz-appearance: textfield; }
   select option, select optgroup { background: ${C.panel}; color: ${C.text}; }
-  ::-webkit-scrollbar { width: 9px; height: 9px; }
-  ::-webkit-scrollbar-thumb { background: ${C.border}; border-radius: 6px; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: ${C.border}; border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }
   ::-webkit-scrollbar-track { background: transparent; }
   .bp-row:hover { background: ${C.panelAlt}; }
   .bp-saved-item:hover { background: ${C.panelAlt}; }
@@ -122,8 +141,9 @@ export const globalCss = () => `
   @keyframes bp-panel-in { from { transform: translateX(-14px); opacity: 0; } to { transform: none; opacity: 1; } }
   @keyframes bp-fade-in { from { opacity: 0; } to { opacity: 1; } }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
-  .maplibregl-popup-content { background: ${C.panel} !important; color: ${C.text}; border: 1px solid ${C.border}; border-radius: 10px !important;
-    box-shadow: 0 12px 32px rgba(0,0,0,.5) !important; padding: 12px 14px !important; }
+  .maplibregl-popup-content { background: ${C.panel}eb !important; color: ${C.text}; border: 1px solid ${C.border}; border-radius: 14px !important;
+    backdrop-filter: blur(16px) saturate(1.2); -webkit-backdrop-filter: blur(16px) saturate(1.2);
+    box-shadow: 0 14px 36px rgba(0,0,0,.5) !important; padding: 12px 14px !important; }
   .maplibregl-popup-tip { border-top-color: ${C.border} !important; border-bottom-color: ${C.border} !important; }
   .bp-orbit-popup .maplibregl-popup-tip { display: none; }
   .bp-orbit-popup .maplibregl-popup-content { cursor: grab; user-select: none; }
@@ -144,7 +164,10 @@ export const globalCss = () => `
   /* Phones */
   @keyframes bp-sheet-in { from { transform: translateY(18px); opacity: 0; } to { transform: none; opacity: 1; } }
   html[data-layout=phone] .bp-hide-phone { display: none !important; }
-  html[data-layout=phone] .bp-sidepanel { width: 100vw !important; box-shadow: none !important; border-right: none !important; animation: bp-sheet-in .16s ease-out !important; }
+  html[data-layout=phone] .bp-sidepanel { left: 0 !important; width: 100vw !important; border-radius: 0 !important; border: none !important; box-shadow: none !important; animation: bp-sheet-in .16s ease-out !important; }
+  html[data-layout=tablet] .bp-hide-tablet { display: none !important; }
+  html[data-layout=tablet] .bp-topcard-airline { padding: 0 6px !important; }
+  html[data-layout=phone] .bp-topcard { background: none !important; border: none !important; box-shadow: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; padding: 0 !important; height: auto !important; }
   html[data-layout=phone] .bp-panel-head { padding: 12px 14px 10px !important; }
   html[data-layout=phone] .bp-panel-body { padding: 12px 12px 20px !important; }
   /* Grids inside panels and dialogs: stat rows become two columns, marked layouts stack */
@@ -154,7 +177,7 @@ export const globalCss = () => `
   html[data-layout=phone] .bp-wrap > * { min-width: 0; }
   html[data-layout=phone] .bp-modal-backdrop { padding: 10px 8px calc(10px + env(safe-area-inset-bottom, 0px)) !important; align-items: stretch !important; }
   html[data-layout=phone] .bp-modal-backdrop > [role=dialog] { padding: 16px !important; max-height: calc(100dvh - 20px) !important; }
-  html[data-layout=phone] .bp-drawer { left: 0 !important; right: 0 !important; width: 100vw !important; top: var(--bp-top-h) !important;
+  html[data-layout=phone] .bp-drawer { left: 0 !important; right: 0 !important; width: 100vw !important; top: var(--bp-top-h) !important; box-shadow: none !important;
     bottom: var(--bp-bottom-h) !important; border-radius: 0 !important; border-left: none !important; border-right: none !important; animation: bp-sheet-in .16s ease-out !important; }
   html[data-layout=phone] .maplibregl-popup { max-width: calc(100vw - 16px) !important; }
   .bp-sheet-popup { position: fixed !important; left: 8px !important; right: 8px !important; top: auto !important;
@@ -179,33 +202,33 @@ export const globalCss = () => `
 
 export const inputStyle: React.CSSProperties = live(() => ({
   width: '100%',
-  padding: '7px 9px',
+  padding: '8px 10px',
   background: C.bg,
   border: `1px solid ${C.border}`,
-  borderRadius: 6,
+  borderRadius: 8,
   color: C.text,
-  fontSize: 13,
+  fontSize: 14,
 }));
 
 export const labelStyle: React.CSSProperties = live(() => ({
   display: 'block',
-  fontSize: 12,
+  fontSize: 12.5,
   color: C.muted,
   fontWeight: 600,
-  marginBottom: 4,
+  marginBottom: 5,
 }));
 
 export const panelStyle: React.CSSProperties = live(() => ({
-  background: C.panel,
+  background: C.panelAlt,
   border: `1px solid ${C.line}`,
-  borderRadius: 10,
+  borderRadius: 12,
   padding: 16,
 }));
 
 export const cardStyle: React.CSSProperties = live(() => ({
-  background: C.bg,
+  background: C.panelAlt,
   border: `1px solid ${C.line}`,
-  borderRadius: 8,
+  borderRadius: 10,
   padding: '10px 12px',
 }));
 
@@ -215,12 +238,12 @@ export const cardStyle: React.CSSProperties = live(() => ({
 type ButtonVariant = 'primary' | 'success' | 'danger' | 'warning' | 'ghost' | 'subtle' | 'violet';
 
 const VARIANTS: Record<ButtonVariant, React.CSSProperties> = live(() => ({
-  primary: { background: C.brand, color: C.brandInk, border: `1px solid ${C.brand}` },
-  success: { background: C.greenStrong, color: '#fff', border: `1px solid ${C.greenStrong}` },
+  primary: { background: C.brand, color: C.brandInk, border: `1px solid ${C.brand}`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,.28), 0 2px 0 rgba(0,0,0,.28)' },
+  success: { background: C.greenStrong, color: '#fff', border: `1px solid ${C.greenStrong}`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,.2), 0 2px 0 rgba(0,0,0,.28)' },
   danger: { background: 'transparent', color: C.red, border: `1px solid ${C.red}66` },
   warning: { background: 'transparent', color: C.amber, border: `1px solid ${C.amber}66` },
-  violet: { background: C.accentStrong, color: '#fff', border: `1px solid ${C.accentStrong}` },
-  subtle: { background: C.raised, color: C.textSoft, border: `1px solid ${C.border}` },
+  violet: { background: C.accentStrong, color: '#fff', border: `1px solid ${C.accentStrong}`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,.18), 0 2px 0 rgba(0,0,0,.28)' },
+  subtle: { background: C.raised, color: C.textSoft, border: `1px solid ${C.border}`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,.05), 0 1px 0 rgba(0,0,0,.25)' },
   ghost: { background: 'transparent', color: C.muted, border: '1px solid transparent' },
 }));
 
@@ -231,8 +254,8 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 }
 
 export function Button({ variant = 'subtle', size = 'md', block, style, disabled, ...rest }: ButtonProps) {
-  const pad = size === 'sm' ? '4px 9px' : size === 'lg' ? '10px 16px' : '6px 12px';
-  const fontSize = size === 'sm' ? 12 : size === 'lg' ? 14 : 13;
+  const pad = size === 'sm' ? '5px 10px' : size === 'lg' ? '11px 18px' : '7px 14px';
+  const fontSize = size === 'sm' ? 13 : size === 'lg' ? 15.5 : 14;
   return (
     <button
       type="button"
@@ -240,10 +263,10 @@ export function Button({ variant = 'subtle', size = 'md', block, style, disabled
       {...rest}
       style={{
         padding: pad,
-        borderRadius: 6,
+        borderRadius: 8,
         fontWeight: 600,
         fontSize,
-        lineHeight: 1.3,
+        lineHeight: 1.25,
         cursor: disabled ? 'not-allowed' : 'pointer',
         width: block ? '100%' : undefined,
         display: 'inline-flex',
@@ -252,7 +275,7 @@ export function Button({ variant = 'subtle', size = 'md', block, style, disabled
         gap: 6,
         whiteSpace: 'nowrap',
         ...VARIANTS[variant],
-        ...(disabled ? { background: C.raised, color: C.faint, border: `1px solid ${C.line}` } : null),
+        ...(disabled ? { background: C.raised, color: C.faint, border: `1px solid ${C.line}`, boxShadow: 'none' } : null),
         ...style,
       }}
     />
@@ -280,10 +303,10 @@ export function Chip({
       type="button"
       onClick={onClick}
       style={{
-        padding: '4px 10px',
+        padding: '5px 12px',
         borderRadius: 999,
         border: `1px solid ${active ? activeColor : C.border}`,
-        fontSize: 12,
+        fontSize: 13,
         fontWeight: 600,
         cursor: 'pointer',
         background: active ? activeColor : 'transparent',
@@ -312,7 +335,7 @@ export function Segmented<T extends string>({
   block?: boolean;
 }) {
   return (
-    <div style={{ display: block ? 'flex' : 'inline-flex', width: block ? '100%' : undefined, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 7, padding: 2, gap: 2 }}>
+    <div style={{ display: block ? 'flex' : 'inline-flex', width: block ? '100%' : undefined, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 9, padding: 3, gap: 2 }}>
       {options.map((o) => {
         const on = o.value === value;
         return (
@@ -324,15 +347,15 @@ export function Segmented<T extends string>({
             aria-pressed={on}
             style={{
               flex: block ? 1 : undefined,
-              padding: block ? '4px 2px' : size === 'sm' ? '3px 9px' : '5px 12px',
-              fontSize: size === 'sm' ? 12 : 13,
+              padding: block ? '5px 2px' : size === 'sm' ? '4px 10px' : '6px 13px',
+              fontSize: size === 'sm' ? 13 : 14,
               fontWeight: 600,
-              borderRadius: 5,
+              borderRadius: 6,
               border: 'none',
               cursor: 'pointer',
               background: on ? C.raised : 'transparent',
               color: on ? C.text : C.muted,
-              boxShadow: on ? `inset 0 0 0 1px ${C.border}` : 'none',
+              boxShadow: on ? `inset 0 -2px 0 ${C.brand}, inset 0 0 0 1px ${C.border}` : 'none',
             }}
           >
             {o.label}
@@ -348,15 +371,17 @@ export function Pill({ color, children, solid }: { color: string; children: Reac
   return (
     <span
       style={{
-        fontSize: 11.5,
-        padding: '1px 8px',
-        borderRadius: 999,
+        fontSize: 12.5,
+        padding: '1px 7px',
+        borderRadius: 5,
         background: solid ? `${color}26` : 'transparent',
         color,
-        border: `1px solid ${color}55`,
-        fontWeight: 600,
+        border: `1px solid ${color}66`,
+        fontFamily: DISPLAY,
+        fontWeight: 700,
+        letterSpacing: '0.02em',
         whiteSpace: 'nowrap',
-        lineHeight: 1.6,
+        lineHeight: 1.5,
       }}
     >
       {children}
@@ -429,8 +454,8 @@ export function Stepper({
   step?: number;
 }) {
   const btn: React.CSSProperties = {
-    width: 28,
-    height: 28,
+    width: 30,
+    height: 30,
     display: 'grid',
     placeItems: 'center',
     background: C.raised,
@@ -441,7 +466,7 @@ export function Stepper({
   };
   return (
     <div style={{ display: 'inline-flex', alignItems: 'stretch' }}>
-      <button type="button" aria-label="Decrease" style={{ ...btn, borderRadius: '6px 0 0 6px' }} onClick={() => onChange(Math.max(min, value - step))}>
+      <button type="button" aria-label="Decrease" style={{ ...btn, borderRadius: '8px 0 0 8px' }} onClick={() => onChange(Math.max(min, value - step))}>
         <Icon name="minus" size={14} />
       </button>
       <NumberField
@@ -449,9 +474,9 @@ export function Stepper({
         min={min}
         max={max}
         onChange={onChange}
-        style={{ width: 56, textAlign: 'center', borderRadius: 0, borderLeft: 'none', borderRight: 'none', padding: '4px 4px', height: 28 }}
+        style={{ width: 58, textAlign: 'center', borderRadius: 0, borderLeft: 'none', borderRight: 'none', padding: '4px 4px', height: 30, fontFamily: DISPLAY, fontSize: 15, fontWeight: 600 }}
       />
-      <button type="button" aria-label="Increase" style={{ ...btn, borderRadius: '0 6px 6px 0' }} onClick={() => onChange(Math.min(max, value + step))}>
+      <button type="button" aria-label="Increase" style={{ ...btn, borderRadius: '0 8px 8px 0' }} onClick={() => onChange(Math.min(max, value + step))}>
         <Icon name="plus" size={14} />
       </button>
     </div>
@@ -490,8 +515,8 @@ export function DayPicker({ days, onChange }: { days: WeekDays; onChange: (d: We
           onClick={() => onChange(days.map((d, i) => (i === idx ? !d : d)))}
           style={{
             flex: 1,
-            padding: '6px 0',
-            borderRadius: 6,
+            padding: '7px 0',
+            borderRadius: 8,
             border: `1px solid ${days[idx] ? C.accentStrong : C.border}`,
             fontWeight: 600,
             fontSize: 12,
@@ -535,7 +560,9 @@ export function ModalShell({
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(6, 10, 18, 0.7)',
+        background: 'rgba(4, 7, 13, 0.62)',
+        backdropFilter: 'blur(3px)',
+        WebkitBackdropFilter: 'blur(3px)',
         display: 'flex',
         alignItems: 'flex-start',
         justifyContent: 'center',
@@ -548,15 +575,14 @@ export function ModalShell({
       <div
         role="dialog"
         style={{
-          background: C.panel,
-          border: `1px solid ${C.border}`,
-          borderRadius: 12,
+          ...glass('f2'),
+          borderRadius: 16,
           width: '100%',
           maxWidth,
           maxHeight: 'calc(100dvh - 68px)',
           overflowY: 'auto',
           padding: 22,
-          boxShadow: '0 24px 60px rgba(0,0,0,0.6)',
+          boxShadow: '0 28px 70px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05)',
         }}
       >
         {children}
@@ -568,7 +594,7 @@ export function ModalShell({
 export const TOPBAR_H = 52;
 export const RAIL_W = 72;
 
-/** Panel that slides in from the left, over the map, next to the nav rail. */
+/** Panel that floats in on the left, over the map, between the top bar and the toolbar. */
 export function SidePanel({
   title,
   subtitle,
@@ -598,34 +624,34 @@ export function SidePanel({
       style={{
         position: 'absolute',
         top: 'var(--bp-top-h)',
-        left: 'var(--bp-rail-w)',
+        left: 'var(--bp-gap)',
         bottom: 'var(--bp-bottom-h)',
-        width: `min(${width}px, calc(100vw - var(--bp-rail-w) - 24px))`,
-        background: C.panel,
-        borderRight: `1px solid ${C.line}`,
-        boxShadow: '12px 0 40px rgba(0,0,0,0.45)',
+        width: `min(${width}px, calc(100vw - 2 * var(--bp-gap) - 24px))`,
+        ...glass('ee'),
+        borderRadius: 16,
+        overflow: 'hidden',
         zIndex: 40,
         display: 'flex',
         flexDirection: 'column',
         animation: 'bp-panel-in .16s ease-out',
       }}
     >
-      <header className="bp-panel-head" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px 14px', borderBottom: `1px solid ${C.line}` }}>
+      <header className="bp-panel-head" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px 12px', borderBottom: `1px solid ${C.line}`, background: `linear-gradient(${C.raised}66, transparent)` }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 650, color: C.text, letterSpacing: '-0.01em' }}>{title}</h2>
-          {subtitle && <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>{subtitle}</div>}
+          <h2 style={{ margin: 0, fontSize: 25, fontWeight: 700, lineHeight: 1.1, color: C.text }}>{title}</h2>
+          {subtitle && <div style={{ fontSize: 13, color: C.muted, marginTop: 3 }}>{subtitle}</div>}
         </div>
         {actions}
         <button
           type="button"
           aria-label="Close panel"
           onClick={onClose}
-          style={{ background: 'transparent', border: 'none', color: C.muted, cursor: 'pointer', padding: 6, borderRadius: 6 }}
+          style={{ background: C.raised, border: `1px solid ${C.border}`, color: C.textSoft, cursor: 'pointer', width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', padding: 0 }}
         >
-          <Icon name="close" size={18} />
+          <Icon name="close" size={16} />
         </button>
       </header>
-      <div className="bp-panel-body" style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '16px 20px 24px', overscrollBehavior: 'contain' }}>
+      <div className="bp-panel-body" style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '14px 18px 22px', overscrollBehavior: 'contain' }}>
         {children}
       </div>
     </section>
@@ -635,7 +661,7 @@ export function SidePanel({
 export function SectionTitle({ children, color = C.textSoft, right }: { children: React.ReactNode; color?: string; right?: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '0 0 8px' }}>
-      <div style={{ fontSize: 13, fontWeight: 650, color }}>{children}</div>
+      <div style={{ fontFamily: DISPLAY, fontSize: 17, fontWeight: 700, letterSpacing: '0.01em', color }}>{children}</div>
       {right}
     </div>
   );
@@ -644,7 +670,7 @@ export function SectionTitle({ children, color = C.textSoft, right }: { children
 /** Thin horizontal progress bar. */
 export function Meter({ pct, gradient, height = 6 }: { pct: number; gradient: string; height?: number }) {
   return (
-    <div style={{ height, background: C.line, borderRadius: 4, overflow: 'hidden' }}>
+    <div style={{ height, background: C.line, borderRadius: 999, overflow: 'hidden' }}>
       <div style={{ width: `${Math.max(0, Math.min(100, pct))}%`, height: '100%', background: gradient, transition: 'width 0.25s ease' }} />
     </div>
   );
@@ -654,8 +680,8 @@ export function Meter({ pct, gradient, height = 6 }: { pct: number; gradient: st
 export function Stat({ label, value, sub }: { label: string; value: React.ReactNode; sub?: string }) {
   return (
     <div>
-      <div style={{ fontSize: 11.5, color: C.muted }}>{label}</div>
-      <div className="num" style={{ fontSize: 15, fontWeight: 600, color: C.text, marginTop: 1 }}>
+      <div style={{ fontSize: 12.5, color: C.muted }}>{label}</div>
+      <div className="num" style={{ fontFamily: DISPLAY, fontSize: 20, fontWeight: 600, lineHeight: 1.15, color: C.text, marginTop: 1 }}>
         {value}
       </div>
       {sub && <div style={{ fontSize: 11, color: C.faint }}>{sub}</div>}
@@ -665,8 +691,8 @@ export function Stat({ label, value, sub }: { label: string; value: React.ReactN
 
 export function EmptyState({ title, body, action }: { title: string; body?: string; action?: React.ReactNode }) {
   return (
-    <div style={{ padding: '36px 20px', textAlign: 'center', border: `1px dashed ${C.border}`, borderRadius: 10 }}>
-      <div style={{ fontSize: 14, fontWeight: 600, color: C.textSoft }}>{title}</div>
+    <div style={{ padding: '36px 20px', textAlign: 'center', border: `1px dashed ${C.border}`, borderRadius: 14, background: `${C.bg}66` }}>
+      <div style={{ fontFamily: DISPLAY, fontSize: 20, fontWeight: 700, color: C.textSoft }}>{title}</div>
       {body && <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4, maxWidth: 420, marginInline: 'auto' }}>{body}</div>}
       {action && <div style={{ marginTop: 14 }}>{action}</div>}
     </div>

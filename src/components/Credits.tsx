@@ -67,6 +67,7 @@ export function CreditsModal({ onClose }: { onClose: () => void }) {
         <Section title="Software">
           <Item name="React">© Meta Platforms, Inc. and affiliates, under the MIT licence.</Item>
           <Item name="Tauri">© Tauri Programme within The Commons Conservancy, under the MIT and Apache 2.0 licences.</Item>
+          <Item name="Barlow and Barlow Condensed">Typefaces by Jeremy Tribby, © 2017 The Barlow Project Authors, under the SIL Open Font License 1.1 ({link('https://github.com/jpt/barlow')}).</Item>
           <div style={{ fontSize: 12, color: C.muted }}>Full licence texts are in THIRD_PARTY_NOTICES.md, which comes with the game.</div>
         </Section>
 

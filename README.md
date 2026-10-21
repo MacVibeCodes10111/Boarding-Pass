@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 2.34. Free to play. See [Credits and licences](#credits-and-licences).
+Version 2.35. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -20,6 +20,10 @@ Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 2.35:
+
+- **A new look.** Panels, the top bar and the airport drawer now float over the map as see-through cards, the sections are in a toolbar along the bottom of the screen, and headings and numbers use a bold condensed typeface based on airport signage (bundled with the game, so it works offline). Buttons are chunkier, your cash has a gold coin, and the map clock shows LIVE. Your themes and colours from Appearance apply to all of it.
 
 Version 2.34:
 

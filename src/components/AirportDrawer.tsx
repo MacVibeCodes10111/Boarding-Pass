@@ -18,7 +18,7 @@ import {
 import { airportRestrictionFor, calcHubPurchasePriceUsd, calcHubSaleRefundUsd, getAirportMaxAircraftTier } from '../game/tiers';
 import { formatClockShort, formatMoneyM } from '../game/time';
 import type { Airport, Fares, PlayerAircraft, ScheduledFlight, WeekDays } from '../game/types';
-import { Button, C, DayPicker, Field, Pill, SectionTitle, Segmented, inputStyle } from '../ui/kit';
+import { Button, C, DayPicker, Field, Pill, SectionTitle, Segmented, inputStyle, glass } from '../ui/kit';
 import { ErrorBanner, FaresEditor } from './AircraftScheduleModal';
 import { RouteDemandBar } from './RouteDemandBar';
 import { ScheduleTimeline } from './ScheduleTimeline';
@@ -192,17 +192,15 @@ export function AirportDrawer({
       className="bp-drawer"
       style={{
         position: 'absolute',
-        top: 'calc(var(--bp-top-h) + 12px)',
-        right: 12,
-        bottom: 12,
-        width: 'min(440px, calc(100vw - var(--bp-rail-w) - 24px))',
+        top: 'var(--bp-top-h)',
+        right: 'var(--bp-gap)',
+        bottom: 'var(--bp-bottom-h)',
+        width: 'min(440px, calc(100vw - 2 * var(--bp-gap) - 24px))',
         overscrollBehavior: 'contain',
-        background: C.panel,
-        border: `1px solid ${C.border}`,
-        borderRadius: 12,
+        ...glass('ee'),
+        borderRadius: 16,
         overflowY: 'auto',
         zIndex: 35,
-        boxShadow: '0 20px 50px rgba(0,0,0,0.55)',
         animation: 'bp-fade-in .14s ease-out',
       }}
     >

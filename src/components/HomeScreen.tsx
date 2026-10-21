@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { getAirportMaxAircraftTier } from '../game/tiers';
 import type { Airport, GameMode, SaveGameState } from '../game/types';
 import { Icon } from '../ui/icons';
-import { Button, C, Field, SearchInput, Segmented, inputStyle } from '../ui/kit';
+import { Button, C, Field, SearchInput, Segmented, inputStyle, glass } from '../ui/kit';
 import { useLayout } from '../ui/layout';
 import { APP_VERSION } from '../version';
 import { CreditsModal } from './Credits';
@@ -50,6 +50,12 @@ export function HomeScreen(props: HomeScreenProps) {
       .slice(0, 6);
   }, [airports, hubSearch]);
 
+  // Behind everything: every airport in the game as a faint dot, like a departures map
+  const dots = useMemo(
+    () => airports.map((a) => `M${(((a.longitude_deg + 180) / 360) * 1600).toFixed(1)} ${(((90 - a.latitude_deg) / 180) * 800).toFixed(1)}h0`).join(''),
+    [airports]
+  );
+
   return (
     <div
       style={{
@@ -57,22 +63,26 @@ export function HomeScreen(props: HomeScreenProps) {
         height: '100dvh',
         overflowY: 'auto',
         color: C.text,
-        background: `radial-gradient(1200px 600px at 20% -10%, ${C.raised} 0%, transparent 60%), ${C.bg}`,
+        position: 'relative',
+        background: `radial-gradient(1200px 700px at 25% -10%, ${C.raised} 0%, transparent 65%), ${C.bg}`,
         display: 'flex',
         justifyContent: 'center',
         padding: phone ? '20px 14px calc(28px + env(safe-area-inset-bottom, 0px))' : 32,
         alignItems: phone ? 'flex-start' : 'center',
       }}
     >
-      <div className="bp-stack" style={{ width: '100%', maxWidth: 1040, display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 28, margin: 'auto 0' }}>
+      <svg aria-hidden viewBox="0 0 1600 800" preserveAspectRatio="xMidYMid slice" style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+        <path d={dots} stroke={C.border} strokeWidth={2.4} strokeLinecap="round" opacity={0.75} />
+      </svg>
+      <div className="bp-stack" style={{ position: 'relative', width: '100%', maxWidth: 1040, display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 28, margin: 'auto 0' }}>
         {/* New career */}
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 26 }}>
-            <div style={{ width: 48, height: 48, borderRadius: 10, background: C.brand, color: C.brandInk, display: 'grid', placeItems: 'center' }}>
-              <Icon name="fleet" size={28} />
+            <div style={{ width: 56, height: 56, borderRadius: 14, background: C.brand, color: C.brandInk, display: 'grid', placeItems: 'center', flex: 'none', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.3), 0 3px 0 rgba(0,0,0,.3)' }}>
+              <Icon name="fleet" size={32} />
             </div>
             <div>
-              <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.1 }}>Boarding Pass</h1>
+              <h1 style={{ margin: 0, fontSize: 44, fontWeight: 700, lineHeight: 1 }}>Boarding Pass</h1>
               <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>
                 Version {APP_VERSION}. {airports.length.toLocaleString()} airports, {props.aircraftCount} aircraft types.{' '}
                 <button type="button" onClick={() => setShowCredits(true)} style={{ background: 'none', border: 'none', color: C.accent, fontSize: 13, cursor: 'pointer', padding: 0 }}>
@@ -98,8 +108,8 @@ export function HomeScreen(props: HomeScreenProps) {
             </div>
           </div>
 
-          <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: 22 }}>
-            <div style={{ fontSize: 16, fontWeight: 650, marginBottom: 16 }}>Start a new airline</div>
+          <div style={{ ...glass('e8'), borderRadius: 16, padding: 22 }}>
+            <h2 style={{ margin: '0 0 16px', fontSize: 24, fontWeight: 700 }}>Start a new airline</h2>
 
             <div className="bp-home-names" style={{ display: 'grid', gridTemplateColumns: phone ? '1fr 80px' : '1fr 90px 1fr', gap: 12, marginBottom: 16 }}>
               <Field label="Airline name">
@@ -184,9 +194,9 @@ export function HomeScreen(props: HomeScreenProps) {
         </div>
 
         {/* Saved careers */}
-        <div style={{ paddingTop: 74 }}>
+        <div style={{ ...glass('e0'), borderRadius: 16, padding: 22, marginTop: phone ? 0 : 82, alignSelf: 'start' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <div style={{ fontSize: 16, fontWeight: 650 }}>Continue</div>
+            <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>Continue</h2>
             <Button size="sm" variant="ghost" onClick={() => importRef.current?.click()}>
               <Icon name="upload" size={14} />
               Import save file

@@ -19,7 +19,7 @@ import { DAY_NAMES_SHORT, dayIndexOf, formatClockShort } from '../game/time';
 import { HEIGHT_HINT, TILT_HINT } from '../game/platform';
 import type { GameMode } from '../game/types';
 import { Icon, type IconName } from '../ui/icons';
-import { C, Segmented } from '../ui/kit';
+import { C, DISPLAY, Segmented, glass } from '../ui/kit';
 import { isTouchFirst, useLayout } from '../ui/layout';
 
 export type PanelId = 'fleet' | 'buy' | 'schedule' | 'airports' | 'bank' | 'stats';
@@ -68,8 +68,8 @@ function Readout({ label, children, title }: { label: string; children: React.Re
       onClick={title && isTouchFirst() ? () => setShow((v) => !v) : undefined}
       style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0, flex: 'none' }}
     >
-      <div style={{ fontSize: 11, color: C.faint, lineHeight: 1.2, whiteSpace: 'nowrap' }}>{label}</div>
-      <div className="num" style={{ fontSize: 14, fontWeight: 600, color: C.text, lineHeight: 1.35, whiteSpace: 'nowrap' }}>
+      <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.15, whiteSpace: 'nowrap' }}>{label}</div>
+      <div className="num" style={{ fontFamily: DISPLAY, fontSize: 19, fontWeight: 600, color: C.text, lineHeight: 1.15, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 5 }}>
         {children}
       </div>
       {show && title && (
@@ -104,7 +104,29 @@ function Readout({ label, children, title }: { label: string; children: React.Re
   );
 }
 
-const Divider = () => <div style={{ width: 1, flex: 'none', alignSelf: 'stretch', margin: '10px 0', background: C.line }} />;
+const Divider = () => <div style={{ width: 1, flex: 'none', alignSelf: 'stretch', margin: '12px 0', background: C.line }} />;
+
+/** A gold coin next to your cash, like any airline game */
+const Coin = () => (
+  <span
+    aria-hidden
+    style={{ width: 15, height: 15, flex: 'none', borderRadius: '50%', background: 'radial-gradient(circle at 35% 30%, #ffe9a3, #f2c14e 45%, #b9861c)', boxShadow: 'inset 0 0 0 1.5px #a5771499, 0 1px 1px rgba(0,0,0,.4)' }}
+  />
+);
+
+/** One floating card of the top bar (flat inside the phone's bar) */
+const topCard = (extra?: React.CSSProperties): React.CSSProperties => ({
+  ...glass(),
+  borderRadius: 13,
+  height: 50,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 16,
+  padding: '0 14px',
+  flex: 'none',
+  pointerEvents: 'auto',
+  ...extra,
+});
 
 export function TopBar(props: {
   airlineName: string;
@@ -141,133 +163,141 @@ export function TopBar(props: {
   const paused = props.econSpeed === 'paused';
   return (
     <header
-      style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        height: 'var(--bp-top-h)',
-        display: 'flex',
-        alignItems: 'stretch',
-        gap: phone ? 10 : 18,
-        padding: phone ? '0 6px 0 0' : '0 14px 0 0',
-        background: C.panel,
-        borderBottom: `1px solid ${C.line}`,
-        zIndex: 50,
-      }}
+      className={phone ? 'bp-topbar bp-glass' : 'bp-topbar'}
+      style={
+        phone
+          ? { position: 'absolute', top: 0, left: 0, right: 0, height: 'var(--bp-top-h)', display: 'flex', alignItems: 'stretch', gap: 10, padding: '0 6px 0 0', zIndex: 50, borderRadius: 0, borderWidth: '0 0 1px 0' }
+          : // Floating cards over the map; the map shows (and takes clicks) between them
+            { position: 'absolute', top: 10, left: 10, right: 10, height: 50, display: 'flex', alignItems: 'stretch', gap: 8, zIndex: 50, pointerEvents: 'none' }
+      }
     >
-      {/* Airline mark */}
-      <div style={{ width: phone ? 50 : 72, flex: 'none', display: 'grid', placeItems: 'center', borderRight: `1px solid ${C.line}` }}>
+      {/* Airline mark and name */}
+      <div className="bp-topcard bp-topcard-airline" title={props.airlineName} style={topCard({ gap: 11, padding: phone ? 0 : '0 16px 0 7px', width: phone ? 50 : undefined, justifyContent: phone ? 'center' : undefined, maxWidth: 280 })}>
         <div
           style={{
-            width: phone ? 32 : 36,
-            height: phone ? 32 : 36,
-            borderRadius: 8,
+            width: phone ? 32 : 38,
+            height: phone ? 32 : 38,
+            borderRadius: 9,
             background: C.brand,
             color: C.brandInk,
             display: 'grid',
             placeItems: 'center',
-            fontWeight: 800,
-            fontSize: 14,
-            letterSpacing: '0.02em',
+            fontFamily: DISPLAY,
+            fontWeight: 700,
+            fontSize: 16,
+            letterSpacing: '0.03em',
+            flex: 'none',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,.3), 0 2px 0 rgba(0,0,0,.3)',
           }}
         >
           {props.airlineIata || 'BP'}
         </div>
-      </div>
-      {/* Everything between the mark and the layers button; swipe sideways on a phone */}
-      <div className="bp-topbar-strip bp-scroll-x" style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'stretch', gap: phone ? 14 : 18 }}>
-      <div className="bp-hide-phone" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0, maxWidth: 220 }}>
-        <div style={{ fontSize: 14, fontWeight: 650, color: C.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{props.airlineName}</div>
-        <div style={{ fontSize: 11.5, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {props.hubs.length === 1 ? `Hub ${props.hubs[0]}` : `Hubs ${props.hubs.join(', ')}`}
+        <div className="bp-hide-phone bp-hide-tablet" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
+          <div style={{ fontFamily: DISPLAY, fontSize: 18, fontWeight: 700, lineHeight: 1.1, color: C.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{props.airlineName}</div>
+          <div style={{ fontSize: 12, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {props.hubs.length === 1 ? `Hub ${props.hubs[0]}` : `Hubs ${props.hubs.join(', ')}`}
+          </div>
         </div>
       </div>
 
-      <Divider />
-      <Readout label="Cash">
-        <span style={{ color: props.cash < 0 ? C.red : C.text }}>{props.gameMode === 'sandbox' ? 'Unlimited' : compactMoney(props.cash)}</span>
-      </Readout>
-      <Readout
-        label="Profit this week"
-        title={`Flights ${money(w.flightProfit)}, leases ${money(-w.leaseCost)}${interest ? `, interest ${money(-interest)}` : ''}. Repaying a loan's principal isn't a cost, so only interest counts.${props.lastWeek ? `\nLast week ${money(ledgerNet(props.lastWeek))}.` : ''}`}
-      >
-        <span style={{ color: tone(net) }}>{money(net)}</span>
-      </Readout>
-      {career && (
-        <Readout label="Cash flow" title={flowTitle}>
-          <span className="bp-cashflow" style={{ color: tone(rate.net) }}>
-            {signedCompact(rate.net)}
-            <span style={{ color: C.muted, fontWeight: 500 }}>/wk</span>
-          </span>
-        </Readout>
-      )}
-      {career && (debt || props.money.insolvent) && (
-        <button
-          type="button"
-          className="bp-debt"
-          onClick={props.onOpenDebt}
-          title={
-            props.money.insolvent
-              ? 'The bank has declared your airline insolvent. Open the bank to settle.'
-              : `Loans ${compactMoney(debt!.principal)}${debt!.overdraft ? `, overdraft ${compactMoney(debt!.overdraft)}` : ''}. Interest still to pay ${compactMoney(debt!.interestLeft)}. Instalments ${compactMoney(debt!.weekly)} a week${debt!.debtFreeWeek ? `, debt-free in week ${debt!.debtFreeWeek}` : ''}.${props.money.overdrawnWeeks ? `\nOverdrawn when ${props.money.overdrawnWeeks} week${props.money.overdrawnWeeks === 1 ? '' : 's'} closed: two in a row and the bank declares you insolvent.` : ''}\nClick to manage your loans.`
-          }
-          style={{ all: 'unset', cursor: 'pointer', display: 'flex' }}
-        >
-          <Readout label={props.money.insolvent ? 'Insolvent' : debt!.overdraft ? 'Debt (overdrawn)' : 'Debt'}>
-            <span style={{ color: props.money.insolvent || debt!.overdraft ? C.red : C.amber }}>{props.money.insolvent ? 'Settle now' : compactMoney(debt!.total)}</span>
+      {/* Money, the economy and the map clock; swipe sideways on a phone */}
+      <div className="bp-topbar-strip bp-scroll-x" style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'stretch', gap: phone ? 14 : 8, pointerEvents: phone ? 'auto' : 'none' }}>
+        <div className="bp-topcard" style={topCard()}>
+          <Readout label="Cash">
+            <Coin />
+            <span style={{ color: props.cash < 0 ? C.red : C.text }}>{props.gameMode === 'sandbox' ? 'Unlimited' : compactMoney(props.cash)}</span>
           </Readout>
-        </button>
-      )}
+          <Divider />
+          <Readout
+            label="Profit this week"
+            title={`Flights ${money(w.flightProfit)}, leases ${money(-w.leaseCost)}${interest ? `, interest ${money(-interest)}` : ''}. Repaying a loan's principal isn't a cost, so only interest counts.${props.lastWeek ? `\nLast week ${money(ledgerNet(props.lastWeek))}.` : ''}`}
+          >
+            <span style={{ color: tone(net) }}>{money(net)}</span>
+          </Readout>
+          {career && (
+            <Readout label="Cash flow" title={flowTitle}>
+              <span className="bp-cashflow" style={{ color: tone(rate.net) }}>
+                {signedCompact(rate.net)}
+                <span style={{ color: C.muted, fontWeight: 500, fontSize: 14 }}>/wk</span>
+              </span>
+            </Readout>
+          )}
+          {career && (debt || props.money.insolvent) && (
+            <button
+              type="button"
+              className="bp-debt"
+              onClick={props.onOpenDebt}
+              title={
+                props.money.insolvent
+                  ? 'The bank has declared your airline insolvent. Open the bank to settle.'
+                  : `Loans ${compactMoney(debt!.principal)}${debt!.overdraft ? `, overdraft ${compactMoney(debt!.overdraft)}` : ''}. Interest still to pay ${compactMoney(debt!.interestLeft)}. Instalments ${compactMoney(debt!.weekly)} a week${debt!.debtFreeWeek ? `, debt-free in week ${debt!.debtFreeWeek}` : ''}.${props.money.overdrawnWeeks ? `\nOverdrawn when ${props.money.overdrawnWeeks} week${props.money.overdrawnWeeks === 1 ? '' : 's'} closed: two in a row and the bank declares you insolvent.` : ''}\nClick to manage your loans.`
+              }
+              style={{ all: 'unset', cursor: 'pointer', display: 'flex' }}
+            >
+              <Readout label={props.money.insolvent ? 'Insolvent' : debt!.overdraft ? 'Debt (overdrawn)' : 'Debt'}>
+                <span style={{ color: props.money.insolvent || debt!.overdraft ? C.red : C.amber }}>{props.money.insolvent ? 'Settle now' : compactMoney(debt!.total)}</span>
+              </Readout>
+            </button>
+          )}
+        </div>
 
-      <Divider />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <button
-          type="button"
-          onClick={() => props.onEconSpeed(paused ? 'normal' : 'paused')}
-          title={paused ? 'Resume the economy' : 'Pause the economy (also stops catch-up while the game is closed)'}
-          aria-label={paused ? 'Resume economy' : 'Pause economy'}
-          style={{
-            width: 30,
-            height: 30,
-            borderRadius: 999,
-            display: 'grid',
-            placeItems: 'center',
-            cursor: 'pointer',
-            background: paused ? C.brand : C.raised,
-            color: paused ? C.brandInk : C.textSoft,
-            border: `1px solid ${paused ? C.brand : C.border}`,
-          }}
-        >
-          <Icon name={paused ? 'play' : 'pause'} size={14} />
-        </button>
-        <Readout label={paused ? 'Economy paused' : props.econSpeed === 'test' ? 'Economy (test speed)' : 'Economy, 1 week per day'}>
-          Week {econWeekOf(props.econMin)}, day {econDayOfWeek(props.econMin)}
-          <span style={{ color: C.muted, fontWeight: 500 }}> {formatClockShort(econMinOfDay(props.econMin))}</span>
-        </Readout>
-      </div>
+        <div className="bp-topcard" style={topCard({ gap: 11, paddingLeft: 9 })}>
+          <button
+            type="button"
+            onClick={() => props.onEconSpeed(paused ? 'normal' : 'paused')}
+            title={paused ? 'Resume the economy' : 'Pause the economy (also stops catch-up while the game is closed)'}
+            aria-label={paused ? 'Resume economy' : 'Pause economy'}
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 10,
+              display: 'grid',
+              placeItems: 'center',
+              cursor: 'pointer',
+              flex: 'none',
+              background: paused ? C.brand : C.raised,
+              color: paused ? C.brandInk : C.textSoft,
+              border: `1px solid ${paused ? C.brand : C.border}`,
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,.08), 0 2px 0 rgba(0,0,0,.25)',
+            }}
+          >
+            <Icon name={paused ? 'play' : 'pause'} size={14} />
+          </button>
+          <Readout label={paused ? 'Economy paused' : props.econSpeed === 'test' ? 'Economy (test speed)' : 'Economy, 1 week per day'}>
+            Week {econWeekOf(props.econMin)}, day {econDayOfWeek(props.econMin)}
+            <span style={{ color: C.muted, fontWeight: 500 }}>{formatClockShort(econMinOfDay(props.econMin))}</span>
+          </Readout>
+        </div>
 
-      <div style={{ flex: 1 }} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <Readout
-          label={props.mapSpeed === 'live' ? 'Map time, live' : paused ? 'Map time, paused with economy' : 'Map time, 7× with economy'}
-          title={props.mapSpeed === 'live' ? 'Planes are drawn where they would be right now (real UTC)' : 'Planes follow the economy clock, 7× faster than real time'}
-        >
-          {DAY_NAMES_SHORT[dayIndexOf(props.mapClock.day)]} {formatClockShort(props.mapClock.min)}
-          <span style={{ color: C.muted, fontWeight: 500 }}>{props.mapSpeed === 'live' ? ' UTC' : ''}</span>
-        </Readout>
-        <Segmented<MapSpeed>
-          size="sm"
-          value={props.mapSpeed}
-          onChange={props.onMapSpeed}
-          options={[
-            { value: 'live', label: '1×', title: 'Real time (UTC)' },
-            { value: 'x7', label: '7×', title: 'Follow the economy clock (7× real time)' },
-          ]}
-        />
+        <div style={{ flex: 1 }} />
+        <div className="bp-topcard" style={topCard({ gap: 12 })}>
+          <Readout
+            label={props.mapSpeed === 'live' ? 'Map time, live' : paused ? 'Map time, paused with economy' : 'Map time, 7× with economy'}
+            title={props.mapSpeed === 'live' ? 'Planes are drawn where they would be right now (real UTC)' : 'Planes follow the economy clock, 7× faster than real time'}
+          >
+            {props.mapSpeed === 'live' && (
+              <span
+                className="bp-live"
+                style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '0.06em', lineHeight: '16px', padding: '0 5px', borderRadius: 4, background: C.brand, color: C.brandInk }}
+              >
+                LIVE
+              </span>
+            )}
+            {DAY_NAMES_SHORT[dayIndexOf(props.mapClock.day)]} {formatClockShort(props.mapClock.min)}
+            <span style={{ color: C.muted, fontWeight: 500 }}>{props.mapSpeed === 'live' ? 'UTC' : ''}</span>
+          </Readout>
+          <Segmented<MapSpeed>
+            size="sm"
+            value={props.mapSpeed}
+            onChange={props.onMapSpeed}
+            options={[
+              { value: 'live', label: '1×', title: 'Real time (UTC)' },
+              { value: 'x7', label: '7×', title: 'Follow the economy clock (7× real time)' },
+            ]}
+          />
+        </div>
       </div>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', flex: 'none' }}>{props.layers}</div>
+      <div style={{ display: 'flex', alignItems: 'center', flex: 'none', pointerEvents: 'auto' }}>{props.layers}</div>
     </header>
   );
 }
@@ -290,7 +320,7 @@ function RailButton({
   onClick: () => void;
   title?: string;
   badge?: number;
-  /** In the phone's bottom tab bar. */
+  /** In the phone's bottom tab bar (otherwise the floating toolbar). */
   tab?: boolean;
 }) {
   return (
@@ -299,30 +329,32 @@ function RailButton({
       onClick={onClick}
       title={title ?? label}
       aria-current={active ? 'page' : undefined}
+      className="bp-dock-btn"
       style={{
         position: 'relative',
-        width: tab ? undefined : '100%',
-        flex: tab ? '1 0 56px' : undefined,
-        padding: tab ? '8px 2px 6px' : '10px 0 8px',
+        flex: tab ? '1 0 58px' : 'none',
+        width: tab ? undefined : 70,
+        height: tab ? undefined : 58,
+        padding: tab ? '7px 2px 5px' : '7px 0 5px',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        gap: 4,
-        background: active ? C.panelAlt : 'transparent',
+        justifyContent: 'center',
+        gap: 3,
+        borderRadius: tab ? 0 : 12,
+        background: active ? (tab ? 'transparent' : C.raised) : 'transparent',
         border: 'none',
-        color: active ? C.text : C.muted,
+        boxShadow: active && !tab ? `inset 0 0 0 1px ${C.border}, inset 0 -2px 0 ${C.brand}` : 'none',
+        color: active ? C.text : C.textDim,
         cursor: 'pointer',
-        fontSize: 11,
+        fontFamily: DISPLAY,
+        fontSize: 14,
         fontWeight: 600,
+        letterSpacing: '0.01em',
       }}
     >
-      {active &&
-        (tab ? (
-          <span style={{ position: 'absolute', top: 0, left: 10, right: 10, height: 3, borderRadius: 2, background: C.brand }} />
-        ) : (
-          <span style={{ position: 'absolute', left: 0, top: 8, bottom: 8, width: 3, borderRadius: 2, background: C.brand }} />
-        ))}
-      <Icon name={icon} size={20} color={active ? C.brand : 'currentColor'} />
+      {active && tab && <span style={{ position: 'absolute', top: 0, left: 12, right: 12, height: 3, borderRadius: 2, background: C.brand }} />}
+      <Icon name={icon} size={22} color={active ? C.brand : 'currentColor'} />
       {label}
       {badge ? (
         <span
@@ -330,18 +362,20 @@ function RailButton({
           aria-label={`${badge} new`}
           style={{
             position: 'absolute',
-            top: 5,
+            top: 4,
             left: '50%',
-            marginLeft: 6,
-            minWidth: 16,
-            height: 16,
+            marginLeft: 7,
+            minWidth: 17,
+            height: 17,
             padding: '0 4px',
             borderRadius: 999,
-            background: C.brand,
-            color: C.brandInk,
-            fontSize: 10,
+            background: C.red,
+            color: '#fff',
+            fontFamily: DISPLAY,
+            fontSize: 11.5,
             fontWeight: 700,
-            lineHeight: '16px',
+            lineHeight: '17px',
+            boxShadow: `0 0 0 2px ${C.panel}`,
           }}
         >
           {badge > 9 ? '9+' : badge}
@@ -372,12 +406,32 @@ export function NavRail(props: {
   const phone = useLayout() === 'phone';
   const title = (id: PanelId, label: string) =>
     id === 'fleet' ? `Fleet (${props.fleetCount})` : id === 'bank' ? 'Loans, milestones and letters from the bank' : id === 'stats' ? 'Your airline in numbers' : label;
+  const buttons = (tab: boolean) => (
+    <>
+      <RailButton tab={tab} icon="map" label="Map" active={props.activePanel === null} onClick={() => props.onOpen(null)} title="Close panels and show the map" />
+      {items.map(([id, icon, label]) => (
+        <RailButton
+          tab={tab}
+          key={id}
+          icon={icon}
+          label={label}
+          active={props.activePanel === id}
+          onClick={() => props.onOpen(props.activePanel === id ? null : id)}
+          title={title(id, label)}
+          badge={id === 'bank' ? props.bankBadge : undefined}
+        />
+      ))}
+      {!tab && <span aria-hidden style={{ width: 1, alignSelf: 'stretch', margin: '10px 4px', background: C.line }} />}
+      <RailButton tab={tab} icon="save" label="Save" onClick={props.onSave} title="Save career now (it also autosaves every minute)" />
+      <RailButton tab={tab} icon="menu" label="Menu" onClick={props.onMenu} title={`Main menu (Boarding Pass ${props.version})`} />
+    </>
+  );
   if (phone) {
     // Bottom tab bar: every section one tap away, swipe sideways for Save and Menu
     return (
       <nav
         aria-label="Main"
-        className="bp-tabbar bp-scroll-x"
+        className="bp-tabbar bp-scroll-x bp-glass"
         style={{
           position: 'absolute',
           left: 0,
@@ -385,62 +439,40 @@ export function NavRail(props: {
           bottom: 0,
           height: 'var(--bp-bottom-h)',
           paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-          background: C.panel,
-          borderTop: `1px solid ${C.line}`,
+          borderRadius: 0,
+          borderWidth: '1px 0 0 0',
           display: 'flex',
           zIndex: 45,
         }}
       >
-        <RailButton tab icon="map" label="Map" active={props.activePanel === null} onClick={() => props.onOpen(null)} title="Close panels and show the map" />
-        {items.map(([id, icon, label]) => (
-          <RailButton
-            tab
-            key={id}
-            icon={icon}
-            label={label}
-            active={props.activePanel === id}
-            onClick={() => props.onOpen(props.activePanel === id ? null : id)}
-            title={title(id, label)}
-            badge={id === 'bank' ? props.bankBadge : undefined}
-          />
-        ))}
-        <RailButton tab icon="save" label="Save" onClick={props.onSave} title="Save career now (it also autosaves every minute)" />
-        <RailButton tab icon="menu" label="Menu" onClick={props.onMenu} title="Main menu" />
+        {buttons(true)}
       </nav>
     );
   }
+  // Desktop and tablet: a floating toolbar along the bottom of the map
   return (
     <nav
       aria-label="Main"
+      className="bp-dock"
       style={{
+        ...glass(),
         position: 'absolute',
-        top: 'var(--bp-top-h)',
-        left: 0,
-        bottom: 0,
-        width: 72,
-        background: C.panel,
-        borderRight: `1px solid ${C.line}`,
+        left: '50%',
+        bottom: 12,
+        transform: 'translateX(-50%)',
+        maxWidth: 'calc(100vw - 20px)',
         display: 'flex',
-        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 2,
+        padding: 4,
+        borderRadius: 16,
         zIndex: 45,
       }}
     >
-      <RailButton icon="map" label="Map" active={props.activePanel === null} onClick={() => props.onOpen(null)} title="Close panels and show the map" />
-      {items.map(([id, icon, label]) => (
-        <RailButton
-          key={id}
-          icon={icon}
-          label={label}
-          active={props.activePanel === id}
-          onClick={() => props.onOpen(props.activePanel === id ? null : id)}
-          title={id === 'fleet' ? `Fleet (${props.fleetCount})` : id === 'bank' ? 'Loans, milestones and letters from the bank' : id === 'stats' ? 'Your airline in numbers' : label}
-          badge={id === 'bank' ? props.bankBadge : undefined}
-        />
-      ))}
-      <div style={{ flex: 1 }} />
-      <RailButton icon="save" label="Save" onClick={props.onSave} title="Save career now (it also autosaves every minute)" />
-      <RailButton icon="menu" label="Menu" onClick={props.onMenu} title="Main menu" />
-      <div style={{ fontSize: 10, color: C.faint, textAlign: 'center', padding: '4px 0 8px' }}>v{props.version}</div>
+      {buttons(false)}
+      <span className="num" aria-hidden style={{ alignSelf: 'flex-end', fontSize: 10.5, color: C.faint, padding: '0 6px 4px 2px' }}>
+        v{props.version}
+      </span>
     </nav>
   );
 }
@@ -452,7 +484,7 @@ function Switch({ on, onChange, label, hint }: { on: boolean; onChange: (v: bool
   return (
     <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '6px 0' }}>
       <span style={{ flex: 1 }}>
-        <span style={{ display: 'block', fontSize: 13, color: C.text }}>{label}</span>
+        <span style={{ display: 'block', fontSize: 14, color: C.text }}>{label}</span>
         {hint && <span style={{ display: 'block', fontSize: 11.5, color: C.faint }}>{hint}</span>}
       </span>
       <button
@@ -483,7 +515,7 @@ function MenuSection({ title, aside, children, first }: { title: string; aside?:
   return (
     <div style={{ borderTop: first ? 'none' : `1px solid ${C.line}`, paddingTop: first ? 2 : 10, marginTop: first ? 0 : 10 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-        <span style={{ fontSize: 12, fontWeight: 650, color: C.muted }}>{title}</span>
+        <span style={{ fontFamily: DISPLAY, fontSize: 15.5, fontWeight: 700, color: C.textSoft }}>{title}</span>
         {aside}
       </div>
       {children}
@@ -523,6 +555,7 @@ export function LayersMenu(props: {
   onPlaneIconScale: (v: number) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const phone = useLayout() === 'phone';
   const [credits, setCredits] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -552,23 +585,21 @@ export function LayersMenu(props: {
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         style={{
+          ...(phone ? { background: open ? C.raised : 'transparent', border: `1px solid ${open ? C.border : C.line}`, padding: '6px 12px', borderRadius: 9 } : { ...glass(), height: 50, padding: '0 16px', borderRadius: 13 }),
           display: 'flex',
           alignItems: 'center',
-          gap: 7,
-          padding: '6px 12px',
-          borderRadius: 7,
+          gap: 8,
           cursor: 'pointer',
-          fontSize: 13,
+          fontFamily: DISPLAY,
+          fontSize: 17,
           fontWeight: 600,
-          background: open ? C.raised : 'transparent',
-          color: C.textSoft,
-          border: `1px solid ${open ? C.border : C.line}`,
+          color: open ? C.text : C.textSoft,
         }}
       >
-        <Icon name="layers" size={16} />
+        <Icon name="layers" size={18} color={open ? C.brand : 'currentColor'} />
         Map layers
         {activeCount > 0 && (
-          <span className="num" style={{ fontSize: 11, background: C.raised, color: C.textDim, borderRadius: 999, padding: '0 6px', lineHeight: '17px' }}>
+          <span className="num" style={{ fontSize: 13, background: C.brand, color: C.brandInk, borderRadius: 999, padding: '0 6px', lineHeight: '18px', fontWeight: 700 }}>
             {activeCount}
           </span>
         )}
@@ -587,10 +618,8 @@ export function LayersMenu(props: {
             maxHeight: 'calc(100dvh - var(--bp-top-h) - var(--bp-bottom-h) - 16px)',
             overscrollBehavior: 'contain',
             overflowY: 'auto',
-            background: C.panel,
-            border: `1px solid ${C.border}`,
-            borderRadius: 10,
-            boxShadow: '0 18px 44px rgba(0,0,0,0.55)',
+            ...glass('f0'),
+            borderRadius: 14,
             padding: '12px 14px 14px',
             zIndex: 60,
           }}

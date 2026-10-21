@@ -44,7 +44,7 @@ import { OVERDRAFT_RATE_PCT, econWeekOf, type WeekLedger } from '../game/clock';
 import { MIN_PER_WEEK } from '../game/time';
 import type { BankLetter, CareerState, GameMode, PlayerAircraft } from '../game/types';
 import { Icon } from '../ui/icons';
-import { Button, C, EmptyState, Meter, Segmented, SidePanel, Stat, inputStyle } from '../ui/kit';
+import { Button, C, EmptyState, Meter, Segmented, SidePanel, Stat, inputStyle, glass } from '../ui/kit';
 
 type Tab = 'programme' | 'loans' | 'letters';
 
@@ -750,15 +750,13 @@ export function MilestoneCard({
     <div
       style={{
         position: 'absolute',
-        left: 'calc(var(--bp-rail-w) + 12px)',
-        bottom: 'calc(var(--bp-bottom-h) + 12px)',
+        left: 'max(8px, calc(var(--bp-gap) + 2px))',
+        bottom: 'calc(var(--bp-bottom-h) + 8px - var(--bp-gap))',
         width: 'min(300px, calc(100vw - 24px))',
-        background: C.panel,
-        border: `1px solid ${C.border}`,
-        borderRadius: 10,
+        ...glass(),
+        borderRadius: 14,
         padding: '10px 12px 12px',
         zIndex: 30,
-        boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
