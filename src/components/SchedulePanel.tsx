@@ -26,6 +26,8 @@ interface Rotation {
 
 type GroupBy = 'hub' | 'aircraft';
 const COLLAPSE_KEY = 'bp_schedule_collapsed_v1';
+/** Rows drawn per group before "Show more". */
+const ROW_PAGE = 40;
 interface Group {
   key: string;
   title: string;
@@ -54,6 +56,9 @@ export function SchedulePanel({ schedule, fleet, hubs, primaryHub, airportByIata
       /* storage unavailable */
     }
   };
+  // Big airlines: each group draws its first rows, with "Show more" for the rest
+  const [limits, setLimits] = useState<Record<string, number>>({});
+  const fleetByTail = useMemo(() => new Map(fleet.map((f) => [f.tailNumber, f])), [fleet]);
   const toggleGroup = (key: string) => {
     const n = new Set(collapsed);
     if (n.has(key)) n.delete(key);
@@ -238,8 +243,8 @@ export function SchedulePanel({ schedule, fleet, hubs, primaryHub, airportByIata
                 </button>
                 {open && (
                 <div style={{ border: `1px solid ${C.line}`, borderRadius: 8, overflow: 'hidden' }}>
-                  {group.rotations.map(({ outbound, returnLeg, chainSummary }, i) => {
-                    const ac = fleet.find((f) => f.tailNumber === outbound.tailNumber);
+                  {group.rotations.slice(0, limits[group.key] ?? ROW_PAGE).map(({ outbound, returnLeg, chainSummary }, i) => {
+                    const ac = fleetByTail.get(outbound.tailNumber);
                     const econOut = econById.get(outbound.id);
                     const profit = (econOut?.profit ?? 0) + (returnLeg ? econById.get(returnLeg.id)?.profit ?? 0 : 0);
                     return (
@@ -280,13 +285,20 @@ export function SchedulePanel({ schedule, fleet, hubs, primaryHub, airportByIata
                           <Button size="sm" onClick={() => onEdit(outbound.tailNumber, outbound.id)}>
                             Edit
                           </Button>
-                          <Button size="sm" variant="ghost" onClick={() => onDelete(outbound.id)} title={returnLeg ? 'Delete both legs' : 'Delete this flight'}>
+                          <Button size="sm" variant="danger" onClick={() => onDelete(outbound.id)} title={returnLeg ? 'Delete both legs' : 'Delete this flight'}>
                             Delete
                           </Button>
                         </div>
                       </div>
                     );
                   })}
+                  {group.rotations.length > (limits[group.key] ?? ROW_PAGE) && (
+                    <div style={{ padding: 8, borderTop: `1px solid ${C.line}`, display: 'flex', justifyContent: 'center' }}>
+                      <Button size="sm" onClick={() => setLimits((l) => ({ ...l, [group.key]: (l[group.key] ?? ROW_PAGE) + ROW_PAGE * 2 }))}>
+                        Show more ({(group.rotations.length - (limits[group.key] ?? ROW_PAGE)).toLocaleString()} left)
+                      </Button>
+                    </div>
+                  )}
                 </div>
                 )}
               </section>

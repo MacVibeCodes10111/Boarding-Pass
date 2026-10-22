@@ -6,6 +6,9 @@ import type { AircraftModel, CabinConfig, PlayerAircraft, ScheduledFlight } from
 import { Button, C, EmptyState, SearchInput, Segmented, SidePanel, inputStyle } from '../ui/kit';
 import { BulkCabinModal, ManageAircraftModal, ReplaceAircraftModal } from './FleetActions';
 
+/** Rows drawn per group before "Show more". */
+const ROW_PAGE = 40;
+
 export interface FleetPanelProps {
   fleet: PlayerAircraft[];
   schedule: ScheduledFlight[];
@@ -65,6 +68,8 @@ export function FleetPanel(props: FleetPanelProps) {
   };
   const [show, setShow] = useState<Show>('all');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Big fleets: each group draws its first rows, with "Show more" for the rest
+  const [limits, setLimits] = useState<Record<string, number>>({});
   const [dialog, setDialog] = useState<{ kind: 'manage' | 'cabin' | 'replace'; tails: string[] } | null>(null);
   const toggle = (tail: string) =>
     setSelected((prev) => {
@@ -243,7 +248,7 @@ export function FleetPanel(props: FleetPanelProps) {
               </div>
             )}
           <div style={{ border: `1px solid ${C.line}`, borderRadius: 8, overflow: 'hidden' }}>
-            {rows.map(({ ac, usage, circuit }, i) => (
+            {rows.slice(0, limits[groupKey] ?? ROW_PAGE).map(({ ac, usage, circuit }, i) => (
               <div
                 key={ac.tailNumber}
                 className="bp-row bp-fleet-row"
@@ -296,6 +301,13 @@ export function FleetPanel(props: FleetPanelProps) {
                 </div>
               </div>
             ))}
+            {rows.length > (limits[groupKey] ?? ROW_PAGE) && (
+              <div style={{ padding: 8, borderTop: `1px solid ${C.line}`, display: 'flex', justifyContent: 'center' }}>
+                <Button size="sm" onClick={() => setLimits((l) => ({ ...l, [groupKey]: (l[groupKey] ?? ROW_PAGE) + ROW_PAGE * 2 }))}>
+                  Show more ({(rows.length - (limits[groupKey] ?? ROW_PAGE)).toLocaleString()} left)
+                </Button>
+              </div>
+            )}
           </div>
           </section>
           ))}

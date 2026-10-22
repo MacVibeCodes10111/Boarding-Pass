@@ -1,7 +1,7 @@
 // ============================================================================
 // CABIN LAYOUT, PASSENGER + CARGO DEMAND & FLIGHT ECONOMICS
 // ============================================================================
-import { marketDemand, PLAYER_MARKET_SHARE } from './demand';
+import { gameMarket, marketDemand, PLAYER_MARKET_SHARE } from './demand';
 import { daysOrAll } from './time';
 import type { AircraftModel, Airport, CabinConfig, Fares, PlayerAircraft, ScheduledFlight } from './types';
 
@@ -124,7 +124,8 @@ export function getRouteDemandAndFares(
   playerHubs: string[] = [],
   allSchedule: ScheduledFlight[] = []
 ) {
-  const market = marketDemand(origin.iata_code, destination.iata_code);
+  const raw = marketDemand(origin.iata_code, destination.iata_code);
+  const market = raw === null ? null : gameMarket(raw);
   const baseRawPax = market === null ? fallbackPax(origin, destination, distanceNm) : market * PLAYER_MARKET_SHARE;
 
   const cargoWeight = (ap: Airport) =>

@@ -6,7 +6,7 @@
 import React, { useEffect, useState } from 'react';
 import { DAY_LETTERS } from '../game/time';
 import type { WeekDays } from '../game/types';
-import { Icon } from './icons';
+import { Icon, type IconName } from './icons';
 import './fonts';
 import { DEFAULT_PALETTE, buildPalette, loadThemeSpec, saveThemeSpec, themeFromUrl, type Palette, type ThemeSpec } from './theme';
 
@@ -194,8 +194,12 @@ export const globalCss = () => `
   html[data-layout=phone] .bp-buy-details { overflow: visible !important; }
   html[data-layout=phone] .bp-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   html[data-layout=phone] .bp-tiles > :first-child { grid-column: 1 / -1; }
-  html[data-layout=phone] .bp-fleet-row { grid-template-columns: 28px minmax(0, 1fr) auto !important; }
-  html[data-layout=phone] .bp-fleet-row > :nth-child(3), html[data-layout=phone] .bp-fleet-row > :nth-child(4) { grid-column: 2 / -1; }
+  html[data-layout=phone] .bp-fleet-row { grid-template-columns: 22px 24px minmax(0, 1fr) auto !important; row-gap: 6px !important; column-gap: 10px !important; }
+  html[data-layout=phone] .bp-fleet-row > :nth-child(1), html[data-layout=phone] .bp-fleet-row > :nth-child(2) { grid-row: 1; }
+  html[data-layout=phone] .bp-fleet-row > :nth-child(3) { grid-column: 3; grid-row: 1; }
+  html[data-layout=phone] .bp-fleet-row > :nth-child(4) { grid-column: 3 / -1; grid-row: 2; }
+  html[data-layout=phone] .bp-fleet-row > :nth-child(5) { grid-column: 3 / -1; grid-row: 3; }
+  html[data-layout=phone] .bp-fleet-row > :nth-child(6) { grid-column: 4; grid-row: 1; }
   html[data-layout=phone] .bp-debt-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   html[data-layout=phone] .bp-debt-grid > :last-child { grid-column: 1 / -1; }
   html[data-layout=phone] .bp-goal { grid-template-columns: 22px minmax(0, 1fr) !important; }
@@ -244,11 +248,12 @@ type ButtonVariant = 'primary' | 'success' | 'danger' | 'warning' | 'ghost' | 's
 const VARIANTS: Record<ButtonVariant, React.CSSProperties> = live(() => ({
   primary: { background: C.brand, color: C.brandInk, border: `1px solid ${C.brand}`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,.28), 0 2px 0 rgba(0,0,0,.28)' },
   success: { background: C.greenStrong, color: '#fff', border: `1px solid ${C.greenStrong}`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,.2), 0 2px 0 rgba(0,0,0,.28)' },
-  danger: { background: 'transparent', color: C.red, border: `1px solid ${C.red}66` },
-  warning: { background: 'transparent', color: C.amber, border: `1px solid ${C.amber}66` },
+  danger: { background: `${C.red}14`, color: C.red, border: `1px solid ${C.red}99`, boxShadow: '0 2px 0 rgba(0,0,0,.25)' },
+  warning: { background: `${C.amber}14`, color: C.amber, border: `1px solid ${C.amber}99`, boxShadow: '0 2px 0 rgba(0,0,0,.25)' },
   violet: { background: C.accentStrong, color: '#fff', border: `1px solid ${C.accentStrong}`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,.18), 0 2px 0 rgba(0,0,0,.28)' },
-  subtle: { background: C.raised, color: C.textSoft, border: `1px solid ${C.border}`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,.05), 0 1px 0 rgba(0,0,0,.25)' },
-  ghost: { background: 'transparent', color: C.muted, border: '1px solid transparent' },
+  // Every button reads as a button: a raised face, a lit edge and a shadow
+  subtle: { background: C.raised, color: C.text, border: `1px solid ${C.textDim}55`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,.09), 0 2px 0 rgba(0,0,0,.3)' },
+  ghost: { background: `${C.raised}99`, color: C.textSoft, border: `1px solid ${C.border}`, boxShadow: '0 1px 0 rgba(0,0,0,.25)' },
 }));
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -599,6 +604,67 @@ export const TOPBAR_H = 52;
 export const RAIL_W = 72;
 
 /** Panel that floats in on the left, over the map, between the top bar and the toolbar. */
+/**
+ * Tabs across the top of a side panel, for panels grouped under one toolbar
+ * button (My Airline: Overview, Fleet, Schedule; Buy: Aircraft, Airports).
+ * App provides them; every SidePanel inside shows them.
+ */
+export interface PanelTab {
+  id: string;
+  label: string;
+  icon?: IconName;
+}
+export interface PanelTabsValue {
+  group: string;
+  tabs: PanelTab[];
+  active: string;
+  onPick: (id: string) => void;
+}
+export const PanelTabsContext = React.createContext<PanelTabsValue | null>(null);
+
+function PanelTabsStrip({ v }: { v: PanelTabsValue }) {
+  return (
+    <nav
+      aria-label={v.group}
+      className="bp-panel-tabs bp-scroll-x"
+      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px 0', overflowX: 'auto', flex: 'none' }}
+    >
+      <span style={{ fontFamily: DISPLAY, fontSize: 15, fontWeight: 700, color: C.muted, marginRight: 4, whiteSpace: 'nowrap' }}>{v.group}</span>
+      {v.tabs.map((t) => {
+        const on = t.id === v.active;
+        return (
+          <button
+            key={t.id}
+            type="button"
+            aria-current={on ? 'page' : undefined}
+            onClick={() => v.onPick(t.id)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 7,
+              height: 38,
+              padding: '0 14px',
+              borderRadius: 10,
+              whiteSpace: 'nowrap',
+              cursor: 'pointer',
+              fontFamily: DISPLAY,
+              fontSize: 16,
+              fontWeight: 600,
+              color: on ? C.brandInk : C.textSoft,
+              background: on ? C.brand : C.raised,
+              border: `1px solid ${on ? C.brand : C.border}`,
+              boxShadow: on ? 'inset 0 1px 0 rgba(255,255,255,.28), 0 2px 0 rgba(0,0,0,.3)' : 'inset 0 1px 0 rgba(255,255,255,.06), 0 2px 0 rgba(0,0,0,.25)',
+            }}
+          >
+            {t.icon && <Icon name={t.icon} size={17} />}
+            {t.label}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
 export function SidePanel({
   title,
   subtitle,
@@ -620,6 +686,7 @@ export function SidePanel({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+  const tabs = React.useContext(PanelTabsContext);
 
   return (
     <section
@@ -640,6 +707,7 @@ export function SidePanel({
         animation: 'bp-panel-in .16s ease-out',
       }}
     >
+      {tabs && <PanelTabsStrip v={tabs} />}
       <header className="bp-panel-head" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px 12px', borderBottom: `1px solid ${C.line}`, background: `linear-gradient(${C.raised}66, transparent)` }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <h2 style={{ margin: 0, fontSize: 25, fontWeight: 700, lineHeight: 1.1, color: C.text }}>{title}</h2>

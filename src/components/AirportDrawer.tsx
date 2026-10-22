@@ -238,7 +238,7 @@ export function AirportDrawer({
               {airport.name}. Up to {tierInfo.sizeLabel.toLowerCase()} aircraft ({airport.max_runway_length_ft.toLocaleString()} ft runway).
             </div>
           </div>
-          <button type="button" aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: 4 }}>
+          <button type="button" aria-label="Close" onClick={onClose} style={{ background: C.raised, border: `1px solid ${C.border}`, color: C.textSoft, cursor: 'pointer', width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', padding: 0, flex: 'none' }}>
             <Icon name="close" size={18} />
           </button>
         </div>

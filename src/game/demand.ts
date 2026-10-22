@@ -269,5 +269,13 @@ export function applyNetworkWeights<T extends { iata_code: string; demand_weight
   return airports.map((a) => ({ ...a, demand_weight: weightOf.get(a.iata_code) ?? a.demand_weight }));
 }
 
+/**
+ * The travellers the game offers on a route: the model's estimate raised a
+ * little (v2.39), more for thin routes, so a small city pair still has a
+ * couple of hundred people a day and the busy ones some 20% more. Same-city
+ * pairs stay at none. Other airlines' schedules use the plain estimate.
+ */
+export const gameMarket = (v: number) => (v > 0 ? 1.2 * v + 200 * (1 - Math.exp(-v / 40)) : 0);
+
 /** Share of a route's travellers a player's airline can win (others fly it too). */
 export const PLAYER_MARKET_SHARE = 0.85;

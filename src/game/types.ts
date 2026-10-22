@@ -231,6 +231,8 @@ export interface SaveGameState {
   saveId: string;
   /** Opened from a save that wasn't protected (v2.38+): plays as Sandbox. */
   unprotected?: boolean;
+  /** v2.39+: the airports flights use, written once (flights name them by code). */
+  savedAirports?: Record<string, Airport>;
   airlineName: string;
   airlineIata: string;
   airlineCallsign: string;

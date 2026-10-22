@@ -31,7 +31,7 @@ export type MapStyleChoice = 'dark' | 'light' | 'satellite';
 const money = (v: number) => (Math.round(v) === 0 ? '$0' : `${v < 0 ? '−' : '+'}$${Math.abs(Math.round(v)).toLocaleString()}`);
 const compactMoney = (v: number): string => {
   if (v < 0) return `−${compactMoney(-v)}`;
-  return v >= 1e9 ? `$${(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : `$${Math.round(v).toLocaleString()}`;
+  return v >= 1e12 ? `$${(v / 1e12).toFixed(2)}T` : v >= 1e9 ? `$${(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : v >= 1e4 ? `$${(v / 1e3).toFixed(1)}K` : `$${Math.round(v).toLocaleString()}`;
 };
 /** +$1.2M / −$350,000 */
 const signedCompact = (v: number) => (Math.round(v) === 0 ? '$0' : `${v < 0 ? '−' : '+'}${compactMoney(Math.abs(v))}`);
@@ -107,14 +107,6 @@ function Readout({ label, children, title }: { label: string; children: React.Re
 
 const Divider = () => <div style={{ width: 1, flex: 'none', alignSelf: 'stretch', margin: '12px 0', background: C.line }} />;
 
-/** A gold coin next to your cash, like any airline game */
-const Coin = () => (
-  <span
-    aria-hidden
-    style={{ width: 15, height: 15, flex: 'none', borderRadius: '50%', background: 'radial-gradient(circle at 35% 30%, #ffe9a3, #f2c14e 45%, #b9861c)', boxShadow: 'inset 0 0 0 1.5px #a5771499, 0 1px 1px rgba(0,0,0,.4)' }}
-  />
-);
-
 /** Red DEV tag on test builds (dev branch), so they are never mistaken for the real game */
 export const DevTag = ({ big }: { big?: boolean }) =>
   IS_DEV ? (
@@ -156,6 +148,8 @@ export function TopBar(props: {
   lastWeek: WeekLedger | null;
   money: TopBarMoney;
   onOpenDebt: () => void;
+  /** The airline badge opens My Airline. */
+  onOpenAirline: () => void;
   layers: React.ReactNode;
 }) {
   const phone = useLayout() === 'phone';
@@ -185,7 +179,14 @@ export function TopBar(props: {
       }
     >
       {/* Airline mark and name */}
-      <div className="bp-topcard bp-topcard-airline" title={props.airlineName} style={topCard({ gap: 11, padding: phone ? 0 : '0 16px 0 7px', width: phone ? 50 : undefined, justifyContent: phone ? 'center' : undefined, maxWidth: 280 })}>
+      <button
+        type="button"
+        className="bp-topcard bp-topcard-airline bp-airline-btn"
+        onClick={props.onOpenAirline}
+        title={`${props.airlineName}: open My Airline`}
+        aria-label={`${props.airlineName}: open My Airline`}
+        style={{ ...topCard({ gap: 11, padding: phone ? 0 : '0 16px 0 7px', width: phone ? 50 : undefined, justifyContent: phone ? 'center' : undefined, maxWidth: 280 }), background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', textAlign: 'left', font: 'inherit' }}
+      >
         <div
           style={{
             width: phone ? 32 : 38,
@@ -212,7 +213,7 @@ export function TopBar(props: {
             {props.hubs.length === 1 ? `Hub ${props.hubs[0]}` : `Hubs ${props.hubs.join(', ')}`}
           </div>
         </div>
-      </div>
+      </button>
 
       {/* Money, the economy and the map clock; swipe sideways on a phone */}
       {!phone && <Divider />}
@@ -222,7 +223,6 @@ export function TopBar(props: {
       >
         <div className="bp-topcard" style={topCard()}>
           <Readout label="Cash">
-            <Coin />
             <span style={{ color: props.cash < 0 ? C.red : C.text }}>{props.gameMode === 'sandbox' ? 'Unlimited' : compactMoney(props.cash)}</span>
           </Readout>
           <Divider />
@@ -230,13 +230,13 @@ export function TopBar(props: {
             label="Profit this week"
             title={`Flights ${money(w.flightProfit)}, leases ${money(-w.leaseCost)}${interest ? `, interest ${money(-interest)}` : ''}. Repaying a loan's principal isn't a cost, so only interest counts.${props.lastWeek ? `\nLast week ${money(ledgerNet(props.lastWeek))}.` : ''}`}
           >
-            <span style={{ color: tone(net) }}>{money(net)}</span>
+            <span style={{ color: tone(net) }}>{phone ? signedCompact(net) : money(net)}</span>
           </Readout>
           {career && (
             <Readout label="Cash flow" title={flowTitle}>
               <span className="bp-cashflow" style={{ color: tone(rate.net) }}>
                 {signedCompact(rate.net)}
-                <span style={{ color: C.muted, fontWeight: 500, fontSize: 14 }}>/wk</span>
+                {!phone && <span style={{ color: C.muted, fontWeight: 500, fontSize: 14 }}>/wk</span>}
               </span>
             </Readout>
           )}
@@ -350,7 +350,7 @@ function RailButton({
       title={title ?? label}
       aria-current={active ? 'page' : undefined}
       className="bp-dock-btn"
-      data-tour={label.toLowerCase()}
+      data-tour={label.toLowerCase().replace(/\s+/g, '-')}
       style={{
         position: 'relative',
         flex: tab ? '1 1 0' : 'none',
@@ -408,42 +408,69 @@ function RailButton({
   );
 }
 
+/** Toolbar buttons that each open a group of panels (with tabs at the top). */
+export const PANEL_GROUPS: Record<'airline' | 'buy', { label: string; tabs: { id: PanelId; label: string; icon: IconName }[] }> = {
+  airline: {
+    label: 'My Airline',
+    tabs: [
+      { id: 'stats', label: 'Overview', icon: 'chart' },
+      { id: 'fleet', label: 'Fleet', icon: 'fleet' },
+      { id: 'schedule', label: 'Schedule', icon: 'schedule' },
+    ],
+  },
+  buy: {
+    label: 'Buy',
+    tabs: [
+      { id: 'buy', label: 'Aircraft', icon: 'buy' },
+      { id: 'airports', label: 'Airports & hubs', icon: 'airport' },
+    ],
+  },
+};
+export const groupOfPanel = (p: PanelId | null): 'airline' | 'buy' | null =>
+  !p ? null : PANEL_GROUPS.airline.tabs.some((t) => t.id === p) ? 'airline' : PANEL_GROUPS.buy.tabs.some((t) => t.id === p) ? 'buy' : null;
+
 export function NavRail(props: {
   activePanel: PanelId | null;
   fleetCount: number;
   /** Letters waiting in the Bank panel (unread or with a grant to collect). */
   bankBadge: number;
   onOpen: (p: PanelId | null) => void;
+  /** Opens a group on its last-used tab. */
+  onOpenGroup: (g: 'airline' | 'buy') => void;
   onSave: () => void;
   onMenu: () => void;
   version: string;
 }) {
-  const items: [PanelId, IconName, string][] = [
-    ['fleet', 'fleet', 'Fleet'],
-    ['buy', 'buy', 'Buy'],
-    ['schedule', 'schedule', 'Schedule'],
-    ['airports', 'airport', 'Airports'],
-    ['bank', 'bank', 'Bank'],
-    ['stats', 'chart', 'Stats'],
-  ];
+  const group = groupOfPanel(props.activePanel);
   const phone = useLayout() === 'phone';
-  const title = (id: PanelId, label: string) =>
-    id === 'fleet' ? `Fleet (${props.fleetCount})` : id === 'bank' ? 'Loans, milestones and letters from the bank' : id === 'stats' ? 'Your airline in numbers' : label;
   const buttons = (tab: boolean) => (
     <>
       <RailButton tab={tab} icon="map" label="Map" active={props.activePanel === null} onClick={() => props.onOpen(null)} title="Close panels and show the map" />
-      {items.map(([id, icon, label]) => (
-        <RailButton
-          tab={tab}
-          key={id}
-          icon={icon}
-          label={label}
-          active={props.activePanel === id}
-          onClick={() => props.onOpen(props.activePanel === id ? null : id)}
-          title={title(id, label)}
-          badge={id === 'bank' ? props.bankBadge : undefined}
-        />
-      ))}
+      <RailButton
+        tab={tab}
+        icon="fleet"
+        label="My Airline"
+        active={group === 'airline'}
+        onClick={() => (group === 'airline' ? props.onOpen(null) : props.onOpenGroup('airline'))}
+        title={`Your airline: overview, fleet (${props.fleetCount}) and schedule`}
+      />
+      <RailButton
+        tab={tab}
+        icon="buy"
+        label="Buy"
+        active={group === 'buy'}
+        onClick={() => (group === 'buy' ? props.onOpen(null) : props.onOpenGroup('buy'))}
+        title="Buy or lease aircraft, and buy hubs at airports"
+      />
+      <RailButton
+        tab={tab}
+        icon="bank"
+        label="Bank"
+        active={props.activePanel === 'bank'}
+        onClick={() => props.onOpen(props.activePanel === 'bank' ? null : 'bank')}
+        title="Loans, milestones and letters from the bank"
+        badge={props.bankBadge}
+      />
       {!tab && <span aria-hidden style={{ width: 1, alignSelf: 'stretch', margin: '10px 4px', background: C.line }} />}
       {/* On a phone Save lives in the menu (the career autosaves anyway) */}
       {!tab && <RailButton icon="save" label="Save" onClick={props.onSave} title="Save career now (it also autosaves every minute)" />}

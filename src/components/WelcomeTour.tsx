@@ -47,30 +47,24 @@ function steps(p: { airlineName: string; hubIata: string; sandbox: boolean }): S
       title: '1. Get an aircraft',
       target: 'buy',
       body: [
-        'Open Buy to buy or lease aircraft. Leasing costs only a deposit up front; choose how long the lease runs (longer is cheaper a day). You can return it early for part of the deposit, or buy it out later.',
+        'Buy has two tabs: Aircraft, and Airports & hubs. Buy or lease aircraft there. Leasing costs only a deposit up front; choose how long the lease runs (longer is cheaper a day). You can return it early for part of the deposit, or buy it out later.',
         'Set How many to get several at once.',
       ],
     },
     {
       title: '2. Plan a route',
-      target: 'airports',
       body: [
-        'Open an airport (on the map or from Airports). The planner picks an aircraft, a round trip and a time. The demand box shows how many people travel the route each day and who flies it today.',
+        'Tap the airport you fly from (your hub), then the airport to fly to. The planner opens with an aircraft, a round trip and a time. The demand box shows how many people travel the route each day and who flies it today.',
         'Fares start at the market price. Charge much more and fewer people buy; at three times the market price nobody does.',
       ],
     },
     {
-      title: '3. Run your fleet',
-      target: 'fleet',
+      title: '3. My Airline',
+      target: 'my-airline',
       body: [
-        'Fleet lists every aircraft with how busy it is. Tick several to sell, refit cabins, replace them with another type (their flights carry over) or schedule them together on one route.',
-        'Manage changes an aircraft’s registration, cabin and lease.',
+        'Overview, Fleet and Schedule, as tabs. Fleet lists every aircraft with how busy it is: tick several to sell, refit cabins, replace them with another type (their flights carry over) or schedule them together on one route.',
+        'Schedule shows every flight by hub or by aircraft. Your airline\u2019s badge in the top corner opens My Airline too.',
       ],
-    },
-    {
-      title: 'Your timetable',
-      target: 'schedule',
-      body: ['Schedule shows every flight by hub or by aircraft, with what each one earns. Click one to change its time, days or fares.'],
     },
     {
       title: 'The bank',

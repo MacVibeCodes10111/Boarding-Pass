@@ -15,7 +15,7 @@ import { AirportsPanel } from './components/AirportsPanel';
 import { BankPanel, MilestoneCard } from './components/BankPanel';
 import { BankruptcyModal } from './components/BankruptcyModal';
 import { BuyAircraftPanel } from './components/BuyAircraftPanel';
-import { LayersMenu, NavRail, TopBar, type MapStyleChoice, type PanelId } from './components/DashboardChrome';
+import { LayersMenu, NavRail, PANEL_GROUPS, TopBar, groupOfPanel, type MapStyleChoice, type PanelId } from './components/DashboardChrome';
 import { AppearanceHost } from './components/Appearance';
 import { FleetPanel } from './components/FleetPanel';
 import { HomeScreen } from './components/HomeScreen';
@@ -111,8 +111,9 @@ import type {
 } from './game/types';
 import { APP_VERSION } from './version';
 import { MainMenu } from './components/MainMenu';
+import { RouteFromBar } from './components/RouteFromBar';
 import { WelcomeTour, tourWantedForNewCareer } from './components/WelcomeTour';
-import { C, applyThemeToDocument, useThemeVersion } from './ui/kit';
+import { C, PanelTabsContext, applyThemeToDocument, useThemeVersion } from './ui/kit';
 import { initLayout } from './ui/layout';
 
 const STANDARD_START_CASH = 150_000_000;
@@ -212,6 +213,13 @@ export default function App() {
   const [screen, setScreen] = useState<'home' | 'dashboard'>('home');
   // The map is always on screen; everything else opens as a panel over it.
   const [panel, setPanel] = useState<PanelId | null>(null);
+  // Last tab used in each toolbar group (My Airline, Buy)
+  const [groupTab, setGroupTab] = useState<{ airline: PanelId; buy: PanelId }>({ airline: 'stats', buy: 'buy' });
+  useEffect(() => {
+    const g = groupOfPanel(panel);
+    if (g && panel) setGroupTab((t) => (t[g] === panel ? t : { ...t, [g]: panel }));
+  }, [panel]);
+  const openGroup = (g: 'airline' | 'buy') => setPanel(groupTab[g]);
 
   const [airlineName, setAirlineName] = useState(LAUNCH.name ?? 'Jetstream Airlines');
   const [airlineIata, setAirlineIata] = useState(LAUNCH.code ?? 'JT');
@@ -378,6 +386,18 @@ export default function App() {
 
   // Route builder & dialogs
   const [inspectedAirport, setInspectedAirport] = useState<Airport | null>(null);
+  // Route planning takes two taps: the airport you fly from, then where to.
+  // The planner opens only once both are picked.
+  const [routeFrom, setRouteFrom] = useState<Airport | null>(null);
+  useEffect(() => {
+    if (panel) setRouteFrom(null);
+  }, [panel]);
+  useEffect(() => {
+    if (!routeFrom) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setRouteFrom(null);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [routeFrom]);
   const [draft, setDraft] = useState<RouteDraft>(() => makeDraft('BOS', 'JT'));
   const updateDraft = useCallback((patch: Partial<RouteDraft>) => setDraft((d) => ({ ...d, ...patch })), []);
   const [scheduleModal, setScheduleModal] = useState<{ tail: string; flightId: string | null } | null>(null);
@@ -736,6 +756,7 @@ export default function App() {
   }, [screen]);
 
   const resetTransientUi = () => {
+    setRouteFrom(null);
     setInspectedAirport(null);
     setScheduleModal(null);
     setPanel(null);
@@ -1391,7 +1412,31 @@ export default function App() {
 
   const bankBadge = gameMode === 'standard' ? new Set([...uncollected(career), ...career.letters.filter((l) => !l.read)].map((l) => l.id)).size : 0;
 
+  /** An airport tapped on the map. */
+  const onMapAirport = (ap: Airport | null) => {
+    if (!ap) {
+      setRouteFrom(null);
+      setInspectedAirport(null);
+      return;
+    }
+    // Planner open: the tap picks a new destination (or the origin's own details)
+    if (inspectedAirport) {
+      setInspectedAirport(ap);
+      return;
+    }
+    if (!routeFrom) {
+      setRouteFrom(ap);
+      setPanel(null);
+      return;
+    }
+    // Second tap: same airport = its details; another = plan the route
+    if (ap.iata_code !== routeFrom.iata_code) updateDraft({ originIata: routeFrom.iata_code });
+    setRouteFrom(null);
+    setInspectedAirport(ap);
+  };
+
   const showAirportOnMap = (ap: Airport) => {
+    setRouteFrom(null);
     setInspectedAirport(ap);
     setPanel(null);
     mapRef.current?.flyTo({ center: [ap.longitude_deg, ap.latitude_deg], zoom: 6.2 });
@@ -1461,9 +1506,9 @@ export default function App() {
         mapDay={mapClock.day}
         mapMin={mapClock.min}
         airlineCallsign={airlineCallsign}
-        inspectedAirport={inspectedAirport}
-        onInspectAirport={setInspectedAirport}
-        previewOrigin={airportByIata.get(draft.originIata) ?? null}
+        inspectedAirport={inspectedAirport ?? routeFrom}
+        onInspectAirport={onMapAirport}
+        previewOrigin={routeFrom ? null : airportByIata.get(draft.originIata) ?? null}
         showWeatherRadar={showWeatherRadar}
         showApproaches={showApproaches}
         showNavaids={showNavaids}
@@ -1479,7 +1524,7 @@ export default function App() {
         onAiStats={setAiStats}
         getClock={getMapClock}
         mapRate={mapSpeed === 'live' ? 1 : ECONOMY_RATE[econSpeed] * 60}
-        planeInfoEnabled={!inspectedAirport}
+        planeInfoEnabled={!inspectedAirport && !routeFrom}
         onBlockedPlaneClick={onBlockedPlaneClick}
         customIcons={customIcons}
         navaidsVersion={navaidsVersion}
@@ -1501,6 +1546,7 @@ export default function App() {
         weekSoFar={econ.current}
         lastWeek={ledgerHistory[ledgerHistory.length - 1] ?? null}
         money={topBarMoney}
+        onOpenAirline={() => setPanel(groupOfPanel(panel) === 'airline' ? null : 'stats')}
         onOpenDebt={() => {
           if (career.insolvent) return setShowSettlement(true);
           setBankTab('loans');
@@ -1544,6 +1590,7 @@ export default function App() {
         fleetCount={fleet.length}
         bankBadge={bankBadge}
         onOpen={setPanel}
+        onOpenGroup={openGroup}
         onSave={saveCareer}
         onMenu={() => setMenuOpen(true)}
         version={APP_VERSION}
@@ -1577,6 +1624,17 @@ export default function App() {
         />
       )}
 
+      {routeFrom && !inspectedAirport && (
+        <RouteFromBar
+          airport={routeFrom}
+          isHub={hubs.includes(routeFrom.iata_code)}
+          onDetails={() => {
+            setInspectedAirport(routeFrom);
+            setRouteFrom(null);
+          }}
+          onCancel={() => setRouteFrom(null)}
+        />
+      )}
       {inspectedAirport && (
         <AirportDrawer
           airport={inspectedAirport}
@@ -1603,6 +1661,13 @@ export default function App() {
         />
       )}
 
+      <PanelTabsContext.Provider
+        value={
+          groupOfPanel(panel) && panel
+            ? { group: PANEL_GROUPS[groupOfPanel(panel)!].label, tabs: PANEL_GROUPS[groupOfPanel(panel)!].tabs, active: panel, onPick: (id) => setPanel(id as PanelId) }
+            : null
+        }
+      >
       {panel === 'fleet' && (
         <FleetPanel
           fleet={fleet}
@@ -1708,6 +1773,8 @@ export default function App() {
       {panel === 'airports' && (
         <AirportsPanel airports={airports} hubs={hubs} onInspect={showAirportOnMap} onBuy={buyHub} onSell={sellHub} onClose={closePanel} />
       )}
+
+      </PanelTabsContext.Provider>
 
       {modalAircraft && scheduleModal && (
           <AircraftScheduleModal

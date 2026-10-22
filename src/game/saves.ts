@@ -19,14 +19,25 @@ function slimAirport(ap: Airport): Airport {
   return rest;
 }
 
+/**
+ * The save as stored (v2.39+, much smaller for big airlines): each airport is
+ * written once in `savedAirports` and flights only name theirs by code;
+ * aircraft types are named by id when they are in the catalog. Older saves,
+ * with whole airports in every flight, still load.
+ */
 export function serializeSave(state: SaveGameState): SaveGameState {
+  const savedAirports: Record<string, Airport> = {};
+  const prev = state.savedAirports ?? {};
+  const ref = (ap: Airport) => {
+    // A save read back from storage already names airports by code: keep its stored copy
+    if (!savedAirports[ap.iata_code]) savedAirports[ap.iata_code] = Number.isFinite(ap.latitude_deg) ? slimAirport(ap) : prev[ap.iata_code] ?? ap;
+    return { iata_code: ap.iata_code } as Airport;
+  };
   return {
     ...state,
-    schedule: state.schedule.map((fl) => ({
-      ...fl,
-      origin: slimAirport(fl.origin),
-      destination: slimAirport(fl.destination),
-    })),
+    fleet: state.fleet.map((ac) => (AIRCRAFT_BY_ID.has(ac.model.id) ? { ...ac, model: { id: ac.model.id, name: ac.model.name } as PlayerAircraft['model'] } : ac)),
+    schedule: state.schedule.map((fl) => ({ ...fl, origin: ref(fl.origin), destination: ref(fl.destination) })),
+    savedAirports,
   };
 }
 
@@ -45,15 +56,14 @@ export function hydrateSave(raw: SaveGameState, airportByIata: Map<string, Airpo
     return { ...ac, model, cabin: ac.cabin ?? getDefaultCabinForModel(model) };
   });
   const tails = new Set(fleet.map((a) => a.tailNumber));
+  const saved = raw.savedAirports ?? {};
+  const link = (ap: Airport) => airportByIata.get(ap.iata_code) ?? saved[ap.iata_code] ?? ap;
   const schedule: ScheduledFlight[] = (raw.schedule ?? [])
     .filter((fl) => tails.has(fl.tailNumber))
-    .map((fl) => ({
-      ...fl,
-      origin: airportByIata.get(fl.origin.iata_code) ?? fl.origin,
-      destination: airportByIata.get(fl.destination.iata_code) ?? fl.destination,
-      daysOfWeek: [...daysOrAll(fl.daysOfWeek)],
-      fares: capFares(fl),
-    }));
+    .map((fl) => {
+      const linked = { ...fl, origin: link(fl.origin), destination: link(fl.destination), daysOfWeek: [...daysOrAll(fl.daysOfWeek)] };
+      return { ...linked, fares: capFares(linked) };
+    });
   const hubs = raw.hubs && raw.hubs.length > 0 ? raw.hubs : [raw.hubIata];
 
   return {
@@ -66,6 +76,7 @@ export function hydrateSave(raw: SaveGameState, airportByIata: Map<string, Airpo
     simDay: Number.isFinite(raw.simDay) && raw.simDay >= 1 ? Math.floor(raw.simDay) : 1,
     fleet,
     schedule,
+    savedAirports: undefined,
   };
 }
 

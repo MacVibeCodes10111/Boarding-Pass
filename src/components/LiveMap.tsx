@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { FlightEconomics } from '../game/economics';
-import { offsetLatLonNm } from '../game/geo';
+import { interpolateCoordPair, offsetLatLonNm } from '../game/geo';
 import {
   MAP_ICON_PIXEL_RATIO,
   RADAR_GROUPS,
@@ -425,7 +425,8 @@ function addLayers(map: any) {
     id: 'routes-arc',
     type: 'line',
     source: 'routes',
-    paint: { 'line-color': MAP_C.accent, 'line-width': 2.2, 'line-opacity': 0.88 },
+    // Thin when zoomed out, a little wider zoomed in
+    paint: { 'line-color': MAP_C.accent, 'line-width': ['interpolate', ['linear'], ['zoom'], 2, 0.7, 5, 1.2, 9, 1.8], 'line-opacity': 0.85 },
   });
   map.addLayer({
     id: 'preview-route-arc',
@@ -649,6 +650,18 @@ function addLayers(map: any) {
     paint: { 'text-color': ['get', 'color'], 'text-halo-color': MAP_C.bg, 'text-halo-width': 1.5 },
   });
 }
+
+/** Up to this many route lines are drawn with their departure and arrival patterns. */
+const ROUTE_LINES_DETAILED = 150;
+/** At most this many route lines (the busiest) are drawn. */
+const ROUTE_LINES_MAX = 2500;
+/** Most of your own aircraft drawn at once (they take the budget before other airlines). */
+const PLAYER_BUDGET = 1500;
+const PLAYER_BUDGET_PHONE = 600;
+/** More of yours than this on screen: they are redrawn 10× a second instead of 20×. */
+const PLAYER_BUSY = 400;
+/** Other airlines always keep at least this many aircraft on the map. */
+const AI_MIN_WITH_FLEET = 150;
 
 /** Every layer that draws aircraft (hidden while planning a route). */
 const PLANE_LAYERS = ['ai-planes-symbol', 'ai-planes-dot', 'ground-planes-symbol', 'live-planes-symbol', 'labels-3d-hit', 'labels-3d-text', 'ai-3d', 'planes-3d', 'planes-3d-stem'];
@@ -1671,18 +1684,44 @@ export function LiveMap(props: LiveMapProps) {
     const pairKey = (fl: ScheduledFlight) => [fl.origin.iata_code, fl.destination.iata_code].sort().join('<->');
     const tracked = trackedFlightId ? schedule.find((f) => f.id === trackedFlightId) : undefined;
     const seen = new Set<string>(tracked ? [pairKey(tracked)] : []); // the trail layers draw the tracked flight
-    const features: any[] = [];
+    // Which pairs to draw, busiest first
+    const pairs = new Map<string, { fl: ScheduledFlight; n: number }>();
     for (const fl of schedule) {
       const relevant =
         showAllRoutes ||
         (inspectedAirport && (fl.origin.iata_code === inspectedAirport.iata_code || fl.destination.iata_code === inspectedAirport.iata_code));
-      if (!relevant || seen.has(pairKey(fl))) continue;
-      seen.add(pairKey(fl));
-      features.push({
-        type: 'Feature',
-        geometry: { type: 'LineString', coordinates: buildFlightProcedureGeometry(fl.origin, fl.destination, mapDay, mapHour * 60).points },
-        properties: { flightNumber: fl.flightNumber },
-      });
+      if (!relevant) continue;
+      const k = pairKey(fl);
+      if (seen.has(k)) continue;
+      const p = pairs.get(k);
+      if (p) p.n++;
+      else pairs.set(k, { fl, n: 1 });
+    }
+    // Level of detail: with many routes they are drawn as plain great circles
+    // (no departure and arrival patterns), and past ROUTE_LINES_MAX only the
+    // busiest are drawn
+    const list = [...pairs.values()].sort((a, b) => b.n - a.n).slice(0, ROUTE_LINES_MAX);
+    const simple = list.length > ROUTE_LINES_DETAILED;
+    const features: any[] = [];
+    for (const { fl } of list) {
+      const a: LonLat = [fl.origin.longitude_deg, fl.origin.latitude_deg];
+      const b: LonLat = [fl.destination.longitude_deg, fl.destination.latitude_deg];
+      let coordinates: LonLat[];
+      if (simple) {
+        const n = Math.max(2, Math.min(32, Math.ceil(fl.distanceNm / 150)));
+        coordinates = Array.from({ length: n + 1 }, (_, i) => interpolateCoordPair(a, b, i / n));
+        for (let i = 1; i < coordinates.length; i++) {
+          while (coordinates[i][0] - coordinates[i - 1][0] > 180) coordinates[i] = [coordinates[i][0] - 360, coordinates[i][1]];
+          while (coordinates[i][0] - coordinates[i - 1][0] < -180) coordinates[i] = [coordinates[i][0] + 360, coordinates[i][1]];
+        }
+      } else coordinates = buildFlightProcedureGeometry(fl.origin, fl.destination, mapDay, mapHour * 60).points;
+      features.push({ type: 'Feature', geometry: { type: 'LineString', coordinates }, properties: { flightNumber: fl.flightNumber } });
+    }
+    // Many lines: fainter, so the map stays readable
+    try {
+      map.setPaintProperty?.('routes-arc', 'line-opacity', list.length > 300 ? 0.45 : list.length > 80 ? 0.65 : 0.85);
+    } catch {
+      /* layer not there yet */
     }
     map.getSource('routes')?.setData({ type: 'FeatureCollection', features });
   }, [schedule, showAllRoutes, inspectedAirport, trackedFlightId, mapDay, mapHour, mapReady, styleRev, mapRef]);
@@ -1752,6 +1791,9 @@ export function LiveMap(props: LiveMapProps) {
     const map = mapRef.current;
     if (!mapReady || !map) return;
     const FRAME_MS = 50; // ~20 fps
+    // Big airlines: your aircraft are drawn ~10×/s once there are many of them
+    const FRAME_MS_BUSY = 100;
+    let playerShown = 0;
     const POPUP_MS = 1000;
     const shownBearing = new Map<string, number>();
     let lastFrame = 0;
@@ -2139,7 +2181,7 @@ export function LiveMap(props: LiveMapProps) {
 
       // Hidden tab: keep data fresh about once a second, skip the animation work
       if (!st.visible && t - lastHidden < 1000) return;
-      if (t - lastFrame < FRAME_MS) return;
+      if (t - lastFrame < (playerShown > PLAYER_BUSY ? FRAME_MS_BUSY : FRAME_MS)) return;
       const dt = lastFrame ? t - lastFrame : FRAME_MS;
       lastFrame = t;
       lastHidden = t;
@@ -2194,6 +2236,18 @@ export function LiveMap(props: LiveMapProps) {
       const trackedGround = st.trackedFlightId ? [...groundPlayer.values()].find((g) => g.info.flight.id === st.trackedFlightId) : undefined;
 
       const drawnTails = new Set<string>();
+      // Level of detail for your own fleet: only aircraft in (or near) the view,
+      // and at most PLAYER_BUDGET of them (the selected one always). They come
+      // before other airlines, which get what's left of the budget.
+      const pb = (() => {
+        const raw = map.getBounds?.();
+        if (!raw) return null;
+        const w = raw.getWest(), e = raw.getEast(), so = raw.getSouth(), no = raw.getNorth();
+        const padX = (e - w) * 0.2, padY = (no - so) * 0.2;
+        return { w: w - padX, e: e + padX, s: so - padY, n: no + padY };
+      })();
+      const playerBudget = currentLayout() === 'phone' ? PLAYER_BUDGET_PHONE : PLAYER_BUDGET;
+      let playerCount = 0;
       for (const info of st.flightInfo) {
         cruiseById.set(info.flight.id, info.cruiseKts);
         const pos = getLiveFlightPosition(info.flight, clock.min, clock.day, info.cruiseKts);
@@ -2215,6 +2269,10 @@ export function LiveMap(props: LiveMapProps) {
           pos.phaseLabel = g.pose.phaseLabel;
           pos.groundSpeedKts = g.pose.speedKts;
         }
+        if (info.flight.id !== st.trackedFlightId) {
+          if (playerCount >= playerBudget || (pb && !inView(pos.coordinates[0], pos.coordinates[1], pb))) continue;
+        }
+        playerCount++;
         const bearing = Math.round(easeBearing(info.flight.id, pos.bearing, dt) * 10) / 10;
         // Height above the ground (altitudes are above sea level; the ground
         // rises or falls from one airport's elevation to the other's)
@@ -2257,6 +2315,7 @@ export function LiveMap(props: LiveMapProps) {
           features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: g.pose.coordinates }, properties: g.props });
         }
       }
+      playerShown = features.length;
       map.getSource('live-planes')?.setData({ type: 'FeatureCollection', features });
       if (k3 || p3dHasData) {
         map.getSource('planes-3d')?.setData({ type: 'FeatureCollection', features: bodies3d });
@@ -2311,7 +2370,8 @@ export function LiveMap(props: LiveMapProps) {
           aiLabels3d = [];
           const aiColor = aiTintFor(latest.current.mapStyle);
           // Each 3D aircraft is a few hundred vertices: fewer of them in 3D
-          const aiBudget = k3 ? Math.min(budget, AI_3D_MAX) : budget;
+          // Your aircraft come first: other airlines get the budget that is left
+          const aiBudget = Math.max(AI_MIN_WITH_FLEET, (k3 ? Math.min(budget, AI_3D_MAX) : budget) - playerShown);
           const trackedAiId = st.trackedFlightId?.startsWith('ai:') ? Number(st.trackedFlightId.slice(3)) : -1;
           // New takeoff/arrival procedures: at most ~6 ms of building per redraw; the rest follow next time
           const model = aiModel(traffic);

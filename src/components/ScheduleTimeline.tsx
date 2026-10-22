@@ -3,6 +3,7 @@ import { calcAircraftScheduleUsage, getAircraftCircuitStatus } from '../game/sch
 import { DAY_NAMES_SHORT, MIN_PER_DAY, daysOrAll, formatClockShort, formatDurationHm, shiftDays, snapToFiveMin } from '../game/time';
 import type { PlayerAircraft, ScheduledFlight, WeekDays } from '../game/types';
 import { C } from '../ui/kit';
+import { Icon } from '../ui/icons';
 
 export interface ScheduleTimelineProps {
   aircraft: PlayerAircraft;
@@ -157,9 +158,9 @@ export function ScheduleTimeline({
         userSelect: 'none',
       }}
     >
-      {/* Header & departure time */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 10 }}>
-        <div>
+      {/* Header, with the detailed view in the corner */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+        <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 600 }}>
             Departure time{' '}
             <span className="num" style={{ fontSize: 12, color: C.muted, fontWeight: 500 }}>
@@ -169,30 +170,46 @@ export function ScheduleTimeline({
           <div style={{ fontSize: 11.5, color: C.faint, marginTop: 2 }}>
             {othersCompact ? 'Drag across the week or type a time. Its other flights are the grey bars.' : 'Drag across the week or type a time. Click a grey flight to edit it.'}
           </div>
-          {onDetailedView && (
-            <button
-              type="button"
-              className="bp-link"
-              onClick={onDetailedView}
-              style={{ marginTop: 4, padding: 0, background: 'none', border: 'none', color: C.accent, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-            >
-              Detailed view of {aircraft.tailNumber}'s week
-            </button>
-          )}
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <StepButton label="−1h" onClick={() => onChangeDepMin(snapToFiveMin(selectedDepMin - 60))} />
-          <StepButton label="−5m" onClick={() => onChangeDepMin(snapToFiveMin(selectedDepMin - 5))} />
-          <div style={{ display: 'flex', alignItems: 'center', background: C.bg, border: `1px solid ${C.brand}88`, borderRadius: 6, padding: '3px 8px' }}>
-            <TimePart value={hh} max={23} onCommit={(h) => onChangeDepMin(snapToFiveMin(h * 60 + mm))} />
-            <span style={{ color: C.brand, fontWeight: 700 }}>:</span>
-            <TimePart value={mm} max={59} step={5} onCommit={(m) => onChangeDepMin(snapToFiveMin(hh * 60 + m))} />
-            <span style={{ fontSize: 11, color: C.faint, marginLeft: 4 }}>UTC</span>
-          </div>
-          <StepButton label="+5m" onClick={() => onChangeDepMin(snapToFiveMin(selectedDepMin + 5))} />
-          <StepButton label="+1h" onClick={() => onChangeDepMin(snapToFiveMin(selectedDepMin + 60))} />
+        {onDetailedView && (
+          <button
+            type="button"
+            className="bp-detail-btn"
+            onClick={onDetailedView}
+            title={`${aircraft.tailNumber}'s whole week: every flight, its demand and fares`}
+            style={{
+              flex: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '7px 11px',
+              borderRadius: 9,
+              cursor: 'pointer',
+              fontSize: 13,
+              fontWeight: 600,
+              color: C.text,
+              background: C.raised,
+              border: `1px solid ${C.accent}88`,
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,.08), 0 2px 0 rgba(0,0,0,.3)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <Icon name="schedule" size={15} color={C.accent} />
+            Detailed view
+          </button>
+        )}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', marginBottom: 10 }}>
+        <StepButton label="−1h" onClick={() => onChangeDepMin(snapToFiveMin(selectedDepMin - 60))} />
+        <StepButton label="−5m" onClick={() => onChangeDepMin(snapToFiveMin(selectedDepMin - 5))} />
+        <div style={{ display: 'flex', alignItems: 'center', background: C.bg, border: `1px solid ${C.brand}88`, borderRadius: 6, padding: '3px 8px' }}>
+          <TimePart value={hh} max={23} onCommit={(h) => onChangeDepMin(snapToFiveMin(h * 60 + mm))} />
+          <span style={{ color: C.brand, fontWeight: 700 }}>:</span>
+          <TimePart value={mm} max={59} step={5} onCommit={(m) => onChangeDepMin(snapToFiveMin(hh * 60 + m))} />
+          <span style={{ fontSize: 11, color: C.faint, marginLeft: 4 }}>UTC</span>
         </div>
+        <StepButton label="+5m" onClick={() => onChangeDepMin(snapToFiveMin(selectedDepMin + 5))} />
+        <StepButton label="+1h" onClick={() => onChangeDepMin(snapToFiveMin(selectedDepMin + 60))} />
       </div>
 
       {/* Times for the new flight(s) */}
