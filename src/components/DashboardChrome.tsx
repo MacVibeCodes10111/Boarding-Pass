@@ -17,6 +17,7 @@ import {
 } from '../game/clock';
 import { DAY_NAMES_SHORT, dayIndexOf, formatClockShort } from '../game/time';
 import { HEIGHT_HINT, TILT_HINT } from '../game/platform';
+import { DEV_BUILD, IS_DEV } from '../game/channel';
 import type { GameMode } from '../game/types';
 import { Icon, type IconName } from '../ui/icons';
 import { C, DISPLAY, Segmented, glass } from '../ui/kit';
@@ -114,6 +115,18 @@ const Coin = () => (
   />
 );
 
+/** Red DEV tag on test builds (dev branch), so they are never mistaken for the real game */
+export const DevTag = ({ big }: { big?: boolean }) =>
+  IS_DEV ? (
+    <span
+      className="bp-dev-tag"
+      title={DEV_BUILD ? `Test build ${DEV_BUILD} from the dev branch` : 'Test build from the dev branch'}
+      style={{ flex: 'none', fontFamily: DISPLAY, fontSize: big ? 15 : 12, fontWeight: 700, letterSpacing: '0.06em', lineHeight: big ? '22px' : '17px', padding: '0 6px', borderRadius: 5, background: '#e5383b', color: '#fff' }}
+    >
+      DEV{DEV_BUILD ? ` ${DEV_BUILD}` : ''}
+    </span>
+  ) : null;
+
 /** One floating card of the top bar (flat inside the phone's bar) */
 const topCard = (extra?: React.CSSProperties): React.CSSProperties => ({
   ...glass(),
@@ -192,6 +205,7 @@ export function TopBar(props: {
         >
           {props.airlineIata || 'BP'}
         </div>
+        <DevTag />
         <div className="bp-hide-phone bp-hide-tablet" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
           <div style={{ fontFamily: DISPLAY, fontSize: 18, fontWeight: 700, lineHeight: 1.1, color: C.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{props.airlineName}</div>
           <div style={{ fontSize: 12, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -472,6 +486,7 @@ export function NavRail(props: {
       {buttons(false)}
       <span className="num" aria-hidden style={{ alignSelf: 'flex-end', fontSize: 10.5, color: C.faint, padding: '0 6px 4px 2px' }}>
         v{props.version}
+        {IS_DEV ? ' dev' : ''}
       </span>
     </nav>
   );

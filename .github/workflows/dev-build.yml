@@ -1,0 +1,137 @@
+# ============================================================================
+# Dev build: the desktop apps from the dev branch, for testing only.
+#
+# Every push to the dev branch builds "Boarding Pass Dev" on GitHub's Mac and
+# Windows machines and puts it on ONE pre-release, tag "dev", called "Dev
+# build", replacing the build before it.
+#
+# Players never see it: the game looks only at the latest release, and GitHub
+# never counts a pre-release as the latest. The dev app is a separate app
+# (its own name and identifier, so its own careers), installs next to the real
+# game, and updates itself from the Dev build release only.
+#
+# Its version is MAJOR.MINOR.(1000 + run number) of the version on the dev
+# branch, so every dev build is newer than the last one.
+# ============================================================================
+name: Dev build
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+# A newer push replaces a dev build still in progress
+concurrency:
+  group: dev-build
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    name: Clear the previous dev build
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dev version number
+        id: v
+        run: |
+          base=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          IFS=. read -r major minor _ <<< "$base"
+          echo "version=$major.$minor.$((1000 + ${{ github.run_number }}))" >> "$GITHUB_OUTPUT"
+      - name: Remove the old Dev build release and its tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete dev --repo "${{ github.repository }}" --yes --cleanup-tag || true
+          git push origin :refs/tags/dev 2>/dev/null || true
+
+  build:
+    name: Build (${{ matrix.name }})
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Mac
+            platform: macos-15-intel
+            args: --target universal-apple-darwin --bundles app,dmg
+          - name: Windows
+            platform: windows-latest
+            args: --bundles nsis
+    runs-on: ${{ matrix.platform }}
+    env:
+      # The game shows a DEV badge and the build number
+      VITE_BP_CHANNEL: dev
+      VITE_BP_BUILD: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.name == 'Mac' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Reuse the Rust build from last time (faster)
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install the game's packages
+        run: npm ci
+
+      - name: Dev app settings
+        shell: bash
+        run: |
+          # Its own name, identifier and update address; everything else as the real game
+          cat > src-tauri/tauri.dev.conf.json <<EOF
+          {
+            "productName": "Boarding Pass Dev",
+            "version": "${{ needs.prepare.outputs.version }}",
+            "identifier": "com.ebncr.airline-simulator.dev",
+            "app": {
+              "windows": [
+                { "title": "Boarding Pass Dev (build ${{ github.run_number }})", "width": 1440, "height": 900, "minWidth": 1024, "minHeight": 640, "center": true }
+              ]
+            },
+            "plugins": {
+              "updater": {
+                "endpoints": ["https://github.com/${{ github.repository }}/releases/download/dev/latest.json"]
+              }
+            }
+          }
+          EOF
+          cat src-tauri/tauri.dev.conf.json
+
+      - name: Build and publish the Dev build
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: dev
+          releaseCommitish: ${{ github.sha }}
+          releaseName: Dev build
+          releaseDraft: false
+          prerelease: true
+          args: ${{ matrix.args }} --config src-tauri/tauri.dev.conf.json
+          updaterJsonPreferNsis: true
+          releaseBody: |
+            **For testing only. Not for players.** Built from the `dev` branch, commit ${{ github.sha }}, build ${{ github.run_number }} (version ${{ needs.prepare.outputs.version }}).
+
+            This is **Boarding Pass Dev**, a separate app: it installs next to Boarding Pass, keeps its own careers, and updates itself from this release only. The real game never sees it.
+
+            - **Mac:** `Boarding.Pass.Dev_…_universal.dmg`
+            - **Windows:** `Boarding.Pass.Dev_…_x64-setup.exe`
+
+            In the browser: https://dev.boardingpass.my

@@ -7,6 +7,7 @@ import { useLayout } from '../ui/layout';
 import { APP_VERSION } from '../version';
 import { CreditsModal } from './Credits';
 import { openAppearance } from './Appearance';
+import { DevTag } from './DashboardChrome';
 import { inDesktopApp } from './UpdateBanner';
 
 /** The Boarding Pass website (the game itself is on play.boardingpass.my). */
@@ -82,7 +83,9 @@ export function HomeScreen(props: HomeScreenProps) {
               <Icon name="fleet" size={32} />
             </div>
             <div>
-              <h1 style={{ margin: 0, fontSize: 44, fontWeight: 700, lineHeight: 1 }}>Boarding Pass</h1>
+              <h1 style={{ margin: 0, fontSize: 44, fontWeight: 700, lineHeight: 1, display: 'flex', alignItems: 'center', gap: 12 }}>
+                Boarding Pass <DevTag big />
+              </h1>
               <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>
                 Version {APP_VERSION}. {airports.length.toLocaleString()} airports, {props.aircraftCount} aircraft types.{' '}
                 <button type="button" onClick={() => setShowCredits(true)} style={{ background: 'none', border: 'none', color: C.accent, fontSize: 13, cursor: 'pointer', padding: 0 }}>

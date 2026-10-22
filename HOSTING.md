@@ -37,9 +37,20 @@ If Hostinger doesn't let you change the root directory of an existing app: in hP
 - `https://play.boardingpass.my` shows the game; **boardingpass.my** on its home screen goes back.
 - Both show a padlock (SSL). A new subdomain can take a few minutes to get its certificate.
 
+### 4. The test site: dev.boardingpass.my (optional, since v2.36)
+
+The `dev` branch is for testing. Every push to it builds the browser version onto the branch `dev-build` (the same **Play build** workflow), with a red DEV badge in the game and search engines asked not to list it. Set it up like play.boardingpass.my:
+
+1. **Domains → boardingpass.my → Subdomains**: create `dev`.
+2. **Websites → Create website**: a plain website on **dev.boardingpass.my**, then its **Git** (or **Deployments**) settings: repository **Boarding-Pass**, branch **`dev-build`**, auto deployment on.
+3. **Deploy**, then open `https://dev.boardingpass.my`: the game's home screen with a DEV badge.
+4. To keep it to yourself: **Security → Password Protect Directories** on that website.
+
+Careers on dev.boardingpass.my are kept apart from play.boardingpass.my (saves belong to the address). The desktop test app, **Boarding Pass Dev**, comes from the **Dev build** pre-release on GitHub's Releases page (the **Dev build** workflow). It updates itself from there only, and players never see it.
+
 ## Every update after that
 
-Nothing to do: pushing to `main` rebuilds the website, the Play build workflow refreshes `play-build` for the game about a minute later, and the website reads the latest version and the What's new list from GitHub by itself. To change the website's text, edit the files in `website/` (the home page is `website/index.html`).
+Nothing to do: pushing to `main` rebuilds the website (pushing to `dev` only touches the test site and the Dev build), the Play build workflow refreshes `play-build` for the game about a minute later, and the website reads the latest version and the What's new list from GitHub by itself. To change the website's text, edit the files in `website/` (the home page is `website/index.html`).
 
 ## Notes
 

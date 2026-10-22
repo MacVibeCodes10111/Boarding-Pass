@@ -7,18 +7,22 @@
 # a branch's files (like Hostinger's Git deployment for play.boardingpass.my)
 # serves a working game, with no build step of its own.
 #
-# Don't edit the play-build branch by hand: every push to main overwrites it.
+# Pushes to the dev branch do the same into "dev-build", for the test site
+# dev.boardingpass.my: with a DEV badge in the game, and search engines asked
+# not to list it.
+#
+# Don't edit play-build or dev-build by hand: every push overwrites them.
 # ============================================================================
 name: Play build
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
 
-# Only the newest push matters; an older build still running is cancelled
+# Only the newest push of each branch matters; an older build still running is cancelled
 concurrency:
-  group: play-build
+  group: play-build-${{ github.ref_name }}
   cancel-in-progress: true
 
 permissions:
@@ -26,8 +30,13 @@ permissions:
 
 jobs:
   build:
-    name: Build the browser version
+    name: Build the browser version (${{ github.ref_name }})
     runs-on: ubuntu-latest
+    env:
+      # main → play-build (play.boardingpass.my); dev → dev-build (dev.boardingpass.my)
+      TARGET: ${{ github.ref_name == 'dev' && 'dev-build' || 'play-build' }}
+      VITE_BP_CHANNEL: ${{ github.ref_name == 'dev' && 'dev' || '' }}
+      VITE_BP_BUILD: ${{ github.ref_name == 'dev' && github.run_number || '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -62,20 +71,25 @@ jobs:
           </IfModule>
           EOF
           cat > dist/README.md <<EOF
-          # play-build
+          # $TARGET
 
           Built files of the browser version of Boarding Pass, made by the
-          "Play build" workflow from main (commit ${GITHUB_SHA::7}). Every push
-          to main replaces this branch. The source is on the main branch.
+          "Play build" workflow from ${GITHUB_REF_NAME} (commit ${GITHUB_SHA::7}). Every push
+          to ${GITHUB_REF_NAME} replaces this branch. The source is on the ${GITHUB_REF_NAME} branch.
           EOF
+          if [ "$TARGET" = dev-build ]; then
+            # The test site: not for search engines
+            printf 'User-agent: *\nDisallow: /\n' > dist/robots.txt
+            sed -i 's#<head>#<head><meta name="robots" content="noindex, nofollow">#' dist/index.html
+          fi
 
-      - name: Publish to the play-build branch
+      - name: Publish to the ${{ env.TARGET }} branch
         working-directory: dist
         run: |
-          git init -q -b play-build
+          git init -q -b "$TARGET"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -q -m "Play build of ${GITHUB_SHA::7}"
-          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" play-build
-          echo "Published $(git ls-files | wc -l) files to play-build" >> "$GITHUB_STEP_SUMMARY"
+          git commit -q -m "Play build of ${GITHUB_SHA::7} (${GITHUB_REF_NAME})"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "$TARGET"
+          echo "Published $(git ls-files | wc -l) files to $TARGET" >> "$GITHUB_STEP_SUMMARY"
