@@ -127,10 +127,9 @@ export const DevTag = ({ big }: { big?: boolean }) =>
     </span>
   ) : null;
 
-/** One floating card of the top bar (flat inside the phone's bar) */
+/** One section of the top bar (the bar itself is the glass) */
 const topCard = (extra?: React.CSSProperties): React.CSSProperties => ({
-  ...glass(),
-  borderRadius: 13,
+  borderRadius: 10,
   height: 50,
   display: 'flex',
   alignItems: 'center',
@@ -177,11 +176,12 @@ export function TopBar(props: {
   return (
     <header
       className={phone ? 'bp-topbar bp-glass' : 'bp-topbar'}
+      data-tour="topbar"
       style={
         phone
           ? { position: 'absolute', top: 0, left: 0, right: 0, height: 'var(--bp-top-h)', display: 'flex', alignItems: 'stretch', gap: 10, padding: '0 6px 0 0', zIndex: 50, borderRadius: 0, borderWidth: '0 0 1px 0' }
-          : // Floating cards over the map; the map shows (and takes clicks) between them
-            { position: 'absolute', top: 10, left: 10, right: 10, height: 50, display: 'flex', alignItems: 'stretch', gap: 8, zIndex: 50, pointerEvents: 'none' }
+          : // One floating glass bar across the top, its sections spread out along it
+            { ...glass(), position: 'absolute', top: 10, left: 10, right: 10, height: 54, display: 'flex', alignItems: 'center', gap: 6, padding: '0 8px 0 4px', borderRadius: 15, zIndex: 50 }
       }
     >
       {/* Airline mark and name */}
@@ -215,7 +215,11 @@ export function TopBar(props: {
       </div>
 
       {/* Money, the economy and the map clock; swipe sideways on a phone */}
-      <div className="bp-topbar-strip bp-scroll-x" style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'stretch', gap: phone ? 14 : 8, pointerEvents: phone ? 'auto' : 'none' }}>
+      {!phone && <Divider />}
+      <div
+        className="bp-topbar-strip bp-scroll-x"
+        style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'stretch', justifyContent: phone ? undefined : 'space-between', gap: phone ? 14 : 6, alignSelf: 'stretch' }}
+      >
         <div className="bp-topcard" style={topCard()}>
           <Readout label="Cash">
             <Coin />
@@ -255,6 +259,7 @@ export function TopBar(props: {
           )}
         </div>
 
+        {!phone && <Divider />}
         <div className="bp-topcard" style={topCard({ gap: 11, paddingLeft: 9 })}>
           <button
             type="button"
@@ -283,7 +288,7 @@ export function TopBar(props: {
           </Readout>
         </div>
 
-        <div style={{ flex: 1 }} />
+        {!phone && <Divider />}
         <div className="bp-topcard" style={topCard({ gap: 12 })}>
           <Readout
             label={props.mapSpeed === 'live' ? 'Map time, live' : paused ? 'Map time, paused with economy' : 'Map time, 7× with economy'}
@@ -311,7 +316,8 @@ export function TopBar(props: {
           />
         </div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', flex: 'none', pointerEvents: 'auto' }}>{props.layers}</div>
+      {!phone && <Divider />}
+      <div style={{ display: 'flex', alignItems: 'center', flex: 'none' }}>{props.layers}</div>
     </header>
   );
 }
@@ -344,9 +350,11 @@ function RailButton({
       title={title ?? label}
       aria-current={active ? 'page' : undefined}
       className="bp-dock-btn"
+      data-tour={label.toLowerCase()}
       style={{
         position: 'relative',
-        flex: tab ? '1 0 58px' : 'none',
+        flex: tab ? '1 1 0' : 'none',
+        minWidth: 0,
         width: tab ? undefined : 70,
         height: tab ? undefined : 58,
         padding: tab ? '7px 2px 5px' : '7px 0 5px',
@@ -362,9 +370,10 @@ function RailButton({
         color: active ? C.text : C.textDim,
         cursor: 'pointer',
         fontFamily: DISPLAY,
-        fontSize: 14,
+        fontSize: tab ? 12 : 14,
         fontWeight: 600,
         letterSpacing: '0.01em',
+        whiteSpace: 'nowrap',
       }}
     >
       {active && tab && <span style={{ position: 'absolute', top: 0, left: 12, right: 12, height: 3, borderRadius: 2, background: C.brand }} />}
@@ -436,16 +445,25 @@ export function NavRail(props: {
         />
       ))}
       {!tab && <span aria-hidden style={{ width: 1, alignSelf: 'stretch', margin: '10px 4px', background: C.line }} />}
-      <RailButton tab={tab} icon="save" label="Save" onClick={props.onSave} title="Save career now (it also autosaves every minute)" />
-      <RailButton tab={tab} icon="menu" label="Menu" onClick={props.onMenu} title={`Main menu (Boarding Pass ${props.version})`} />
+      {/* On a phone Save lives in the menu (the career autosaves anyway) */}
+      {!tab && <RailButton icon="save" label="Save" onClick={props.onSave} title="Save career now (it also autosaves every minute)" />}
+      {/* Menu goes back out of the career: set apart with its own divider */}
+      {!tab && <span aria-hidden style={{ width: 2, alignSelf: 'stretch', margin: '8px 5px', borderRadius: 1, background: C.border }} />}
+      <RailButton
+        tab={tab}
+        icon="exit"
+        label="Menu"
+        onClick={props.onMenu}
+        title={`Main menu: save, export or leave to the home screen (Boarding Pass ${props.version}${IS_DEV ? ' dev' : ''})`}
+      />
     </>
   );
   if (phone) {
-    // Bottom tab bar: every section one tap away, swipe sideways for Save and Menu
+    // Bottom tab bar: every section and the menu one tap away, nothing hidden off the edge
     return (
       <nav
         aria-label="Main"
-        className="bp-tabbar bp-scroll-x bp-glass"
+        className="bp-tabbar bp-glass"
         style={{
           position: 'absolute',
           left: 0,
@@ -484,10 +502,6 @@ export function NavRail(props: {
       }}
     >
       {buttons(false)}
-      <span className="num" aria-hidden style={{ alignSelf: 'flex-end', fontSize: 10.5, color: C.faint, padding: '0 6px 4px 2px' }}>
-        v{props.version}
-        {IS_DEV ? ' dev' : ''}
-      </span>
     </nav>
   );
 }
@@ -598,9 +612,13 @@ export function LayersMenu(props: {
       <button
         type="button"
         aria-expanded={open}
+        aria-label="Map layers"
+        data-tour="layers"
         onClick={() => setOpen((v) => !v)}
         style={{
-          ...(phone ? { background: open ? C.raised : 'transparent', border: `1px solid ${open ? C.border : C.line}`, padding: '6px 12px', borderRadius: 9 } : { ...glass(), height: 50, padding: '0 16px', borderRadius: 13 }),
+          ...(phone
+            ? { background: open ? C.raised : 'transparent', border: `1px solid ${open ? C.border : C.line}`, padding: '6px 12px', borderRadius: 9 }
+            : { background: open ? C.raised : 'transparent', border: `1px solid ${open ? C.border : 'transparent'}`, height: 42, padding: '0 14px', borderRadius: 10 }),
           display: 'flex',
           alignItems: 'center',
           gap: 8,
@@ -612,7 +630,8 @@ export function LayersMenu(props: {
         }}
       >
         <Icon name="layers" size={18} color={open ? C.brand : 'currentColor'} />
-        Map layers
+        {/* On a phone just the icon, so the money readouts get the room */}
+        {!phone && 'Map layers'}
         {activeCount > 0 && (
           <span className="num" style={{ fontSize: 13, background: C.brand, color: C.brandInk, borderRadius: 999, padding: '0 6px', lineHeight: '18px', fontWeight: 700 }}>
             {activeCount}

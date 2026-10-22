@@ -18,6 +18,14 @@ export interface ScheduleTimelineProps {
   conflictMessage?: string | null;
   originIata?: string;
   destIata?: string;
+  /**
+   * The aircraft's other flights as thin bars along the bottom, not clickable,
+   * so the whole week stays easy to drag on (the route planner). The detailed
+   * view (the aircraft's schedule window) shows them full size.
+   */
+  othersCompact?: boolean;
+  /** Shows a "Detailed view" button (opens the aircraft's schedule). */
+  onDetailedView?: () => void;
 }
 
 interface Piece {
@@ -49,10 +57,7 @@ function legPieces(depMin: number, blockMin: number, turnMin: number, days: Week
   );
 }
 
-const RETURN_COLOR = '#c6a15b';
 const pct = (min: number) => `${(min / MIN_PER_DAY) * 100}%`;
-const TURN_STRIPES = (rgba: string, dark: string) =>
-  `repeating-linear-gradient(45deg, ${rgba}, ${rgba} 3px, ${dark} 3px, ${dark} 6px)`;
 
 function StepButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
@@ -81,8 +86,20 @@ export function ScheduleTimeline({
   conflictMessage = null,
   originIata = '???',
   destIata = '???',
+  othersCompact = false,
+  onDetailedView,
 }: ScheduleTimelineProps) {
   const trackRef = useRef<HTMLDivElement | null>(null);
+  // Track width, so labels only go on blocks wide enough to read
+  const [trackW, setTrackW] = useState(600);
+  useEffect(() => {
+    const el = trackRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setTrackW(Math.max(100, el.getBoundingClientRect().width - 42)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const fits = (min: number, label: string) => (min / MIN_PER_DAY) * trackW >= label.length * 6.2 + 8;
   const turnMin = aircraft.model.turnaround_min;
   const hh = Math.floor(selectedDepMin / 60);
   const mm = selectedDepMin % 60;
@@ -149,7 +166,19 @@ export function ScheduleTimeline({
               {aircraft.tailNumber} is {usage.usedPct}% booked ({usage.avgDailyHours} h a day)
             </span>
           </div>
-          <div style={{ fontSize: 11.5, color: C.faint, marginTop: 2 }}>Drag on the week below or type a time. Click a grey block to edit that flight.</div>
+          <div style={{ fontSize: 11.5, color: C.faint, marginTop: 2 }}>
+            {othersCompact ? 'Drag across the week or type a time. Its other flights are the grey bars.' : 'Drag across the week or type a time. Click a grey flight to edit it.'}
+          </div>
+          {onDetailedView && (
+            <button
+              type="button"
+              className="bp-link"
+              onClick={onDetailedView}
+              style={{ marginTop: 4, padding: 0, background: 'none', border: 'none', color: C.accent, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+            >
+              Detailed view of {aircraft.tailNumber}'s week
+            </button>
+          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -174,7 +203,7 @@ export function ScheduleTimeline({
           </span>
           {autoRoundtrip && (
             <span>
-              <b style={{ color: RETURN_COLOR, fontWeight: 600 }}>{retLabel}</b> {formatClockShort(retDepMin)}–{formatClockShort(retArrMin)}
+              <b style={{ color: C.brand, fontWeight: 600 }}>{retLabel}</b> {formatClockShort(retDepMin)}–{formatClockShort(retArrMin)}
             </span>
           )}
           <span style={{ color: C.muted }}>
@@ -215,7 +244,7 @@ export function ScheduleTimeline({
         style={{ position: 'relative', cursor: 'ew-resize', display: 'flex', flexDirection: 'column', gap: 4, touchAction: 'none' }}
       >
         {DAY_NAMES_SHORT.map((dayName, dIdx) => (
-          <div key={dayName} style={{ display: 'grid', gridTemplateColumns: '42px 1fr', alignItems: 'center', height: 22 }}>
+          <div key={dayName} style={{ display: 'grid', gridTemplateColumns: '42px 1fr', alignItems: 'center', height: othersCompact ? 26 : 22 }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: candidateDays[dIdx] ? C.textSoft : C.faint }}>{dayName}</div>
             <div style={{ position: 'relative', height: '100%', background: C.panel, border: `1px solid ${C.line}`, borderRadius: 4, overflow: 'hidden' }}>
               {[3, 6, 9, 12, 15, 18, 21].map((h) => (
@@ -224,56 +253,75 @@ export function ScheduleTimeline({
 
               {occupiedPieces
                 .filter((p) => p.dayIdx === dIdx)
-                .map((p, i) =>
-                  p.kind === 'flight' ? (
+                .map((p, i) => {
+                  const label = `${p.flight.origin.iata_code}→${p.flight.destination.iata_code}`;
+                  const title = `${p.flight.flightNumber}: ${label} (${formatClockShort(p.flight.depTimeMin)}–${formatClockShort(p.flight.arrTimeMin)} UTC)${p.isOpenChainEnd ? ', the aircraft ends its day here' : ''}`;
+                  if (othersCompact)
+                    return (
+                      <div
+                        key={`occ-${p.flight.id}-${i}`}
+                        title={title}
+                        style={{
+                          position: 'absolute',
+                          left: pct(p.start),
+                          width: pct(p.end - p.start),
+                          bottom: 2,
+                          height: p.kind === 'flight' ? 5 : 3,
+                          borderRadius: 2,
+                          background: p.kind === 'flight' ? OTHER_FLIGHT : OTHER_TURN,
+                          zIndex: 1,
+                          pointerEvents: 'none',
+                        }}
+                      />
+                    );
+                  return p.kind === 'flight' ? (
                     <div
                       key={`occ-${p.flight.id}-${i}`}
                       onPointerDown={(e) => e.stopPropagation()}
                       onClick={() => onSelectExistingFlight?.(p.flight)}
-                      title={`${p.flight.flightNumber}: ${p.flight.origin.iata_code}→${p.flight.destination.iata_code} (${formatClockShort(p.flight.depTimeMin)}–${formatClockShort(p.flight.arrTimeMin)} UTC)${p.isOpenChainEnd ? ' (aircraft ends its day here)' : ''}`}
+                      title={title}
                       style={{
                         ...blockStyle(p.start, p.end, 2),
-                        background: C.raised,
-                        border: `1px solid ${p.isOpenChainEnd ? C.amber : C.border}`,
-                        color: C.textDim,
+                        background: OTHER_FLIGHT,
+                        boxShadow: p.isOpenChainEnd ? `inset 0 0 0 1px ${C.amber}` : undefined,
+                        color: C.text,
                         zIndex: 2,
                         cursor: onSelectExistingFlight ? 'pointer' : 'default',
                       }}
                     >
-                      {p.end - p.start > 60 ? `${p.flight.origin.iata_code}→${p.flight.destination.iata_code}` : ''}
+                      {fits(p.end - p.start, label) ? label : ''}
                     </div>
                   ) : (
-                    <div
-                      key={`occt-${p.flight.id}-${i}`}
-                      style={{ ...blockStyle(p.start, p.end, 4), background: TURN_STRIPES(`${C.muted}33`, `${C.panelAlt}80`), border: `1px dotted ${C.faint}`, zIndex: 1, pointerEvents: 'none' }}
-                    />
-                  )
-                )}
+                    <div key={`occt-${p.flight.id}-${i}`} style={{ ...blockStyle(p.start, p.end, 2), background: OTHER_TURN, zIndex: 1, pointerEvents: 'none' }} />
+                  );
+                })}
 
               {candidatePieces
                 .filter((p) => p.dayIdx === dIdx)
-                .map((p, i) =>
-                  p.kind === 'flight' ? (
+                .map((p, i) => {
+                  const label = p.isReturn ? retLabel : outLabel;
+                  const base = hasConflict ? C.red : C.brand;
+                  return p.kind === 'flight' ? (
                     <div
                       key={`cand-${i}`}
                       style={{
-                        ...blockStyle(p.start, p.end, 1),
-                        background: hasConflict ? C.red : p.isReturn ? RETURN_COLOR : C.brand,
-                        border: 'none',
+                        ...blockStyle(p.start, p.end, othersCompact ? 1 : 1),
+                        bottom: othersCompact ? 9 : 1,
+                        background: base,
                         color: hasConflict ? '#fff' : C.brandInk,
                         zIndex: 4,
                         pointerEvents: 'none',
                       }}
                     >
-                      {p.end - p.start > 60 ? (p.isReturn ? retLabel : outLabel) : ''}
+                      {fits(p.end - p.start, label) ? label : ''}
                     </div>
                   ) : (
                     <div
                       key={`candt-${i}`}
-                      style={{ ...blockStyle(p.start, p.end, 3), background: TURN_STRIPES(`${C.brand}4d`, `${C.bg}99`), border: 'none', zIndex: 3, pointerEvents: 'none' }}
+                      style={{ ...blockStyle(p.start, p.end, 1), bottom: othersCompact ? 9 : 1, background: `${base}55`, zIndex: 3, pointerEvents: 'none' }}
                     />
-                  )
-                )}
+                  );
+                })}
 
               <div style={{ position: 'absolute', left: pct(selectedDepMin), top: 0, bottom: 0, width: 2, background: C.text, zIndex: 6, pointerEvents: 'none' }} />
             </div>
@@ -283,6 +331,10 @@ export function ScheduleTimeline({
     </div>
   );
 }
+
+/** The aircraft's other flights: one grey, lighter for the turnaround after each. */
+const OTHER_FLIGHT = 'rgba(148, 163, 184, 0.55)';
+const OTHER_TURN = 'rgba(148, 163, 184, 0.2)';
 
 function blockStyle(start: number, end: number, inset: number): React.CSSProperties {
   return {

@@ -49,7 +49,10 @@ import {
   type WeekLedger,
 } from './game/clock';
 import { parseOurAirportsCsvFiles, parseOurAirportsNavaidsCsv } from './game/csv';
-import { computeNetworkEconomics, getDefaultCabinForModel, getRouteDemandAndFares, calculateCabinUsage } from './game/economics';
+import { buildCabinPreset, computeNetworkEconomics, getDefaultCabinForModel, getRouteDemandAndFares, calculateCabinUsage, type CabinPreset } from './game/economics';
+import { checkReplacement, type BulkScheduleResult } from './game/fleetOps';
+import { DEFAULT_LEASE_WEEKS, buyoutPrice, leaseQuote, returnTerms } from './game/leasing';
+import { nextRegistrations, validRegistration } from './game/registrations';
 import {
   BANK,
   MIN_PART_REPAYMENT,
@@ -68,6 +71,7 @@ import {
   settleCareerAdvance,
   type BankruptcyRoute,
   uncollected,
+  bailoutSeizures,
   usdShort,
   welcomeLetter,
 } from './game/career';
@@ -85,12 +89,12 @@ import { clearFlightGeometryCache, setGlobalNavaidsMemory } from './game/navdata
 import {
   downloadSaveFile,
   hydrateSave,
-  isValidSave,
   readSaveSlots,
+  readSaveFileText,
   upsertSaveSlot,
   writeSaveSlots,
 } from './game/saves';
-import { getAircraftCircuitStatus, nextFreeFlightNumber, nextFreeTailNumber, type PlanResult } from './game/scheduling';
+import { findScheduleConflict, flightsCancelledBySellingHub, flightsForTail, getAircraftCircuitStatus, nextFreeTailNumber, type PlanResult } from './game/scheduling';
 import { calcAircraftResaleUsd, calcHubPurchasePriceUsd, calcHubSaleRefundUsd } from './game/tiers';
 import { ALL_DAYS, daysOrAll, formatMoneyM, shiftDays } from './game/time';
 import type {
@@ -106,6 +110,8 @@ import type {
   ScheduledFlight,
 } from './game/types';
 import { APP_VERSION } from './version';
+import { MainMenu } from './components/MainMenu';
+import { WelcomeTour, tourWantedForNewCareer } from './components/WelcomeTour';
 import { C, applyThemeToDocument, useThemeVersion } from './ui/kit';
 import { initLayout } from './ui/layout';
 
@@ -121,6 +127,8 @@ const PREFS_KEY = 'bp_pc_prefs_v1';
 const AI_DENSITIES: AiDensity[] = ['off', 'low', 'medium', 'high'];
 /** Extreme: 1.6× the flights on every route, so 10,000+ are in the air at any hour. */
 const EXTREME_TRAFFIC_SCALE = 1.6;
+/** Most aircraft bought or leased in one go. */
+const MAX_BULK_BUY = 50;
 
 function readPrefs(): {
   aiDensity?: AiDensity;
@@ -148,10 +156,11 @@ function writePrefs(patch: Record<string, unknown>) {
   }
 }
 
-const makeDraft = (originIata: string, airlineIata: string): RouteDraft => ({
+const makeDraft = (originIata: string, _airlineIata?: string): RouteDraft => ({
   originIata,
   tailNumber: '',
-  flightNumber: nextFreeFlightNumber([], airlineIata),
+  // Empty: the planner suggests a number for the route's length
+  flightNumber: '',
   depMin: START_MIN,
   days: [...ALL_DAYS],
   mode: 'roundtrip',
@@ -756,8 +765,13 @@ export default function App() {
     });
   };
 
+  // Main menu and the welcome tour (shown when a new career starts)
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
+
   const launchNewCareer = (replaces: string | null) => {
     setReplacedAi(replaces);
+    setTourOpen(tourWantedForNewCareer());
     if (replaces) {
       const a = (aiTraffic?.airlines ?? AI_AIRLINES).find((x) => x.code === replaces);
       if (a) flashToast(`${a.name} is off the map. Yours are the only ${a.name} aircraft flying.`, 5000);
@@ -774,12 +788,13 @@ export default function App() {
     setCareer(gameMode === 'sandbox' ? freshCareer() : { ...freshCareer(), letters: [welcomeLetter(airlineName, airlineIata, hubIata, 0)] });
     setBankTab('programme');
     setDraft(makeDraft(hubIata, airlineIata));
-    setTailInput(nextFreeTailNumber([], airlineIata));
+    setTailInput(nextFreeTailNumber([], airlineIata, airportByIata.get(hubIata)?.iso_country));
     resetTransientUi();
     setScreen('dashboard');
   };
 
   const loadCareer = (raw: SaveGameState) => {
+    setTourOpen(false);
     const s = hydrateSave(raw, airportByIata);
     setActiveSaveId(s.saveId);
     setAirlineName(s.airlineName);
@@ -831,8 +846,8 @@ export default function App() {
     }
     setBankTab('programme');
 
-    setDraft({ ...makeDraft(s.hubIata, s.airlineIata), flightNumber: nextFreeFlightNumber(s.schedule, s.airlineIata) });
-    setTailInput(nextFreeTailNumber(s.fleet, s.airlineIata));
+    setDraft({ ...makeDraft(s.hubIata, s.airlineIata), flightNumber: '' });
+    setTailInput(nextFreeTailNumber(s.fleet, s.airlineIata, airportByIata.get(s.hubIata)?.iso_country));
     resetTransientUi();
     persistAfterRender.current = true;
     setScreen('dashboard');
@@ -865,13 +880,19 @@ export default function App() {
   const importSaveFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = () => {
-      try {
-        const parsed = JSON.parse(String(reader.result));
-        if (isValidSave(parsed)) loadCareer(parsed);
-        else showAlert('Not a save file', 'That file is not a Boarding Pass career save.');
-      } catch {
-        showAlert('Could not open file', 'The save file is damaged or not valid JSON.');
+      const r = readSaveFileText(String(reader.result));
+      if (!r.ok) {
+        showAlert('Could not open this save', r.message, undefined, 'warning');
+        return;
       }
+      loadCareer(r.save);
+      if (r.unprotected)
+        showAlert(
+          'Opened in Sandbox mode',
+          `${r.save.airlineName} comes from a save file without the game's protection (exported before v2.38, or edited), so it plays in Sandbox mode.`,
+          'Saves made from now on are protected and keep their mode.',
+          'info'
+        );
     };
     reader.readAsText(file);
   };
@@ -899,20 +920,24 @@ export default function App() {
       return;
     }
     const refund = calcHubSaleRefundUsd(airport);
+    const cancel = flightsCancelledBySellingHub(schedule, airport.iata_code);
+    const remaining = hubs.filter((h) => h !== airport.iata_code);
+    const newPrimary = hubIata === airport.iata_code ? remaining[0] : hubIata;
     setGameAlert({
       title: `Sell ${airport.iata_code} hub?`,
-      message: `You get ${formatMoneyM(refund)} back (70% of the price). Aircraft based there move to your next hub and their flights stay scheduled.`,
+      message: `You get ${formatMoneyM(refund)} back (70% of the price). ${
+        cancel.size ? `Your ${cancel.size} ${cancel.size === 1 ? 'flight' : 'flights'} to and from ${airport.iata_code} ${cancel.size === 1 ? 'is' : 'are'} cancelled. ` : ''
+      }Aircraft based there move to ${newPrimary}.`,
       severity: 'warning',
       confirmLabel: 'Sell hub',
       onConfirm: () => {
-        const remaining = hubs.filter((h) => h !== airport.iata_code);
-        const newPrimary = hubIata === airport.iata_code ? remaining[0] : hubIata;
         bookCash('sale', refund);
         setHubs(remaining);
         setHubIata(newPrimary);
         setDraft((d) => (d.originIata === airport.iata_code ? { ...d, originIata: newPrimary } : d));
         setFleet((prev) => prev.map((ac) => (ac.hubIata === airport.iata_code ? { ...ac, hubIata: newPrimary } : ac)));
-        flashToast(`Sold ${airport.iata_code} for ${formatMoneyM(refund)}`);
+        setSchedule((prev) => prev.filter((f) => !cancel.has(f.id)));
+        flashToast(`Sold ${airport.iata_code} for ${formatMoneyM(refund)}${cancel.size ? `, ${cancel.size} flights cancelled` : ''}`);
       },
     });
   };
@@ -920,7 +945,11 @@ export default function App() {
   // ---------------------------------------------------------------------------
   // Aircraft
   // ---------------------------------------------------------------------------
-  const acquireAircraft = (mode: 'owned' | 'leased') => {
+  const hubCountry = airportByIata.get(hubIata)?.iso_country ?? 'US';
+  const regFor = (taken: PlayerAircraft[], n = 1) => nextRegistrations(taken.map((a) => a.tailNumber), airlineIata, hubCountry, n);
+
+  /** Buy or lease `count` aircraft of the selected type (leases for `leaseWeeks`). */
+  const acquireAircraft = (mode: 'owned' | 'leased', leaseWeeks = DEFAULT_LEASE_WEEKS, count = 1) => {
     const check = calculateCabinUsage(selectedModel, cabinDraft);
     if (!check.isValid) {
       showAlert(
@@ -930,47 +959,215 @@ export default function App() {
       );
       return;
     }
-    const cost = mode === 'owned' ? selectedModel.base_price_usd : selectedModel.daily_lease_usd * 7;
+    const n = Math.max(1, Math.min(MAX_BULK_BUY, Math.round(count)));
+    const now = econRef.current.min;
+    const quote = leaseQuote(selectedModel, leaseWeeks, now);
+    const each = mode === 'owned' ? selectedModel.base_price_usd : quote.deposit;
+    const cost = each * n;
     if (!canAfford(cost)) {
-      showAlert('Not enough cash', `The ${selectedModel.name} needs $${cost.toLocaleString()} up front.`, `You have $${Math.round(cash).toLocaleString()}.`);
+      showAlert(
+        'Not enough cash',
+        `${n > 1 ? `${n} × the` : 'The'} ${selectedModel.name} ${mode === 'owned' ? 'cost' : 'deposit'}${n > 1 ? 's' : ''} ${formatMoneyM(cost, 2)} up front.`,
+        `You have ${formatMoneyM(cash, 2)}.`
+      );
       return;
     }
-
-    let tail = tailInput.trim().toUpperCase();
-    if (!tail || fleet.some((f) => f.tailNumber === tail)) tail = nextFreeTailNumber(fleet, airlineIata);
-
+    // The typed registration for the first one, if it's free and valid; the rest are numbered on
+    let first = tailInput.trim().toUpperCase();
+    if (!first || !validRegistration(first) || fleet.some((f) => f.tailNumber === first)) first = '';
+    const regs = first ? [first, ...regFor([...fleet, { tailNumber: first } as PlayerAircraft], n - 1)] : regFor(fleet, n);
     spend(cost);
-    const newAc: PlayerAircraft = { tailNumber: tail, model: selectedModel, acquisition: mode, hubIata, cabin: { ...cabinDraft } };
-    const nextFleet = [...fleet, newAc];
+    const added: PlayerAircraft[] = regs.map((tail) => ({
+      tailNumber: tail,
+      model: selectedModel,
+      acquisition: mode,
+      hubIata,
+      cabin: { ...cabinDraft },
+      acquiredMin: now,
+      lease: mode === 'leased' ? { ...quote } : undefined,
+    }));
+    const nextFleet = [...fleet, ...added];
     setFleet(nextFleet);
-    updateDraft({ tailNumber: tail });
-    setTailInput(nextFreeTailNumber(nextFleet, airlineIata));
-    flashToast(`${tail} delivered to ${hubIata}. Open an airport on the map to schedule it.`, 4500);
+    updateDraft({ tailNumber: regs[0] });
+    setTailInput(regFor(nextFleet)[0]);
+    flashToast(
+      n === 1
+        ? `${regs[0]} delivered to ${hubIata}. Open an airport on the map to schedule it.`
+        : `${n} ${selectedModel.name} delivered to ${hubIata}: ${regs[0]} to ${regs[n - 1]}.`,
+      4500
+    );
   };
 
-  const sellOrReturnAircraft = (tailNumber: string) => {
-    const ac = fleet.find((f) => f.tailNumber === tailNumber);
-    if (!ac) return;
-    const legs = schedule.filter((s) => s.tailNumber === tailNumber).length;
-    const resale = calcAircraftResaleUsd(ac.model);
-    const owned = ac.acquisition === 'owned';
+  /** Removes aircraft and their flights (after a sale, a return or a replacement). */
+  const dropAircraft = (tails: Set<string>) => {
+    setFleet((prev) => prev.filter((f) => !tails.has(f.tailNumber)));
+    setSchedule((prev) => prev.filter((s) => !tails.has(s.tailNumber)));
+    setScheduleModal((m) => (m && tails.has(m.tail) ? null : m));
+  };
 
+  /** What selling (owned) or returning (leased) these aircraft brings in. */
+  const disposalTerms = (list: PlayerAircraft[]) => {
+    const now = econRef.current.min;
+    let sale = 0;
+    let refund = 0;
+    let forfeit = 0;
+    for (const ac of list) {
+      if (ac.acquisition === 'owned') sale += calcAircraftResaleUsd(ac.model);
+      else {
+        const t = returnTerms(ac, now);
+        refund += t.refund;
+        forfeit += t.forfeit;
+      }
+    }
+    return { sale, refund, forfeit };
+  };
+
+  /** Sell owned and return leased aircraft (one or many). */
+  const sellOrReturnAircraft = (tailsIn: string | string[]) => {
+    const tails = new Set(Array.isArray(tailsIn) ? tailsIn : [tailsIn]);
+    const list = fleet.filter((f) => tails.has(f.tailNumber));
+    if (!list.length) return;
+    const legs = schedule.filter((s) => tails.has(s.tailNumber)).length;
+    const owned = list.filter((a) => a.acquisition === 'owned');
+    const leased = list.filter((a) => a.acquisition === 'leased');
+    const t = disposalTerms(list);
+    const one = list.length === 1 ? list[0] : null;
+    const early = leased.filter((a) => returnTerms(a, econRef.current.min).early);
     setGameAlert({
-      title: owned ? `Sell ${tailNumber}?` : `End lease on ${tailNumber}?`,
-      message: owned
-        ? `You'll receive ${formatMoneyM(resale, 2)} for this ${ac.model.name}.`
-        : `This ${ac.model.name} goes back to the lessor. The first week's deposit is not refunded.`,
-      detail: legs > 0 ? `${legs} scheduled ${legs === 1 ? 'flight' : 'flights'} on this aircraft will be cancelled.` : undefined,
+      title: one ? (one.acquisition === 'owned' ? `Sell ${one.tailNumber}?` : `Return ${one.tailNumber} to the lessor?`) : `Sell or return ${list.length} aircraft?`,
+      message: [
+        owned.length ? `${owned.length === 1 && one ? 'You get' : `${owned.length} sold for`} ${formatMoneyM(t.sale, 2)}${owned.length === 1 && one ? ` for this ${one.model.name}` : ''}.` : '',
+        leased.length
+          ? `${leased.length === 1 && one ? 'It goes back' : `${leased.length} leased go back`} to the lessor${t.refund ? `, with ${formatMoneyM(t.refund, 2)} of deposit refunded` : ''}${t.forfeit ? ` and ${formatMoneyM(t.forfeit, 2)} kept by the lessor for ending ${early.length === 1 ? 'the lease' : `${early.length} leases`} early` : ''}.`
+          : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
+      detail: legs > 0 ? `${legs} scheduled ${legs === 1 ? 'flight' : 'flights'} will be cancelled.` : undefined,
       severity: 'warning',
-      confirmLabel: owned ? 'Sell aircraft' : 'End lease',
+      confirmLabel: one ? (one.acquisition === 'owned' ? 'Sell aircraft' : 'Return aircraft') : `Sell or return ${list.length}`,
       onConfirm: () => {
-        if (owned) bookCash('sale', resale);
-        setFleet((prev) => prev.filter((f) => f.tailNumber !== tailNumber));
-        setSchedule((prev) => prev.filter((s) => s.tailNumber !== tailNumber));
-        setScheduleModal((m) => (m?.tail === tailNumber ? null : m));
-        flashToast(owned ? `Sold ${tailNumber} for ${formatMoneyM(resale, 2)}` : `Returned ${tailNumber} to the lessor`);
+        if (t.sale) bookCash('sale', t.sale);
+        if (t.refund) bookCash('sale', t.refund);
+        dropAircraft(tails);
+        flashToast(one ? (one.acquisition === 'owned' ? `Sold ${one.tailNumber} for ${formatMoneyM(t.sale, 2)}` : `Returned ${one.tailNumber} to the lessor`) : `${list.length} aircraft sold or returned, ${formatMoneyM(t.sale + t.refund, 2)} in`);
       },
     });
+  };
+
+  /** Buy out a leased aircraft: it becomes yours and the deposit comes back. */
+  const buyOutLease = (tail: string) => {
+    const ac = fleet.find((f) => f.tailNumber === tail);
+    if (!ac || ac.acquisition !== 'leased') return;
+    const now = econRef.current.min;
+    const price = buyoutPrice(ac, now);
+    const deposit = ac.lease?.deposit ?? 0;
+    if (!canAfford(price - deposit)) {
+      showAlert('Not enough cash', `Buying out ${tail} costs ${formatMoneyM(price, 2)}, less the ${formatMoneyM(deposit, 2)} deposit you get back.`, `You have ${formatMoneyM(cash, 2)}.`);
+      return;
+    }
+    setGameAlert({
+      title: `Buy out ${tail}?`,
+      message: `${tail} becomes yours for ${formatMoneyM(price, 2)}${deposit ? `, and the ${formatMoneyM(deposit, 2)} deposit is refunded` : ''}. No more lease payments.`,
+      detail: `List price ${formatMoneyM(ac.model.base_price_usd, 2)}. Owned aircraft resell for 75% of it.`,
+      severity: 'info',
+      confirmLabel: `Buy out for ${formatMoneyM(price, 2)}`,
+      onConfirm: () => {
+        spend(price);
+        if (deposit) bookCash('sale', deposit);
+        setFleet((prev) => prev.map((f) => (f.tailNumber === tail ? { ...f, acquisition: 'owned', lease: undefined } : f)));
+        flashToast(`${tail} is now yours`);
+      },
+    });
+  };
+
+  /** Change an aircraft's registration (its flights follow). */
+  const renameAircraft = (tail: string, nextRaw: string): string | null => {
+    const next = nextRaw.trim().toUpperCase();
+    if (next === tail) return null;
+    if (!validRegistration(next)) return 'Use 3 to 10 letters, digits and dashes, like G-JTAB or N401JT.';
+    if (fleet.some((f) => f.tailNumber === next)) return `${next} is already in your fleet.`;
+    setFleet((prev) => prev.map((f) => (f.tailNumber === tail ? { ...f, tailNumber: next } : f)));
+    setSchedule((prev) => prev.map((s) => (s.tailNumber === tail ? { ...s, tailNumber: next } : s)));
+    setScheduleModal((m) => (m?.tail === tail ? { ...m, tail: next } : m));
+    if (draft.tailNumber === tail) updateDraft({ tailNumber: next });
+    flashToast(`${tail} is now ${next}`);
+    return null;
+  };
+
+  /** Fit the same cabin (or the same preset) to several aircraft. */
+  const refitAircraft = (tails: string[], fit: { cabin: CabinConfig } | { preset: CabinPreset }) => {
+    const set = new Set(tails);
+    setFleet((prev) =>
+      prev.map((ac) => {
+        if (!set.has(ac.tailNumber) || ac.model.is_cargo) return ac;
+        if ('cabin' in fit) return calculateCabinUsage(ac.model, fit.cabin).isValid ? { ...ac, cabin: { ...fit.cabin } } : ac;
+        return { ...ac, cabin: buildCabinPreset(ac.model, fit.preset) };
+      })
+    );
+    flashToast(tails.length === 1 ? `New cabin fitted to ${tails[0]}` : `New cabins fitted to ${tails.length} aircraft`);
+  };
+
+  /**
+   * Replace aircraft with new ones of `model` (bought or leased). Each new
+   * aircraft takes over the old one's flights that it can fly (re-timed for
+   * its speed); the old one is sold or returned.
+   */
+  const replaceAircraft = (tails: string[], model: AircraftModel, mode: 'owned' | 'leased', leaseWeeks: number, dropClashing: boolean) => {
+    const olds = fleet.filter((f) => tails.includes(f.tailNumber));
+    if (!olds.length) return;
+    const now = econRef.current.min;
+    const quote = leaseQuote(model, leaseWeeks, now);
+    const cost = (mode === 'owned' ? model.base_price_usd : quote.deposit) * olds.length;
+    const t = disposalTerms(olds);
+    if (!canAfford(cost - t.sale - t.refund)) {
+      showAlert('Not enough cash', `Replacing ${olds.length} aircraft costs ${formatMoneyM(cost, 2)}, and the old ones bring in ${formatMoneyM(t.sale + t.refund, 2)}.`, `You have ${formatMoneyM(cash, 2)}.`);
+      return;
+    }
+    const regs = regFor(fleet, olds.length);
+    let keptFlights = 0;
+    let lostFlights = 0;
+    const done: { old: PlayerAircraft; ac: PlayerAircraft; flights: ScheduledFlight[] }[] = [];
+    olds.forEach((old, i) => {
+      const c = checkReplacement(old, model, schedule);
+      if (c.clashes.length && !dropClashing) return;
+      let flights = c.flights;
+      if (c.clashes.length) {
+        // Keep flights in time order while they still fit with the new type's timings
+        const ok: ScheduledFlight[] = [];
+        for (const fl of [...flights].sort((a, b) => a.depTimeMin - b.depTimeMin))
+          if (!findScheduleConflict(ok, [{ flightNumber: fl.flightNumber, depTimeMin: fl.depTimeMin, blockTimeMin: fl.blockTimeMin, daysOfWeek: daysOrAll(fl.daysOfWeek) }], model.turnaround_min)) ok.push(fl);
+        flights = ok;
+      }
+      keptFlights += flights.length;
+      lostFlights += flightsForTail(schedule, old.tailNumber).length - flights.length;
+      const ac: PlayerAircraft = {
+        tailNumber: regs[i],
+        model,
+        acquisition: mode,
+        hubIata: old.hubIata,
+        cabin: model.is_cargo ? old.cabin : getDefaultCabinForModel(model),
+        acquiredMin: now,
+        lease: mode === 'leased' ? { ...quote } : undefined,
+      };
+      done.push({ old, ac, flights: flights.map((fl) => ({ ...fl, tailNumber: regs[i] })) });
+    });
+    if (!done.length) {
+      showAlert('Nothing replaced', 'The new type can\u2019t fit any of these schedules as they are.', 'Tick "Drop flights that no longer fit" to replace them anyway.', 'warning');
+      return;
+    }
+    const replaced = new Set(done.map((d) => d.old.tailNumber));
+    const tr = disposalTerms(done.map((d) => d.old));
+    spend((mode === 'owned' ? model.base_price_usd : quote.deposit) * done.length);
+    if (tr.sale) bookCash('sale', tr.sale);
+    if (tr.refund) bookCash('sale', tr.refund);
+    setFleet((prev) => [...prev.filter((f) => !replaced.has(f.tailNumber)), ...done.map((d) => d.ac)]);
+    setSchedule((prev) => [...prev.filter((s) => !replaced.has(s.tailNumber)), ...done.flatMap((d) => d.flights)]);
+    setScheduleModal((m) => (m && replaced.has(m.tail) ? null : m));
+    flashToast(
+      `${done.length === 1 ? `${done[0].ac.tailNumber} replaced ${done[0].old.tailNumber}` : `${done.length} ${model.name} replaced the old aircraft`} and took over ${keptFlights} flights${lostFlights ? ` (${lostFlights} dropped)` : ''}.`,
+      6000
+    );
   };
 
   // ---------------------------------------------------------------------------
@@ -988,7 +1185,7 @@ export default function App() {
       originIata: result.next.originIata,
       depMin: result.next.depMin,
       days: result.next.days,
-      flightNumber: nextFreeFlightNumber(nextSchedule, airlineIata),
+      flightNumber: '',
     });
     flashToast(result.message);
   };
@@ -1004,9 +1201,31 @@ export default function App() {
     flashToast(`Saved changes to ${updated.flightNumber}`);
   };
 
-  const updateCabin = (tailNumber: string, cabin: CabinConfig) => {
-    setFleet((prev) => prev.map((ac) => (ac.tailNumber === tailNumber ? { ...ac, cabin: { ...cabin } } : ac)));
-    flashToast(`New cabin fitted to ${tailNumber}`);
+  // Several aircraft on one route (Fleet → select → Schedule together)
+  const [bulkTails, setBulkTails] = useState<string[] | null>(null);
+  const startBulkSchedule = (tails: string[]) => {
+    if (tails.length === 0) return;
+    setBulkTails(tails);
+    setPanel(null);
+    updateDraft({ tailNumber: tails[0] });
+    flashToast(`Pick an airport on the map to schedule ${tails.length === 1 ? tails[0] : `these ${tails.length} aircraft`} there`, 5000);
+  };
+  const applyBulkPlan = (r: BulkScheduleResult) => {
+    const ok = r.results.filter((x) => x.result.ok);
+    const failed = r.results.filter((x) => !x.result.ok);
+    if (ok.length) {
+      setSchedule((prev) => [...prev, ...r.flights]);
+      updateDraft({ flightNumber: '' });
+    }
+    if (failed.length) {
+      setGameAlert({
+        title: ok.length ? `${ok.length} scheduled, ${failed.length} couldn't be` : 'None of them could be scheduled',
+        message: failed.map((f) => `${f.tail}: ${f.result.ok ? '' : f.result.alert.title}`).join('. ') + '.',
+        detail: failed[0] && !failed[0].result.ok ? failed[0].result.alert.message : undefined,
+        severity: ok.length ? 'warning' : 'error',
+      });
+    } else flashToast(`Scheduled ${ok.length} aircraft on the route, ${r.flights.length} flights`, 4500);
+    if (ok.length && !failed.length) setBulkTails(null);
   };
 
   // ---------------------------------------------------------------------------
@@ -1019,12 +1238,15 @@ export default function App() {
     [fleet, schedule, hubs, airportByIata, econById, career.bestWeekNet, career.loansRepaid]
   );
 
-  // A letter for every milestone met and stage completed (Career mode only)
+  // A letter for every milestone met and stage completed (Career mode only),
+  // checked again every game hour (milestones after stage 1 wait out a game day)
+  const econHour = Math.floor(econ.min / 60);
   useEffect(() => {
     if (screen !== 'dashboard' || gameMode !== 'standard') return;
     const r = reviewProgramme(careerRef.current, careerMetrics, { airlineName, econMin: econRef.current.min, fleet });
     if (!r) return;
     setCareer(r.career);
+    if (r.letters.length === 0) return;
     const standing = r.letters.find((l) => l.kind === 'standing');
     flashToast(
       standing
@@ -1035,7 +1257,7 @@ export default function App() {
       5000
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [careerMetrics, screen, gameMode]);
+  }, [careerMetrics, screen, gameMode, econHour]);
 
   const takeLoan = (productId: string, amount: number) => {
     const product = productById(productId);
@@ -1127,21 +1349,23 @@ export default function App() {
     if (!c.insolvent || gameMode !== 'standard') return;
     const before = cashRef.current;
     let proceeds = 0;
-    if (route === 'sell-half') {
+    // A bail-out takes the aircraft you own first (see bailoutSeizures)
+    if (route === 'bailout') sellTails = bailoutSeizures(c, before, fleet, (a) => calcAircraftResaleUsd(a.model));
+    if (sellTails.length) {
       const sold = new Set(sellTails);
       for (const ac of fleet) if (sold.has(ac.tailNumber) && ac.acquisition === 'owned') proceeds += calcAircraftResaleUsd(ac.model);
       setFleet((prev) => prev.filter((f) => !sold.has(f.tailNumber)));
       setSchedule((prev) => prev.filter((f) => !sold.has(f.tailNumber)));
       setScheduleModal((m) => (m && sold.has(m.tail) ? null : m));
     }
-    const r = settleBankruptcy(c, before, route, econRef.current.min, airlineName, route === 'sell-half' ? { proceeds, count: sellTails.length } : undefined);
+    const r = settleBankruptcy(c, before, route, econRef.current.min, airlineName, { proceeds, count: sellTails.length });
     setCareer(r.career);
     // Book the sale, then the settlement (debts paid from it, or written off), so cash flow adds up
     if (proceeds) bookCash('sale', proceeds);
     bookCash('bailout', r.cashAfter - before - proceeds);
     flashToast(
       route === 'bailout'
-        ? `${BANK.name} has cleared your debts. No new loans for 48 hours.`
+        ? `${BANK.name} has settled your debts${sellTails.length ? `, taking ${sellTails.length} of your aircraft` : ''}. No new loans for 48 hours.`
         : `${sellTails.length} aircraft sold for ${usdShort(proceeds)}. Your debts are cleared${r.terms.surplus ? ` and ${usdShort(r.terms.surplus)} is yours` : ''}.`,
       6000
     );
@@ -1179,7 +1403,7 @@ export default function App() {
   const overlays = (
     <>
       {gameAlert && <AlertModal alert={gameAlert} onDismiss={() => setGameAlert(null)} />}
-      {toast && <Toast message={toast} />}
+      {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
       <UpdateBanner onBeforeInstall={() => screen === 'dashboard' && persistRef.current(true)} />
       <AppearanceHost mapStyle={mapStyle} onMapStyle={setMapStyle} />
     </>
@@ -1321,23 +1545,37 @@ export default function App() {
         bankBadge={bankBadge}
         onOpen={setPanel}
         onSave={saveCareer}
-        onMenu={() =>
-          setGameAlert({
-            title: 'Leave to main menu?',
-            message: 'Your career is saved first, and money keeps coming in while you are away.',
-            severity: 'info',
-            confirmLabel: 'Save and leave',
-            secondaryLabel: 'Export save file',
-            onSecondary: () => downloadSaveFile(currentSaveState()),
-            onConfirm: () => {
-              persistCareer(true); // so catch-up starts from now when you resume
-              resetTransientUi();
-              setScreen('home');
-            },
-          })
-        }
+        onMenu={() => setMenuOpen(true)}
         version={APP_VERSION}
       />
+      {menuOpen && (
+        <MainMenu
+          airlineName={airlineName}
+          version={APP_VERSION}
+          onClose={() => setMenuOpen(false)}
+          onSave={saveCareer}
+          onExport={() => downloadSaveFile(currentSaveState())}
+          onTour={() => {
+            resetTransientUi();
+            setTourOpen(true);
+          }}
+          onLeave={() => {
+            setMenuOpen(false);
+            persistCareer(true); // so catch-up starts from now when you resume
+            resetTransientUi();
+            setScreen('home');
+          }}
+        />
+      )}
+      {tourOpen && (
+        <WelcomeTour
+          airlineName={airlineName}
+          hubIata={hubIata}
+          sandbox={gameMode === 'sandbox'}
+          onClose={() => setTourOpen(false)}
+          onOpenBuy={() => setPanel('buy')}
+        />
+      )}
 
       {inspectedAirport && (
         <AirportDrawer
@@ -1358,6 +1596,9 @@ export default function App() {
           onSellHub={sellHub}
           onOpenSchedule={openSchedule}
           onBuyAircraft={() => setPanel('buy')}
+          bulkTails={bulkTails}
+          onBulkPlan={applyBulkPlan}
+          onEndBulk={() => setBulkTails(null)}
           onClose={() => setInspectedAirport(null)}
         />
       )}
@@ -1366,9 +1607,17 @@ export default function App() {
         <FleetPanel
           fleet={fleet}
           schedule={schedule}
+          catalog={BUILTIN_AIRCRAFT}
+          econMin={econ.min}
+          cash={cash}
+          sandbox={gameMode === 'sandbox'}
           onOpenSchedule={(tail) => openSchedule(tail, null)}
+          onScheduleTogether={startBulkSchedule}
           onSellOrReturn={sellOrReturnAircraft}
-          onUpdateCabin={updateCabin}
+          onBuyOut={buyOutLease}
+          onRename={renameAircraft}
+          onRefit={refitAircraft}
+          onReplace={replaceAircraft}
           onBuy={() => setPanel('buy')}
           iconForModel={iconForModel}
           onClose={closePanel}
@@ -1387,6 +1636,7 @@ export default function App() {
           tailInput={tailInput}
           onTailInputChange={setTailInput}
           onAcquire={acquireAircraft}
+          econMin={econ.min}
           iconForModel={iconForModel}
           onClose={closePanel}
         />

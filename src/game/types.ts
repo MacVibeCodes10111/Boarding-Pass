@@ -115,12 +115,26 @@ export interface CabinConfig {
   firstPitchIn: number;
 }
 
+export interface LeaseTerms {
+  termWeeks: number;
+  /** Lease payment per game day. */
+  dailyRate: number;
+  /** Economy minute the lease started. */
+  startMin: number;
+  /** Security deposit paid at signing, refunded on return (part of it when early). */
+  deposit: number;
+}
+
 export interface PlayerAircraft {
   tailNumber: string;
   model: AircraftModel;
   acquisition: 'owned' | 'leased';
   hubIata: string;
   cabin: CabinConfig;
+  /** Economy minute the aircraft joined the fleet (v2.38+). */
+  acquiredMin?: number;
+  /** The lease (v2.38+); leased aircraft from older saves have none and pay day by day. */
+  lease?: LeaseTerms;
 }
 
 export interface Fares {
@@ -209,10 +223,14 @@ export interface CareerState {
   noLoansUntilMin?: number;
   /** Bankruptcy settlements so far. */
   bankruptcies?: number;
+  /** v2.38+: economy minute each not-yet-paid milestone was first met (it must hold for a game day). */
+  goalsSince?: Record<string, number>;
 }
 
 export interface SaveGameState {
   saveId: string;
+  /** Opened from a save that wasn't protected (v2.38+): plays as Sandbox. */
+  unprotected?: boolean;
   airlineName: string;
   airlineIata: string;
   airlineCallsign: string;

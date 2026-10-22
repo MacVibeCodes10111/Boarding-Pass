@@ -5,7 +5,8 @@ import { calculateCabinUsage, getDefaultCabinForModel } from '../game/economics'
 import { TIERS, getAircraftTierInfo } from '../game/tiers';
 import { formatMoneyM } from '../game/time';
 import type { AircraftModel, CabinConfig, GameMode, OperationalTier } from '../game/types';
-import { Button, C, Field, Segmented, SearchInput, SidePanel, Stat, inputStyle } from '../ui/kit';
+import { DEFAULT_LEASE_WEEKS, DEPOSIT_WEEKS, LEASE_OPTIONS, leaseQuote } from '../game/leasing';
+import { Button, C, Field, Segmented, SearchInput, SidePanel, Stat, Stepper, inputStyle } from '../ui/kit';
 import { CabinEditor } from './CabinEditor';
 
 type Role = 'all' | 'pax' | 'cargo';
@@ -21,7 +22,9 @@ export interface BuyAircraftPanelProps {
   onCabinDraftChange: (c: CabinConfig) => void;
   tailInput: string;
   onTailInputChange: (t: string) => void;
-  onAcquire: (mode: 'owned' | 'leased') => void;
+  /** Buy or lease `count` of the type; leases run `leaseWeeks`. */
+  onAcquire: (mode: 'owned' | 'leased', leaseWeeks: number, count: number) => void;
+  econMin: number;
   iconForModel: (m: AircraftModel) => string;
   onClose: () => void;
 }
@@ -57,9 +60,11 @@ export function BuyAircraftPanel(props: BuyAircraftPanelProps) {
   const usage = calculateCabinUsage(m, cabinDraft);
   const tier = getAircraftTierInfo(m.tier);
   const sandbox = props.gameMode === 'sandbox';
-  const leaseDeposit = m.daily_lease_usd * 7;
-  const canBuy = sandbox || props.cash >= m.base_price_usd;
-  const canLease = sandbox || props.cash >= leaseDeposit;
+  const [count, setCount] = useState(1);
+  const [weeks, setWeeks] = useState(DEFAULT_LEASE_WEEKS);
+  const quote = leaseQuote(m, weeks, props.econMin);
+  const canBuy = sandbox || props.cash >= m.base_price_usd * count;
+  const canLease = sandbox || props.cash >= quote.deposit * count;
 
   const details = useRef<HTMLDivElement | null>(null);
   const select = (x: AircraftModel) => {
@@ -194,18 +199,30 @@ export function BuyAircraftPanel(props: BuyAircraftPanelProps) {
             </div>
           )}
 
-          <Field label="Registration" hint="Leave as suggested, or type your own" style={{ maxWidth: 260, marginBottom: 18 }}>
-            <input value={props.tailInput} onChange={(e) => props.onTailInputChange(e.target.value.toUpperCase())} style={{ ...inputStyle, fontWeight: 600 }} />
-          </Field>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 18 }}>
+            <Field label={count > 1 ? 'First registration' : 'Registration'} hint={count > 1 ? 'The others are numbered on from it' : 'Leave as suggested, or type your own'} style={{ width: 240 }}>
+              <input
+                aria-label="Registration"
+                value={props.tailInput}
+                maxLength={10}
+                onChange={(e) => props.onTailInputChange(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''))}
+                style={{ ...inputStyle, fontWeight: 600 }}
+              />
+            </Field>
+            <Field label="How many" hint="Up to 50 at once">
+              <Stepper value={count} min={1} max={50} onChange={setCount} />
+            </Field>
+          </div>
 
           <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div style={{ padding: 14, border: `1px solid ${C.line}`, borderRadius: 8 }}>
               <div style={{ fontSize: 12, color: C.muted }}>Buy outright</div>
               <div className="num" style={{ fontSize: 20, fontWeight: 650, margin: '2px 0 10px' }}>
-                {formatMoneyM(m.base_price_usd)}
+                {formatMoneyM(m.base_price_usd * count)}
+                {count > 1 && <span style={{ fontSize: 13, color: C.muted, fontWeight: 500 }}> for {count}</span>}
               </div>
-              <Button variant="primary" block disabled={!usage.isValid || !canBuy} onClick={() => props.onAcquire('owned')}>
-                Buy aircraft
+              <Button variant="primary" block disabled={!usage.isValid || !canBuy} onClick={() => props.onAcquire('owned', weeks, count)}>
+                {count > 1 ? `Buy ${count} aircraft` : 'Buy aircraft'}
               </Button>
               <div style={{ fontSize: 11.5, color: canBuy ? C.faint : C.red, marginTop: 6 }}>
                 {canBuy ? 'Resale value is 75% of the list price' : 'Not enough cash'}
@@ -213,15 +230,24 @@ export function BuyAircraftPanel(props: BuyAircraftPanelProps) {
             </div>
             <div style={{ padding: 14, border: `1px solid ${C.line}`, borderRadius: 8 }}>
               <div style={{ fontSize: 12, color: C.muted }}>Lease</div>
-              <div className="num" style={{ fontSize: 20, fontWeight: 650, margin: '2px 0 10px' }}>
-                ${m.daily_lease_usd.toLocaleString()}
-                <span style={{ fontSize: 13, color: C.muted, fontWeight: 500 }}> per day</span>
+              <div className="num" style={{ fontSize: 20, fontWeight: 650, margin: '2px 0 8px' }}>
+                ${quote.dailyRate.toLocaleString()}
+                <span style={{ fontSize: 13, color: C.muted, fontWeight: 500 }}> per day{count > 1 ? ' each' : ''}</span>
               </div>
-              <Button variant="subtle" block disabled={!usage.isValid || !canLease} onClick={() => props.onAcquire('leased')}>
-                Lease aircraft
+              <Segmented<string>
+                size="sm"
+                value={String(weeks)}
+                onChange={(w) => setWeeks(Number(w))}
+                options={LEASE_OPTIONS.map((o) => ({ value: String(o.weeks), label: o.label, title: `${Math.round(o.rateMult * 100)}% of the standard rate` }))}
+              />
+              <div style={{ height: 10 }} />
+              <Button variant="subtle" block disabled={!usage.isValid || !canLease} onClick={() => props.onAcquire('leased', weeks, count)}>
+                {count > 1 ? `Lease ${count} aircraft` : 'Lease aircraft'}
               </Button>
-              <div className="num" style={{ fontSize: 11.5, color: canLease ? C.faint : C.red, marginTop: 6 }}>
-                {canLease ? `$${leaseDeposit.toLocaleString()} deposit now, then daily` : 'Not enough cash for the deposit'}
+              <div className="num" style={{ fontSize: 11.5, color: canLease ? C.faint : C.red, marginTop: 6, lineHeight: 1.45 }}>
+                {canLease
+                  ? `Deposit ${formatMoneyM(quote.deposit * count, 2)} now (${DEPOSIT_WEEKS} weeks of payments), back when it's returned after the term. Returning early keeps part of it. Can be bought out later.`
+                  : 'Not enough cash for the deposit'}
               </div>
             </div>
           </div>

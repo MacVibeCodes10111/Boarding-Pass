@@ -34,6 +34,7 @@ import {
   standingIndex,
   totalOutstanding,
   uncollected,
+  goalsWaiting,
   usdFull,
   usdShort,
   weeklyInstalments,
@@ -143,7 +144,8 @@ export function BankPanel(props: BankPanelProps) {
 // ---------------------------------------------------------------------------
 // Milestones
 // ---------------------------------------------------------------------------
-function Programme({ career, metrics, gameMode, onCollect }: BankPanelProps) {
+function Programme({ career, metrics, gameMode, onCollect, econMin }: BankPanelProps) {
+  const waiting = goalsWaiting(career, econMin);
   const open = currentStage(career);
   const [toggled, setToggled] = useState<Record<number, boolean>>({});
   const letterFor = (pred: (l: BankLetter) => boolean) => career.letters.find(pred);
@@ -216,6 +218,7 @@ function Programme({ career, metrics, gameMode, onCollect }: BankPanelProps) {
                     letter={letterFor((l) => l.goalId === g.id)}
                     canCollect={gameMode === 'standard'}
                     onCollect={onCollect}
+                    waitMin={waiting.get(g.id)}
                   />
                 ))}
               </div>
@@ -235,6 +238,7 @@ function GoalRow({
   letter,
   canCollect,
   onCollect,
+  waitMin,
 }: {
   goal: GoalDef;
   metrics: CareerMetrics;
@@ -243,6 +247,8 @@ function GoalRow({
   letter?: BankLetter;
   canCollect: boolean;
   onCollect: (id: string) => void;
+  /** Met, but waiting out its game day: game minutes left. */
+  waitMin?: number;
 }) {
   const doneNow = met || goalDone(goal, metrics);
   const pct = Math.max(0, Math.min(100, (goalValue(goal, metrics) / goal.target) * 100));
@@ -289,6 +295,10 @@ function GoalRow({
         ) : letter?.collected ? (
           <span className="num" style={{ fontSize: 12, color: C.green }}>
             {usdShort(goal.reward)} collected
+          </span>
+        ) : waitMin !== undefined && goalDone(goal, metrics) ? (
+          <span className="num" title="Milestones pay once they have stayed met for a game day" style={{ fontSize: 12, color: C.amber }}>
+            {usdShort(goal.reward)} in {Math.max(1, Math.ceil(waitMin / 60))} game h
           </span>
         ) : (
           <span className="num" style={{ fontSize: 13, fontWeight: 600, color: C.textDim }}>

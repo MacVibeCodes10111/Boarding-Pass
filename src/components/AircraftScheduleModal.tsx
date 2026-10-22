@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getRouteDemandAndFares } from '../game/economics';
+import { MAX_FARE_MULT, getRouteDemandAndFares } from '../game/economics';
 import { calcAircraftScheduleUsage, findScheduleConflict, flightsForTail, isFlightNumberTaken } from '../game/scheduling';
 import { calcAircraftResaleUsd, getAircraftTierInfo } from '../game/tiers';
 import { MIN_PER_DAY, daysOrAll, formatClockShort, formatDurationHm, formatMoneyM, snapToFiveMin } from '../game/time';
@@ -55,6 +55,11 @@ export function AircraftScheduleModal({
     setEditFares({ ...selectedFlight.fares, cargoPerTon: selectedFlight.fares.cargoPerTon || refFares.cargoPerTon });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
+
+  const refFares = useMemo(
+    () => (selectedFlight ? getRouteDemandAndFares(selectedFlight.origin, selectedFlight.destination, selectedFlight.distanceNm).refFares : undefined),
+    [selectedFlight]
+  );
 
   const pairedFlight = useMemo(() => {
     if (!selectedFlight?.pairId) return null;
@@ -205,7 +210,7 @@ export function AircraftScheduleModal({
 
             <div>
               <label style={{ ...labelStyle }}>{isCargo ? 'Freight rate ($ per tonne)' : 'Fares ($) and cargo rate ($ per tonne)'}</label>
-              <FaresEditor fares={editFares} onChange={setEditFares} cargoOnly={isCargo} />
+              <FaresEditor fares={editFares} onChange={setEditFares} cargoOnly={isCargo} refFares={refFares} />
             </div>
           </div>
 
@@ -248,19 +253,21 @@ export function ErrorBanner({ message }: { message: string }) {
 const FARE_LABELS = { econ: 'Economy', prem: 'Premium', bus: 'Business', first: 'First' } as const;
 
 /** Fare inputs for the four cabins plus cargo rate. */
-export function FaresEditor({ fares, onChange, cargoOnly }: { fares: Fares; onChange: (f: Fares) => void; cargoOnly: boolean }) {
+export function FaresEditor({ fares, onChange, cargoOnly, refFares }: { fares: Fares; onChange: (f: Fares) => void; cargoOnly: boolean; refFares?: Fares }) {
   const classes = cargoOnly ? [] : (['econ', 'prem', 'bus', 'first'] as const);
+  // Nobody buys at three times the market fare; the box stops at five times it
+  const cap = (ref: number | undefined) => (ref ? Math.round(ref * MAX_FARE_MULT) : undefined);
   return (
     <div style={{ display: 'grid', gridTemplateColumns: cargoOnly ? '160px' : 'repeat(5, 1fr)', gap: 8 }}>
       {classes.map((k) => (
         <label key={k} style={{ display: 'block' }}>
           <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginBottom: 3 }}>{FARE_LABELS[k]}</span>
-          <NumberField value={fares[k]} min={10} onChange={(v) => onChange({ ...fares, [k]: v })} />
+          <NumberField value={fares[k]} min={10} max={cap(refFares?.[k])} onChange={(v) => onChange({ ...fares, [k]: v })} />
         </label>
       ))}
       <label style={{ display: 'block' }}>
         <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginBottom: 3 }}>Cargo $/t</span>
-        <NumberField value={fares.cargoPerTon ?? 350} min={25} onChange={(v) => onChange({ ...fares, cargoPerTon: v })} />
+        <NumberField value={fares.cargoPerTon ?? 350} min={25} max={cap(refFares?.cargoPerTon)} onChange={(v) => onChange({ ...fares, cargoPerTon: v })} />
       </label>
     </div>
   );

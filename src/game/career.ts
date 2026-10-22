@@ -9,7 +9,7 @@
 import { ECONOMY_RATE, OVERDRAFT_RATE_PCT, econDayOfWeek, econWeekOf, ledgerNet, loanInterestShare, loanPrincipalLeft, type WeekLedger } from './clock';
 import type { FlightEconomics } from './economics';
 import { calcAircraftResaleUsd } from './tiers';
-import { MIN_PER_WEEK, daysOrAll } from './time';
+import { MIN_PER_DAY, MIN_PER_WEEK, daysOrAll } from './time';
 import type { Airport, BankLetter, BankLoan, CareerState, PlayerAircraft, ScheduledFlight } from './types';
 
 export const BANK = {
@@ -320,7 +320,7 @@ export const GOALS: GoalDef[] = [
   { id: 's3-widebody', stage: 3, title: 'Put a widebody into service', hint: 'Buy or lease a widebody and give it at least one flight.', metric: 'widebodies', target: 1, reward: 80 * M, unit: 'widebodies flying' },
   { id: 's3-pax25k', stage: 3, title: 'Carry 25,000 passengers a week', hint: 'Bigger aircraft and more frequencies on strong routes.', metric: 'paxPerWeek', target: 25_000, reward: 100 * M, unit: 'passengers a week' },
   { id: 's3-week10m', stage: 3, title: 'Close a week with $10M net profit', hint: 'Shown as This week in the top bar.', metric: 'bestWeekNet', target: 10 * M, reward: 150 * M, unit: 'best week', money: true },
-  { id: 's3-repay', stage: 3, title: 'Repay a loan in full', hint: 'Let a loan run its term or repay it early from the Loans tab.', metric: 'loansRepaid', target: 1, reward: 50 * M, unit: 'loans repaid' },
+  { id: 's3-repay', stage: 3, title: 'Repay a loan in full', hint: 'Let a loan run its term, or repay it early from the Loans tab after at least a week.', metric: 'loansRepaid', target: 1, reward: 50 * M, unit: 'loans repaid' },
 
   // Stage 4: international carrier
   { id: 's4-fleet40', stage: 4, title: 'Operate 40 aircraft', hint: 'Owned and leased aircraft both count.', metric: 'aircraft', target: 40, reward: 300 * M, unit: 'aircraft' },
@@ -502,10 +502,15 @@ export function insolvencyLetter(airlineName: string, week: number, cash: number
   };
 }
 
+/** Milestones after stage 1 must stay met this long before they pay (no lease-and-return or schedule-and-delete). */
+export const GOAL_HOLD_MIN = MIN_PER_DAY;
+
 /**
- * Issues a letter for every newly met milestone and completed stage. Milestones
- * latch: once met, the grant stays collectable even if the airline later
- * shrinks. Returns null when nothing changed.
+ * Issues a letter for every newly met milestone and completed stage. Stage 1
+ * (the guided start) pays at once; later milestones once they have stayed met
+ * for a whole game day of running economy. Milestones then latch: the grant
+ * stays collectable even if the airline later shrinks. Returns null when
+ * nothing changed.
  */
 export function reviewProgramme(
   career: CareerState,
@@ -515,8 +520,28 @@ export function reviewProgramme(
   const letters: BankLetter[] = [];
   const goalsMet = [...career.goalsMet];
   const stagesMet = [...career.stagesMet];
+  const since: Record<string, number> = { ...(career.goalsSince ?? {}) };
+  let sinceChanged = false;
   for (const g of GOALS) {
-    if (goalsMet.includes(g.id) || !goalDone(g, metrics)) continue;
+    if (goalsMet.includes(g.id)) continue;
+    if (!goalDone(g, metrics)) {
+      if (g.id in since) {
+        delete since[g.id];
+        sinceChanged = true;
+      }
+      continue;
+    }
+    if (g.stage > 1) {
+      if (!(g.id in since)) {
+        since[g.id] = ctx.econMin;
+        sinceChanged = true;
+      }
+      if (ctx.econMin - since[g.id] < GOAL_HOLD_MIN) continue;
+    }
+    if (g.id in since) {
+      delete since[g.id];
+      sinceChanged = true;
+    }
     goalsMet.push(g.id);
     letters.push(milestoneLetter(g, metrics, ctx.airlineName, ctx.econMin));
   }
@@ -527,8 +552,15 @@ export function reviewProgramme(
     const after = { ...career, goalsMet, stagesMet };
     letters.push(stageLetter(st, ctx.airlineName, ctx.econMin, creditLine(after, ctx.fleet)));
   }
-  if (letters.length === 0) return null;
-  return { career: { ...career, goalsMet, stagesMet, letters: [...[...letters].reverse(), ...career.letters] }, letters };
+  if (letters.length === 0 && !sinceChanged) return null;
+  return { career: { ...career, goalsMet, stagesMet, goalsSince: since, letters: [...[...letters].reverse(), ...career.letters] }, letters };
+}
+
+/** Milestones met but still waiting out their game day, with the minutes left. */
+export function goalsWaiting(career: CareerState, econMin: number): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const [id, t] of Object.entries(career.goalsSince ?? {})) out.set(id, Math.max(0, GOAL_HOLD_MIN - (econMin - t)));
+  return out;
 }
 
 /** The open stage (lowest not yet completed), or null when all are done. */
@@ -625,7 +657,13 @@ export function repayLoanEarly(career: CareerState, loanId: string, econMin: num
   const letter = repaidLetter(loan, airlineName, econMin, true);
   return {
     amount,
-    career: { ...career, loans: career.loans.filter((l) => l.id !== loanId), loansRepaid: career.loansRepaid + 1, letters: [letter, ...career.letters] },
+    career: {
+      ...career,
+      loans: career.loans.filter((l) => l.id !== loanId),
+      // Borrowing and paying straight back doesn't count towards the "Repay a loan" milestone
+      loansRepaid: career.loansRepaid + (econMin - loan.startMin >= MIN_PER_WEEK ? 1 : 0),
+      letters: [letter, ...career.letters],
+    },
   };
 }
 
@@ -703,11 +741,30 @@ export function proposedSales(fleet: PlayerAircraft[], weeklyProfitByTail: Map<s
     .map((a) => a.tailNumber);
 }
 
+/**
+ * Aircraft the bank takes in a bail-out: owned ones, most valuable first,
+ * until their resale value covers what is owed. Leased aircraft stay.
+ */
+export function bailoutSeizures(career: CareerState, cash: number, fleet: PlayerAircraft[], resale: (a: PlayerAircraft) => number): string[] {
+  let owed = activeLoans(career).reduce((s, l) => s + loanPrincipalLeft(l), 0) - cash;
+  const out: string[] = [];
+  for (const a of [...fleet].filter((f) => f.acquisition === 'owned').sort((x, y) => resale(y) - resale(x) || x.tailNumber.localeCompare(y.tailNumber))) {
+    if (owed <= 0) break;
+    out.push(a.tailNumber);
+    owed -= resale(a);
+  }
+  return out;
+}
+
 /** What a settlement does to the money, before it's applied. */
 export function settlementTerms(career: CareerState, cash: number, route: BankruptcyRoute, saleProceeds = 0) {
   const loans = activeLoans(career).reduce((s, l) => s + loanPrincipalLeft(l), 0);
   const overdraft = Math.max(0, -cash);
-  if (route === 'bailout') return { loans, overdraft, proceeds: 0, cashAfter: Math.max(0, cash), surplus: 0, writtenOff: loans + overdraft };
+  if (route === 'bailout') {
+    // Aircraft the airline owns are taken first, so a bail-out never hands out free aircraft
+    const left = cash + saleProceeds - loans;
+    return { loans, overdraft, proceeds: saleProceeds, cashAfter: Math.max(0, left), surplus: 0, writtenOff: Math.max(0, -left) };
+  }
   const left = cash + saleProceeds - loans;
   return { loans, overdraft, proceeds: saleProceeds, cashAfter: Math.max(0, left), surplus: Math.max(0, left), writtenOff: Math.max(0, -left) };
 }
@@ -722,7 +779,7 @@ function settlementLetter(airlineName: string, route: BankruptcyRoute, t: Return
     body: [
       `Dear ${airlineName} management,`,
       route === 'bailout'
-        ? `Under the bail-out agreed today, the Bank has cleared ${usdFull(t.writtenOff)} of debt owed by ${airlineName}: ${usdFull(t.loans)} on loans${t.overdraft ? ` and an overdraft of ${usdFull(t.overdraft)}` : ''}. Your operating account now stands at ${usdFull(t.cashAfter)}.`
+        ? `Under the bail-out agreed today, the Bank has settled ${usdFull(t.loans)} owed by ${airlineName} on loans${t.overdraft ? ` and an overdraft of ${usdFull(t.overdraft)}` : ''}.${sold ? ` ${sold} aircraft owned by the airline have been taken and sold for ${usdFull(t.proceeds)} towards it.` : ''}${t.writtenOff ? ` The Bank has written off the remaining ${usdFull(t.writtenOff)}.` : ''} Your operating account now stands at ${usdFull(t.cashAfter)}.`
         : `Under the settlement agreed today, ${sold} aircraft have been sold for ${usdFull(t.proceeds)}. The proceeds have settled ${usdFull(t.loans)} owed on loans${t.overdraft ? ` and your overdraft of ${usdFull(t.overdraft)}` : ''}.${t.writtenOff ? ` The Bank has written off the remaining ${usdFull(t.writtenOff)}.` : ''}${t.surplus ? ` The surplus of ${usdFull(t.surplus)} has been paid into your operating account.` : ''}`,
       route === 'bailout'
         ? `As a condition of the bail-out, no new loans will be offered until ${econDateText(unlockMin)}, and new borrowing after that carries a surcharge of ${OVERDRAFT_SURCHARGE_PCT}% a year until the end of week ${surchargeTo}.`

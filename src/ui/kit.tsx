@@ -153,6 +153,10 @@ export const globalCss = () => `
   .maplibregl-popup-close-button { color: ${C.muted}; font-size: 18px; padding: 2px 8px; }
   .bp-camera-alt { color: ${C.textDim}; background: ${C.panel}b8; }
   .bp-cam-btn { border: 1px solid ${C.border}; background: ${C.raised}; color: ${C.text}; }
+  .bp-zoom { border: 1px solid ${C.border}; background: ${C.panel}d8; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+  .bp-zoom-btn { background: transparent; color: ${C.text}; }
+  .bp-zoom-btn + .bp-zoom-btn { border-top: 1px solid ${C.border} !important; }
+  .bp-zoom-btn:hover { background: ${C.raised}; }
 
   /* Touch screens: no sticky hover, roomier controls */
   html[data-input=touch] button:not(:disabled):hover { filter: none; }

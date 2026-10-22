@@ -3,7 +3,8 @@ import type { FlightEconomics } from '../game/economics';
 import { calcAircraftScheduleUsage, getAircraftCircuitStatus, type AircraftCircuitStatus } from '../game/scheduling';
 import { daysOrAll, formatClockShort } from '../game/time';
 import type { Airport, PlayerAircraft, ScheduledFlight } from '../game/types';
-import { Button, C, EmptyState, Pill, SearchInput, SectionTitle, Segmented, SidePanel, inputStyle } from '../ui/kit';
+import { Icon } from '../ui/icons';
+import { Button, C, EmptyState, Pill, SearchInput, Segmented, SidePanel, inputStyle } from '../ui/kit';
 
 export interface ScheduleTabProps {
   schedule: ScheduledFlight[];
@@ -24,6 +25,7 @@ interface Rotation {
 }
 
 type GroupBy = 'hub' | 'aircraft';
+const COLLAPSE_KEY = 'bp_schedule_collapsed_v1';
 interface Group {
   key: string;
   title: string;
@@ -36,6 +38,28 @@ export function SchedulePanel({ schedule, fleet, hubs, primaryHub, airportByIata
   const [search, setSearch] = useState('');
   const [tailFilter, setTailFilter] = useState('');
   const [groupBy, setGroupBy] = useState<GroupBy>('hub');
+  // Collapsed groups (hubs or aircraft), remembered on this device
+  const [collapsed, setCollapsedState] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? '[]'));
+    } catch {
+      return new Set();
+    }
+  });
+  const setCollapsed = (next: Set<string>) => {
+    setCollapsedState(next);
+    try {
+      localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...next]));
+    } catch {
+      /* storage unavailable */
+    }
+  };
+  const toggleGroup = (key: string) => {
+    const n = new Set(collapsed);
+    if (n.has(key)) n.delete(key);
+    else n.add(key);
+    setCollapsed(n);
+  };
 
   // Aircraft with flights, least used first, for the filter menu
   const scheduledFleet = useMemo(
@@ -104,7 +128,7 @@ export function SchedulePanel({ schedule, fleet, hubs, primaryHub, airportByIata
     }
     const plural = (n: number) => `${n} ${n === 1 ? 'rotation' : 'rotations'}`;
     if (groupBy === 'hub') {
-      return [...hubGroups.entries()].map(([code, g]) => ({ key: code, title: `${code} ${g.hub.municipality}`, meta: plural(g.rotations.length), rotations: g.rotations }));
+      return [...hubGroups.entries()].map(([code, g]) => ({ key: code, title: `${code} ${g.hub.municipality}`, meta: `${new Set(g.rotations.map((r) => r.outbound.tailNumber)).size} aircraft`, rotations: g.rotations }));
     }
     return [...tailGroups.entries()]
       .map(([tail, rotations]) => {
@@ -121,6 +145,8 @@ export function SchedulePanel({ schedule, fleet, hubs, primaryHub, airportByIata
       })
       .sort((a, b) => a.used - b.used || a.key.localeCompare(b.key));
   }, [schedule, fleet, hubs, primaryHub, airportByIata, search, tailFilter, groupBy]);
+  const visibleGroups = groups.filter((g) => g.rotations.length > 0);
+  const allCollapsed = visibleGroups.length > 0 && visibleGroups.every((g) => collapsed.has(g.key));
 
   const weeklyProfit = useMemo(
     () => schedule.reduce((sum, fl) => sum + (econById.get(fl.id)?.profit ?? 0) * daysOrAll(fl.daysOfWeek).filter(Boolean).length, 0),
@@ -182,14 +208,35 @@ export function SchedulePanel({ schedule, fleet, hubs, primaryHub, airportByIata
                 Show all aircraft
               </Button>
             )}
+            <span style={{ flex: 1 }} />
+            {visibleGroups.length > 1 && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setCollapsed(allCollapsed ? new Set([...collapsed].filter((k) => !visibleGroups.some((g) => g.key === k))) : new Set([...collapsed, ...visibleGroups.map((g) => g.key)]))}
+              >
+                {allCollapsed ? 'Expand all' : 'Collapse all'}
+              </Button>
+            )}
           </div>
-          {groups
-            .filter((g) => g.rotations.length > 0)
-            .map((group) => (
-              <section key={group.key} style={{ marginBottom: 20 }}>
-                <SectionTitle right={<span className="num" style={{ fontSize: 12, color: C.muted }}>{group.meta}</span>}>
-                  {group.title}
-                </SectionTitle>
+          {visibleGroups.map((group) => {
+            const open = !collapsed.has(group.key) || Boolean(search.trim()) || Boolean(tailFilter);
+            return (
+              <section key={group.key} style={{ marginBottom: open ? 20 : 8 }}>
+                <button
+                  type="button"
+                  className="bp-group-toggle"
+                  aria-expanded={open}
+                  onClick={() => toggleGroup(group.key)}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 2px', background: 'none', border: 'none', color: C.textSoft, cursor: 'pointer', textAlign: 'left' }}
+                >
+                  <Icon name="chevron" size={14} style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .12s', color: C.muted }} />
+                  <span style={{ fontSize: 14, fontWeight: 650, flex: 1 }}>{group.title}</span>
+                  <span className="num" style={{ fontSize: 12, color: C.muted }}>
+                    {group.rotations.length} {group.rotations.length === 1 ? 'route' : 'routes'}, {group.meta}
+                  </span>
+                </button>
+                {open && (
                 <div style={{ border: `1px solid ${C.line}`, borderRadius: 8, overflow: 'hidden' }}>
                   {group.rotations.map(({ outbound, returnLeg, chainSummary }, i) => {
                     const ac = fleet.find((f) => f.tailNumber === outbound.tailNumber);
@@ -241,8 +288,10 @@ export function SchedulePanel({ schedule, fleet, hubs, primaryHub, airportByIata
                     );
                   })}
                 </div>
+                )}
               </section>
-            ))}
+            );
+          })}
           {groups.every((g) => g.rotations.length === 0) && <div style={{ color: C.muted, fontSize: 12.5 }}>No flights match these filters.</div>}
         </>
       )}

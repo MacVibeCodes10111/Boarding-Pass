@@ -17,6 +17,7 @@ import {
   proposedSales,
   sellHalfCount,
   settlementTerms,
+  bailoutSeizures,
   usdShort,
   type BankruptcyRoute,
 } from '../game/career';
@@ -38,10 +39,11 @@ export function BankruptcyModal(props: {
   const route = bankruptcyRoute(fleet);
   const need = sellHalfCount(fleet);
   const [picked, setPicked] = useState<Set<string>>(() => new Set(proposedSales(fleet, props.weeklyProfitByTail, props.scheduledTails)));
-  const proceeds = useMemo(
-    () => fleet.reduce((s, a) => s + (picked.has(a.tailNumber) && a.acquisition === 'owned' ? calcAircraftResaleUsd(a.model) : 0), 0),
-    [fleet, picked]
-  );
+  const seized = useMemo(() => (route === 'bailout' ? bailoutSeizures(career, cash, fleet, (a) => calcAircraftResaleUsd(a.model)) : []), [route, career, cash, fleet]);
+  const proceeds = useMemo(() => {
+    const sold = route === 'bailout' ? new Set(seized) : picked;
+    return fleet.reduce((s, a) => s + (sold.has(a.tailNumber) && a.acquisition === 'owned' ? calcAircraftResaleUsd(a.model) : 0), 0);
+  }, [fleet, picked, route, seized]);
   const t = settlementTerms(career, cash, route, proceeds);
   const lockHours = Math.round(BAILOUT_LOAN_LOCK_MIN / ECONOMY_RATE.normal / 3600);
   const toggle = (tail: string) =>
@@ -121,10 +123,14 @@ export function BankruptcyModal(props: {
           <>
             <div style={{ fontSize: 14, fontWeight: 650, color: C.text }}>Bank bail-out</div>
             <div style={{ fontSize: 12.5, color: C.muted, margin: '3px 0 0', lineHeight: 1.45 }}>
-              With {fleet.length} {fleet.length === 1 ? 'aircraft' : 'aircraft'} (under {BAILOUT_FLEET_LIMIT}), the bank bails you out. You keep every aircraft.
+              With {fleet.length} aircraft (under {BAILOUT_FLEET_LIMIT}), the bank bails you out.{' '}
+              {seized.length
+                ? `It takes the aircraft you own to cover what it can (${seized.join(', ')}); leased aircraft stay with you.`
+                : 'You own no aircraft it can take, so you keep your fleet.'}
             </div>
             <Terms>
-              <Line k="Debt the bank clears" v={usdShort(t.writtenOff)} />
+              {seized.length > 0 && <Line k={`${seized.length} aircraft taken and sold for`} v={usdShort(t.proceeds)} />}
+              <Line k="Debt the bank writes off" v={usdShort(t.writtenOff)} />
               <Line k="Your cash afterwards" v={usdShort(t.cashAfter)} strong />
               <Line k="New loans" v={`none for ${lockHours} hours (2 game weeks)`} />
             </Terms>

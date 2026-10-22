@@ -1,6 +1,7 @@
 // ============================================================================
 // WEEKLY BLOCK SCHEDULE: conflicts, spatial continuity, circuits & route planning
 // ============================================================================
+import { flightNumberBand, nextRegistration } from './registrations';
 import { getRouteDemandAndFares } from './economics';
 import { calcBlockTimeMin, calcDistanceNm } from './geo';
 import { airportRestrictionFor } from './tiers';
@@ -46,29 +47,46 @@ export function isFlightNumberTaken(schedule: ScheduledFlight[], flightNumber: s
   return schedule.some((f) => f.id !== ignoreId && f.flightNumber.toUpperCase() === fn);
 }
 
-/** Lowest free flight number ≥ 101 for this airline, skipping `alsoTaken`. */
+/**
+ * Free flight number for this airline, skipping `alsoTaken`. With a distance
+ * it comes from the range airlines use for that length (long-haul 1–99,
+ * short hops 2000+); for a round trip (`pair`) it is an odd number whose even
+ * neighbour is free too, for the return flight.
+ */
 export function nextFreeFlightNumber(
   schedule: ScheduledFlight[],
   airlineIata: string,
-  alsoTaken: string[] = []
+  alsoTaken: string[] = [],
+  distanceNm?: number,
+  pair = false
 ): string {
   const prefix = airlineIata.toUpperCase();
   const taken = new Set([...schedule.map((f) => f.flightNumber.toUpperCase()), ...alsoTaken.map((s) => s.toUpperCase())]);
-  for (let n = 101; n < 100000; n++) {
-    const candidate = `${prefix}${n}`;
-    if (!taken.has(candidate)) return candidate;
-  }
-  return `${prefix}${Date.now() % 100000}`;
+  const free = (n: number) => !taken.has(`${prefix}${n}`);
+  const [lo, hi] = flightNumberBand(distanceNm);
+  const tryRange = (a: number, b: number) => {
+    for (let n = a; n <= b; n++) {
+      if (pair && n % 2 === 0) continue;
+      if (free(n) && (!pair || free(n + 1))) return `${prefix}${n}`;
+    }
+    return null;
+  };
+  return tryRange(lo, hi) ?? tryRange(101, 9998) ?? `${prefix}${Date.now() % 100000}`;
 }
 
-export function nextFreeTailNumber(fleet: PlayerAircraft[], airlineIata: string): string {
-  const taken = new Set(fleet.map((a) => a.tailNumber.toUpperCase()));
-  const suffix = airlineIata.toUpperCase() || 'XX';
-  for (let n = 101; n < 100000; n++) {
-    const candidate = `N${n}${suffix}`;
-    if (!taken.has(candidate)) return candidate;
+/** The return flight's number: the outbound's plus one when that is free. */
+export function returnFlightNumber(schedule: ScheduledFlight[], airlineIata: string, outbound: string, distanceNm?: number): string {
+  const m = outbound.toUpperCase().match(/^(.*?)(\d+)$/);
+  if (m) {
+    const next = `${m[1]}${Number(m[2]) + 1}`;
+    if (!schedule.some((f) => f.flightNumber.toUpperCase() === next)) return next;
   }
-  return `N${Date.now() % 100000}${suffix}`;
+  return nextFreeFlightNumber(schedule, airlineIata, [outbound], distanceNm);
+}
+
+/** First free registration for a new aircraft based at a hub in `country` (see registrations.ts). */
+export function nextFreeTailNumber(fleet: PlayerAircraft[], airlineIata: string, country = 'US'): string {
+  return nextRegistration(fleet.map((a) => a.tailNumber), airlineIata, country);
 }
 
 // ----------------------------------------------------------------------------
@@ -259,6 +277,37 @@ export function findScheduleConflict(
   return null;
 }
 
+/** True when an aircraft's flights don't join up (it would have to jump between airports on a day). */
+export function hasContinuityBreak(flights: ScheduledFlight[]): boolean {
+  for (let d = 0; d < 7; d++) {
+    const day = flights.filter((f) => daysOrAll(f.daysOfWeek)[d]).sort((a, b) => a.depTimeMin - b.depTimeMin);
+    for (let i = 1; i < day.length; i++) if (day[i - 1].destination.iata_code !== day[i].origin.iata_code) return true;
+  }
+  return false;
+}
+
+/**
+ * The flights to cancel when a hub is sold: every flight to or from it (with
+ * the other half of its round trip), and the rest of an aircraft's day when
+ * what's left no longer joins up.
+ */
+export function flightsCancelledBySellingHub(schedule: ScheduledFlight[], hub: string): Set<string> {
+  const out = new Set<string>();
+  const pairs = new Set<string>();
+  for (const f of schedule)
+    if (f.origin.iata_code === hub || f.destination.iata_code === hub) {
+      out.add(f.id);
+      if (f.pairId) pairs.add(f.pairId);
+    }
+  for (const f of schedule) if (f.pairId && pairs.has(f.pairId)) out.add(f.id);
+  const tails = new Set(schedule.filter((f) => out.has(f.id)).map((f) => f.tailNumber));
+  for (const t of tails) {
+    const left = schedule.filter((f) => f.tailNumber === t && !out.has(f.id));
+    if (hasContinuityBreak(left)) left.forEach((f) => out.add(f.id));
+  }
+  return out;
+}
+
 export function calcAircraftScheduleUsage(aircraft: PlayerAircraft, allSchedule: ScheduledFlight[]) {
   const acFlights = allSchedule.filter((f) => f.tailNumber === aircraft.tailNumber);
   const weeklyOccupiedMin = acFlights.reduce(
@@ -302,7 +351,7 @@ export function buildDispatchLegs(req: DispatchRequest) {
   const blockMin = calcBlockTimeMin(distanceNm, aircraft.model.cruise_speed_kts);
   const outDepMin = snapToFiveMin(req.depMin);
   const outFlightNumber =
-    req.flightNumber.trim().toUpperCase() || nextFreeFlightNumber(req.schedule, req.airlineIata);
+    req.flightNumber.trim().toUpperCase() || nextFreeFlightNumber(req.schedule, req.airlineIata, [], distanceNm, mode === 'roundtrip');
 
   const legs: (CandidateLeg & { arrTimeMin: number })[] = [
     {
@@ -320,7 +369,7 @@ export function buildDispatchLegs(req: DispatchRequest) {
     const retAbs = ceilToFive(outDepMin + blockMin + aircraft.model.turnaround_min);
     const retDepMin = retAbs % MIN_PER_DAY;
     legs.push({
-      flightNumber: nextFreeFlightNumber(req.schedule, req.airlineIata, [outFlightNumber]),
+      flightNumber: returnFlightNumber(req.schedule, req.airlineIata, outFlightNumber, distanceNm),
       depTimeMin: retDepMin,
       blockTimeMin: blockMin,
       arrTimeMin: (retDepMin + blockMin) % MIN_PER_DAY,
@@ -482,7 +531,7 @@ export function planCloseLoop(req: LoopRequest): PlanResult {
   const blockMin = calcBlockTimeMin(distanceNm, ac.model.cruise_speed_kts);
   const depMin = circuit.nextReadyDepMin;
   const days = shiftDays(daysOrAll(circuit.lastFlight.daysOfWeek), circuit.nextReadyDayShift);
-  const flightNumber = nextFreeFlightNumber(schedule, airlineIata);
+  const flightNumber = nextFreeFlightNumber(schedule, airlineIata, [], distanceNm);
   const leg: CandidateLeg = {
     flightNumber,
     depTimeMin: depMin,
@@ -542,7 +591,7 @@ export function planPingPong(req: LoopRequest): PlanResult {
     const depAbs = ceilToFive(runningAbs);
     const depMin = depAbs % MIN_PER_DAY;
     const days = shiftDays(baseDays, Math.floor(depAbs / MIN_PER_DAY));
-    const flightNumber = nextFreeFlightNumber(schedule, airlineIata, usedNumbers);
+    const flightNumber = nextFreeFlightNumber(schedule, airlineIata, usedNumbers, distanceNm);
     usedNumbers.push(flightNumber);
 
     legs.push({ flightNumber, depTimeMin: depMin, blockTimeMin: blockMin, daysOfWeek: days, originIata: orig.iata_code, destIata: dest.iata_code });

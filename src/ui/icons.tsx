@@ -29,6 +29,8 @@ export type IconName =
   | 'bank'
   | 'flag'
   | 'letter'
+  | 'exit'
+  | 'help'
   | 'chart';
 
 const PATHS: Record<IconName, React.ReactNode> = {
@@ -61,6 +63,9 @@ const PATHS: Record<IconName, React.ReactNode> = {
   bank: <path d="M3 7.5 10 3.5l7 4H3ZM4.5 7.5v7M8 7.5v7M12 7.5v7M15.5 7.5v7M3 14.5h14M2.5 16.5h15" />,
   flag: <path d="M5 17V3.5M5 4h9.5l-2 3 2 3H5" />,
   letter: <path d="M3 5h14v10H3V5Zm0 .5 7 5.5 7-5.5" />,
+  // back out through a door: to the main menu
+  exit: <path d="M11.5 3.5h-6v13h6M8.5 10h8.5M14 7l3 3-3 3" />,
+  help: <path d="M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14ZM7.8 7.8a2.3 2.3 0 1 1 3.3 2.1c-.7.3-1.1.9-1.1 1.6v.4M10 14.3v.2" />,
 };
 
 export function Icon({ name, size = 18, color = 'currentColor', style }: { name: IconName; size?: number; color?: string; style?: React.CSSProperties }) {

@@ -253,8 +253,48 @@ export interface EconomicsContext {
   fleet: PlayerAircraft[];
 }
 
-const priceElasticity = (actual: number, ref: number) =>
-  Math.max(0.05, Math.min(1.0, Math.pow(ref / Math.max(10, actual), 1.8)));
+/**
+ * Share of travellers who still buy at a fare. Above the market fare fewer and
+ * fewer do, and at three times it nobody does: a huge fare earns nothing.
+ */
+export const priceElasticity = (actual: number, ref: number) => {
+  const r = Math.max(1, actual) / Math.max(1, ref);
+  return Math.min(1, Math.pow(1 / r, 1.8)) * Math.max(0, 1 - Math.max(0, r - 1) / 2);
+};
+/** The highest fare the game accepts: five times the market fare. */
+export const MAX_FARE_MULT = 5;
+
+// ----------------------------------------------------------------------------
+// How full a departure gets (v2.38+)
+// ----------------------------------------------------------------------------
+/** Share of a route's travellers who want this local departure hour (0..1). */
+const HOUR_DEMAND = [0.45, 0.35, 0.3, 0.3, 0.4, 0.65, 0.85, 1, 1, 0.95, 0.85, 0.82, 0.82, 0.82, 0.85, 0.9, 0.95, 1, 1, 0.95, 0.85, 0.75, 0.62, 0.52];
+/** Relative demand by weekday (Mon..Sun): Fridays and Sundays busiest. */
+const DAY_DEMAND = [0.97, 0.88, 0.88, 0.95, 1.06, 0.92, 1.04];
+
+function seeded(s: string) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return ((h >>> 0) % 10007) / 10007;
+}
+
+/**
+ * How appealing a departure is: `demand` scales the travellers it can win
+ * (local time of day, the weekdays it flies, and a little of its own luck),
+ * `maxLoad` is the share of seats it fills even when the route has more than
+ * enough travellers (88–97% across the week).
+ */
+export function flightAppeal(flight: Pick<ScheduledFlight, 'id' | 'depTimeMin' | 'daysOfWeek' | 'origin' | 'flightNumber'>) {
+  const localMin = (((flight.depTimeMin + Math.round((flight.origin.longitude_deg / 15) * 60)) % 1440) + 1440) % 1440;
+  const h = Math.floor(localMin / 60);
+  const frac = (localMin % 60) / 60;
+  const hour = HOUR_DEMAND[h] * (1 - frac) + HOUR_DEMAND[(h + 1) % 24] * frac;
+  const days = daysOrAll(flight.daysOfWeek);
+  const n = days.filter(Boolean).length || 7;
+  const day = days.reduce((s, on, i) => s + (on ? DAY_DEMAND[i] : 0), 0) / n;
+  const luck = seeded(flight.flightNumber + flight.origin.iata_code);
+  return { demand: hour * day * (0.9 + 0.12 * luck), maxLoad: 0.88 + 0.09 * seeded(flight.id + 'lf'), hour };
+}
 
 /**
  * A "through" leg continues a chain A→B→C on the same aircraft within 4h of
@@ -294,12 +334,16 @@ export function simulateFlightEconomics(
   const myCargo = aircraft.model.cargo_cap_tons || 0;
   const cargoShare = myCargo > 0 && served.dailyCargoTons > 0 ? Math.min(1, myCargo / served.dailyCargoTons) : 1;
 
+  // Not every departure fills: time of day, the days it flies and the flight
+  // itself make some flights busier than others, and even a sold-out route
+  // averages a few empty seats across the week.
+  const appeal = flightAppeal(flight);
   const sell = (cls: 'econ' | 'prem' | 'bus' | 'first') =>
     isCargoPlane
       ? 0
       : Math.min(
-          aircraft.cabin[`${cls}Seats` as const],
-          Math.round(demand.dailyPax[cls] * throughMult * paxShare * priceElasticity(fares[cls], demand.refFares[cls]))
+          Math.floor(aircraft.cabin[`${cls}Seats` as const] * appeal.maxLoad),
+          Math.round(demand.dailyPax[cls] * throughMult * paxShare * appeal.demand * priceElasticity(fares[cls], demand.refFares[cls]))
         );
   const sold = { econ: sell('econ'), prem: sell('prem'), bus: sell('bus'), first: sell('first') };
   const cap = isCargoPlane

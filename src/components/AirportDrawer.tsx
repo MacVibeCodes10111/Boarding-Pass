@@ -9,6 +9,7 @@ import {
   flightsForTail,
   getAircraftLocationAtTime,
   getAircraftCircuitStatus,
+  nextFreeFlightNumber,
   planCloseLoop,
   planPingPong,
   planRouteDispatch,
@@ -18,9 +19,11 @@ import {
 import { airportRestrictionFor, calcHubPurchasePriceUsd, calcHubSaleRefundUsd, getAirportMaxAircraftTier } from '../game/tiers';
 import { formatClockShort, formatMoneyM } from '../game/time';
 import type { Airport, Fares, PlayerAircraft, ScheduledFlight, WeekDays } from '../game/types';
-import { Button, C, DayPicker, Field, Pill, SectionTitle, Segmented, inputStyle, glass } from '../ui/kit';
+import { Button, C, DayPicker, Field, Pill, SectionTitle, Segmented, Stepper, inputStyle, glass } from '../ui/kit';
 import { ErrorBanner, FaresEditor } from './AircraftScheduleModal';
 import { RouteDemandBar } from './RouteDemandBar';
+import { getRouteDemandAndFares } from '../game/economics';
+import { planBulkDispatch, type BulkScheduleResult } from '../game/fleetOps';
 import { ScheduleTimeline } from './ScheduleTimeline';
 
 /** Everything the player is currently composing in the route builder. */
@@ -54,6 +57,10 @@ export interface AirportDrawerProps {
   /** You picked an aircraft: it also moves the departure airport to where that aircraft is. */
   onPickAircraft: (tailNumber: string) => void;
   onBuyAircraft: () => void;
+  /** Several aircraft scheduled together on this route (from Fleet). */
+  bulkTails?: string[] | null;
+  onBulkPlan?: (r: BulkScheduleResult) => void;
+  onEndBulk?: () => void;
   onClose: () => void;
 }
 
@@ -75,8 +82,13 @@ export function AirportDrawer({
   onOpenSchedule,
   onPickAircraft,
   onBuyAircraft,
+  bulkTails,
+  onBulkPlan,
+  onEndBulk,
   onClose,
 }: AirportDrawerProps) {
+  const bulk = useMemo(() => (bulkTails ? fleet.filter((a) => bulkTails.includes(a.tailNumber)) : []), [bulkTails, fleet]);
+  const [spacing, setSpacing] = useState(60);
   const [acSearch, setAcSearch] = useState('');
   const [showWx, setShowWx] = useState(false);
   const isHub = hubs.includes(airport.iata_code);
@@ -87,7 +99,13 @@ export function AirportDrawer({
   const routeValid = Boolean(origin && origin.iata_code !== airport.iata_code);
   const distanceNm = origin && routeValid ? calcDistanceNm(origin, airport) : 0;
   const blockMin = distanceNm > 0 ? calcBlockTimeMin(distanceNm, aircraft?.model.cruise_speed_kts ?? 450) : 0;
+  const refFares = useMemo(() => (origin && routeValid ? getRouteDemandAndFares(origin, airport, distanceNm).refFares : null), [origin, airport, distanceNm, routeValid]);
 
+  // Long-haul gets the low numbers, short hops four digits (see registrations.ts)
+  const suggestedNumber = useMemo(
+    () => nextFreeFlightNumber(schedule, airlineIata, [], distanceNm || undefined, draft.mode === 'roundtrip'),
+    [schedule, airlineIata, distanceNm, draft.mode]
+  );
   const acFlights = useMemo(() => (aircraft ? flightsForTail(schedule, aircraft.tailNumber) : []), [schedule, aircraft]);
   const circuit = useMemo(() => (aircraft ? getAircraftCircuitStatus(aircraft, schedule) : null), [aircraft, schedule]);
 
@@ -310,6 +328,24 @@ export function AirportDrawer({
           </div>
         ) : (
           <>
+            {bulk.length > 0 ? (
+              <div className="bp-bulk-box" style={{ border: `1px solid ${C.brand}66`, background: `${C.brand}10`, borderRadius: 10, padding: '10px 12px', marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ flex: 1, fontSize: 13, fontWeight: 650 }}>Scheduling {bulk.length} aircraft together</div>
+                  <Button size="sm" variant="ghost" onClick={onEndBulk}>
+                    Back to one
+                  </Button>
+                </div>
+                <div className="num" style={{ fontSize: 12, color: C.muted, margin: '2px 0 8px' }}>
+                  {bulk.map((a) => a.tailNumber).join(', ')}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: C.textDim, flexWrap: 'wrap' }}>
+                  Each one departs
+                  <Stepper value={spacing} min={0} max={720} step={5} onChange={setSpacing} />
+                  min after the one before
+                </div>
+              </div>
+            ) : (
             <Field label="Aircraft" hint="Least used first. Aircraft that can't fly this route are listed last." style={{ marginBottom: 10 }}>
               {fleet.length > 5 && (
                 <input
@@ -327,6 +363,7 @@ export function AirportDrawer({
                 ))}
               </select>
             </Field>
+            )}
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px', gap: 10, marginBottom: 10 }}>
               <Field label="From" hint={aircraft && acFlights.length > 0 ? `${aircraft.tailNumber} is at ${lastOf(aircraft)} at the end of its day` : undefined}>
@@ -345,7 +382,9 @@ export function AirportDrawer({
               <Field label="Flight number">
                 <input
                   value={draft.flightNumber}
-                  onChange={(e) => updateDraft({ flightNumber: e.target.value.toUpperCase() })}
+                  placeholder={suggestedNumber}
+                  aria-label={`Flight number, ${suggestedNumber} if left empty`}
+                  onChange={(e) => updateDraft({ flightNumber: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })}
                   style={{ ...inputStyle, fontWeight: 600, color: C.brand }}
                 />
               </Field>
@@ -403,6 +442,8 @@ export function AirportDrawer({
                 conflictMessage={liveConflict}
                 originIata={draft.originIata}
                 destIata={airport.iata_code}
+                othersCompact
+                onDetailedView={() => onOpenSchedule(aircraft.tailNumber, null)}
               />
             )}
 
@@ -422,20 +463,38 @@ export function AirportDrawer({
                 </span>
               </summary>
               <div style={{ paddingTop: 8 }}>
-                <FaresEditor fares={draft.fares} onChange={(fares) => updateDraft({ fares })} cargoOnly={Boolean(aircraft?.model.is_cargo)} />
-                <div style={{ fontSize: 11.5, color: C.faint, marginTop: 6 }}>Set to the market rate for this route. Higher fares sell fewer seats.</div>
+                <FaresEditor fares={draft.fares} onChange={(fares) => updateDraft({ fares })} cargoOnly={Boolean(aircraft?.model.is_cargo)} refFares={refFares ?? undefined} />
+                <div style={{ fontSize: 11.5, color: C.faint, marginTop: 6 }}>Set to the market rate for this route. Higher fares sell fewer seats, and at three times the market rate nobody buys.</div>
               </div>
             </details>
 
-            <Button
-              variant="primary"
-              size="lg"
-              block
-              disabled={dispatchDisabled}
-              onClick={() => dispatchRequest && onPlanResult(planRouteDispatch(dispatchRequest))}
-            >
-              {draft.mode === 'roundtrip' ? `Schedule round trip ${draft.originIata}–${airport.iata_code}` : `Schedule ${draft.originIata} → ${airport.iata_code}`}
-            </Button>
+            {bulk.length > 0 ? (
+              <Button
+                variant="primary"
+                size="lg"
+                block
+                disabled={!dispatchRequest}
+                onClick={() => {
+                  if (!dispatchRequest || !onBulkPlan) return;
+                  const { aircraft: _first, ...base } = dispatchRequest;
+                  onBulkPlan(planBulkDispatch(base, bulk, spacing));
+                }}
+              >
+                Schedule {bulk.length} aircraft {draft.originIata}
+                {draft.mode === 'roundtrip' ? '–' : ' → '}
+                {airport.iata_code}
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                size="lg"
+                block
+                disabled={dispatchDisabled}
+                onClick={() => dispatchRequest && onPlanResult(planRouteDispatch(dispatchRequest))}
+              >
+                {draft.mode === 'roundtrip' ? `Schedule round trip ${draft.originIata}–${airport.iata_code}` : `Schedule ${draft.originIata} → ${airport.iata_code}`}
+              </Button>
+            )}
           </>
         )}
 

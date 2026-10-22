@@ -5,6 +5,7 @@
 //                     (7× real time). Keeps running while the app is closed
 //                     and is settled on the next launch ("catch-up").
 // ============================================================================
+import { dailyLeaseOf } from './leasing';
 import { MIN_PER_DAY, MIN_PER_WEEK, daysOrAll } from './time';
 import type { FlightEconomics } from './economics';
 import type { BankLoan, PlayerAircraft, ScheduledFlight } from './types';
@@ -161,7 +162,7 @@ export function computeEconomyRates(
     (sum, fl) => sum + (econById.get(fl.id)?.profit ?? 0) * daysOrAll(fl.daysOfWeek).filter(Boolean).length,
     0
   );
-  const dailyLeaseCost = fleet.filter((a) => a.acquisition === 'leased').reduce((s, a) => s + a.model.daily_lease_usd, 0);
+  const dailyLeaseCost = fleet.reduce((s, a) => s + dailyLeaseOf(a), 0);
   return { weeklyFlightProfit, dailyLeaseCost };
 }
 

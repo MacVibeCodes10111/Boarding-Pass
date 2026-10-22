@@ -207,7 +207,7 @@ export function HomeScreen(props: HomeScreenProps) {
             <input
               ref={importRef}
               type="file"
-              accept=".json,application/json"
+              accept=".boardingpass,.json,application/json,application/octet-stream"
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (file) props.onImportFile(file);

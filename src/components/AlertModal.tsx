@@ -55,13 +55,17 @@ export function AlertModal({ alert, onDismiss }: { alert: GameAlert; onDismiss: 
   );
 }
 
-export function Toast({ message }: { message: string }) {
+export function Toast({ message, onDismiss }: { message: string; onDismiss?: () => void }) {
   return (
     <div
       role="status"
+      onClick={onDismiss}
+      title={onDismiss ? 'Tap to dismiss' : undefined}
       style={{
+        // Just under the top bar: never over the buttons at the bottom of panels and the drawer
         position: 'fixed',
-        bottom: 'calc(var(--bp-bottom-h) + 22px)',
+        top: 'calc(var(--bp-top-h) + 8px)',
+        cursor: onDismiss ? 'pointer' : undefined,
         left: '50%',
         transform: 'translateX(-50%)',
         display: 'flex',

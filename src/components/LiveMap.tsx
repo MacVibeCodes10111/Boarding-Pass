@@ -347,6 +347,7 @@ function buildPlanePopupHtml(raw: Record<string, any>): string {
 const AIRPORT_LOD_FILTER = [
   'any',
   ['==', ['get', 'is_hub'], 1],
+  ['==', ['get', 'is_linked'], 1],
   ['==', ['get', 'is_selected'], 1],
   ['==', ['get', 'is_active'], 1],
   ['all', ['==', ['get', 'ac_tier'], 5], ['>=', ['get', 'demand_weight'], 230]],
@@ -446,6 +447,20 @@ function addLayers(map: any) {
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': C.fleet, 'line-width': 2.6, 'line-opacity': 0.9 },
   });
+  // Airports your flights link to the one you opened (a ring round each)
+  map.addLayer({
+    id: 'airports-linked',
+    type: 'circle',
+    source: 'airports',
+    filter: ['==', ['get', 'is_linked'], 1],
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, 6, 5, 9, 8, 13, 11, 16],
+      'circle-color': 'rgba(0,0,0,0)',
+      'circle-stroke-color': MAP_C.yellow,
+      'circle-stroke-width': 2,
+      'circle-stroke-opacity': 0.9,
+    },
+  });
   map.addLayer({
     id: 'airports-circle',
     type: 'symbol',
@@ -459,7 +474,10 @@ function addLayers(map: any) {
       'icon-ignore-placement': true,
     },
     // Fades once zoomed into the airport, so it doesn't sit on the aircraft at the gates
-    paint: { 'icon-opacity': ['interpolate', ['linear'], ['zoom'], 12.5, 1, 14.5, 0.25] },
+    // Others dim while an airport is open, so the ones it's linked to stand out
+    paint: {
+      'icon-opacity': ['interpolate', ['linear'], ['zoom'], 12.5, ['case', ['==', ['get', 'dim'], 1], 0.28, 1], 14.5, ['case', ['==', ['get', 'dim'], 1], 0.1, 0.25]],
+    },
   });
   // Weather: a flight-conditions tag (VFR / MVFR / IFR) above each airport
   map.addLayer({
@@ -491,7 +509,8 @@ function addLayers(map: any) {
       'text-optional': true,
     },
     paint: {
-      'text-color': ['case', ['==', ['get', 'is_selected'], 1], MAP_C.yellow, ['==', ['get', 'is_hub'], 1], MAP_C.green, MAP_C.textDim],
+      'text-color': ['case', ['==', ['get', 'is_selected'], 1], MAP_C.yellow, ['==', ['get', 'is_linked'], 1], MAP_C.yellow, ['==', ['get', 'is_hub'], 1], MAP_C.green, MAP_C.textDim],
+      'text-opacity': ['case', ['==', ['get', 'dim'], 1], 0.4, 1],
       'text-halo-color': MAP_C.bg,
       'text-halo-width': 1.5,
     },
@@ -631,6 +650,8 @@ function addLayers(map: any) {
   });
 }
 
+/** Every layer that draws aircraft (hidden while planning a route). */
+const PLANE_LAYERS = ['ai-planes-symbol', 'ai-planes-dot', 'ground-planes-symbol', 'live-planes-symbol', 'labels-3d-hit', 'labels-3d-text', 'ai-3d', 'planes-3d', 'planes-3d-stem'];
 const THREE_D_SOURCES = ['planes-3d', 'ai-3d', 'planes-3d-stem', 'route-3d', 'route-3d-curtain', 'labels-3d'];
 /** Other airlines' aircraft with a label / click target in 3D (nearest the view centre). */
 const AI_LABELS_3D_MAX = 700;
@@ -802,6 +823,17 @@ function apply3dLook(map: any, on: boolean) {
 // ---------------------------------------------------------------------------
 const ORBIT_PREF = 'bp_popup_angle_v1';
 const ORBIT_GAP_PX = 26;
+/** How far the box can be dragged out from its aircraft (v2.38+). */
+const ORBIT_GAP_MAX_PX = 200;
+const ORBIT_GAP_PREF = 'bp_popup_gap_v1';
+let orbitGap = (() => {
+  try {
+    const v = Number(localStorage.getItem(ORBIT_GAP_PREF));
+    return Number.isFinite(v) && v >= ORBIT_GAP_PX ? Math.min(ORBIT_GAP_MAX_PX, v) : ORBIT_GAP_PX;
+  } catch {
+    return ORBIT_GAP_PX;
+  }
+})();
 const DEFAULT_ANGLE = -Math.PI / 2; // straight above
 let orbitAngle = (() => {
   try {
@@ -812,14 +844,17 @@ let orbitAngle = (() => {
   }
 })();
 
-/** Offset (px) from the aircraft to the box centre so the box edge stays ORBIT_GAP_PX away. */
+const orbitToEdge = (w: number, h: number, dx: number, dy: number) =>
+  Math.min(Math.abs(dx) > 1e-3 ? w / 2 / Math.abs(dx) : Infinity, Math.abs(dy) > 1e-3 ? h / 2 / Math.abs(dy) : Infinity);
+
+/** Offset (px) from the aircraft to the box centre so the box edge stays `orbitGap` away. */
 function orbitOffset(box: HTMLElement | null | undefined): [number, number] {
   const w = box?.offsetWidth || 290;
   const h = box?.offsetHeight || 220;
   const dx = Math.cos(orbitAngle);
   const dy = Math.sin(orbitAngle);
-  const toEdge = Math.min(Math.abs(dx) > 1e-3 ? w / 2 / Math.abs(dx) : Infinity, Math.abs(dy) > 1e-3 ? h / 2 / Math.abs(dy) : Infinity);
-  const r = toEdge + ORBIT_GAP_PX;
+  const toEdge = orbitToEdge(w, h, dx, dy);
+  const r = toEdge + orbitGap;
   return [Math.round(dx * r), Math.round(dy * r)];
 }
 
@@ -858,18 +893,26 @@ function attachOrbit(map: any, popup: any) {
   root.prepend(svg);
   const box = root.querySelector('.maplibregl-popup-content') as HTMLElement | null;
   if (box) {
-    box.title = 'Drag to move this box around the aircraft. Double-click to put it back on top.';
+    box.title = 'Drag to move this box around the aircraft, or further out. Double-click to put it back on top.';
     box.style.touchAction = 'none'; // a finger drags the box, not the map
   }
   layoutOrbit(popup);
   (popup as any).__relayout = () => layoutOrbit(popup);
 
   let dragging = false;
+  let grab: [number, number] = [0, 0];
   const onMove = (e: PointerEvent) => {
     if (!dragging) return;
     const rect = map.getContainer().getBoundingClientRect();
     const plane = map.project(popup.getLngLat());
-    orbitAngle = Math.atan2(e.clientY - rect.top - plane.y, e.clientX - rect.left - plane.x);
+    // Where the box centre would be: the pointer, less where it grabbed the box
+    const cx = e.clientX - rect.left - grab[0];
+    const cy = e.clientY - rect.top - grab[1];
+    orbitAngle = Math.atan2(cy - plane.y, cx - plane.x);
+    const w = box?.offsetWidth || 290;
+    const h = box?.offsetHeight || 220;
+    const dist = Math.hypot(cx - plane.x, cy - plane.y);
+    orbitGap = Math.max(ORBIT_GAP_PX, Math.min(ORBIT_GAP_MAX_PX, dist - orbitToEdge(w, h, Math.cos(orbitAngle), Math.sin(orbitAngle))));
     layoutOrbit(popup);
   };
   const onUp = () => {
@@ -881,6 +924,7 @@ function attachOrbit(map: any, popup: any) {
     window.removeEventListener('pointercancel', onUp);
     try {
       localStorage.setItem(ORBIT_PREF, String(orbitAngle));
+      localStorage.setItem(ORBIT_GAP_PREF, String(Math.round(orbitGap)));
     } catch {
       /* storage unavailable */
     }
@@ -889,6 +933,8 @@ function attachOrbit(map: any, popup: any) {
     if ((e.target as HTMLElement).closest('.maplibregl-popup-close-button, button, a, input') || e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
+    const r = box.getBoundingClientRect();
+    grab = [e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2)];
     dragging = true;
     root.classList.add('bp-orbit-dragging');
     window.addEventListener('pointermove', onMove);
@@ -898,8 +944,10 @@ function attachOrbit(map: any, popup: any) {
   box?.addEventListener('dblclick', (e: MouseEvent) => {
     e.stopPropagation();
     orbitAngle = DEFAULT_ANGLE;
+    orbitGap = ORBIT_GAP_PX;
     layoutOrbit(popup);
     try {
+      localStorage.setItem(ORBIT_GAP_PREF, String(orbitGap));
       localStorage.setItem(ORBIT_PREF, String(orbitAngle));
     } catch {
       /* storage unavailable */
@@ -1327,12 +1375,39 @@ export function LiveMap(props: LiveMapProps) {
             b.addEventListener('click', (e) => e.stopPropagation());
             return b;
           };
+          // Zoom buttons, always there (above the camera box)
+          const zoomEl = document.createElement('div');
+          zoomEl.className = 'bp-zoom';
+          zoomEl.style.cssText = `position:absolute;right:10px;bottom:calc(78px + var(--bp-bottom-h));z-index:2;display:flex;flex-direction:column;gap:0;border-radius:10px;overflow:hidden;pointer-events:auto;`;
+          const zoomBtn = (label: string, aria: string, dz: number) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'bp-zoom-btn';
+            b.textContent = label;
+            b.setAttribute('aria-label', aria);
+            b.title = aria;
+            b.style.cssText = `width:36px;height:34px;font-size:19px;line-height:1;cursor:pointer;padding:0;border:none;`;
+            b.addEventListener('click', (e) => {
+              e.stopPropagation();
+              userMoveAt.current = performance.now();
+              if (map.easeTo) map.easeTo({ zoom: map.getZoom() + dz, duration: 260 });
+              else map.setZoom?.(map.getZoom() + dz);
+            });
+            return b;
+          };
+          zoomEl.appendChild(zoomBtn('+', 'Zoom in', 1));
+          zoomEl.appendChild(zoomBtn('−', 'Zoom out', -1));
+          map.getContainer?.()?.appendChild(zoomEl);
+
           camEl.appendChild(camBtn('▲', 'Raise the camera', 1.12));
           camEl.appendChild(camBtn('▼', 'Lower the camera', 1 / 1.12));
           map.getContainer?.()?.appendChild(camEl);
           const showCam = () => (camText.textContent = `Camera ${formatCameraHeight(cameraAltitudeM(map))}`);
           showCam();
-          if (!latest.current.threeD) camEl.style.display = 'none';
+          if (!latest.current.threeD) {
+            camEl.style.display = 'none';
+            zoomEl.style.bottom = 'calc(38px + var(--bp-bottom-h))';
+          }
           map.on('move', showCam);
 
           if (!cancelled) setMapReady(true);
@@ -1390,6 +1465,8 @@ export function LiveMap(props: LiveMapProps) {
     // Tilt, turn and camera height belong to the 3D view; the flat map stays flat and north-up
     const camEl = map.getContainer?.()?.querySelector?.('.bp-camera-alt') as HTMLElement | null;
     if (camEl) camEl.style.display = threeD ? 'flex' : 'none';
+    const zoomEl = map.getContainer?.()?.querySelector?.('.bp-zoom') as HTMLElement | null;
+    if (zoomEl) zoomEl.style.bottom = threeD ? 'calc(78px + var(--bp-bottom-h))' : 'calc(38px + var(--bp-bottom-h))';
     const rotation = (on: boolean) => {
       try {
         if (on) {
@@ -1472,9 +1549,18 @@ export function LiveMap(props: LiveMapProps) {
       active.add(s.destination.iata_code);
     });
 
+    // Opened airport: the airports your flights link it to
+    const linked = new Set<string>();
+    const sel = inspectedAirport?.iata_code;
+    if (sel)
+      schedule.forEach((s) => {
+        if (s.origin.iata_code === sel) linked.add(s.destination.iata_code);
+        if (s.destination.iata_code === sel) linked.add(s.origin.iata_code);
+      });
     const features = airports.map((a) => {
       const isHub = hubs.includes(a.iata_code);
       const isSelected = inspectedAirport?.iata_code === a.iata_code;
+      const isLinked = linked.has(a.iata_code);
       const tier = getAirportMaxAircraftTier(a.max_runway_length_ft).tier;
       const status = isSelected ? 'selected' : isHub ? 'hub' : 'standard';
       return {
@@ -1486,6 +1572,8 @@ export function LiveMap(props: LiveMapProps) {
           is_hub: isHub ? 1 : 0,
           is_selected: isSelected ? 1 : 0,
           is_active: active.has(a.iata_code) ? 1 : 0,
+          is_linked: isLinked ? 1 : 0,
+          dim: sel && !isLinked && !isSelected ? 1 : 0,
           ac_tier: tier,
           demand_weight: a.demand_weight || 25,
           ap_icon: `ap-icon-${status}-${tier}`,
@@ -1495,6 +1583,20 @@ export function LiveMap(props: LiveMapProps) {
     });
     map.getSource('airports')?.setData({ type: 'FeatureCollection', features });
   }, [airports, hubs, inspectedAirport, schedule, showWeatherRadar, mapDay, showWeatherRadar ? wxHour : -1, mapReady, styleRev, mapRef]);
+
+  // While an airport is open for route planning the aircraft step aside, so the
+  // airports and routes are easy to see and click
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!mapReady || !map) return;
+    const v = inspectedAirport ? 'none' : 'visible';
+    for (const id of PLANE_LAYERS)
+      try {
+        if (map.getLayer?.(id)) map.setLayoutProperty?.(id, 'visibility', v);
+      } catch {
+        /* layer not there yet */
+      }
+  }, [inspectedAirport, mapReady, styleRev, mapRef]);
 
   // ---------------------------------------------------------------------------
   // 4. ILS cones & navaids (hourly)

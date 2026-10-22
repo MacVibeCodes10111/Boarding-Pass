@@ -1,18 +1,26 @@
 import { useMemo, useState } from 'react';
-import { calculateCabinUsage, cabinSeatTotal } from '../game/economics';
-import { calcAircraftScheduleUsage, getAircraftCircuitStatus } from '../game/scheduling';
-import { calcAircraftResaleUsd } from '../game/tiers';
-import { formatMoneyM } from '../game/time';
+import type { CabinPreset } from '../game/economics';
+import { leaseStatus, weeksText } from '../game/leasing';
+import { calcAircraftScheduleUsage, flightsForTail, getAircraftCircuitStatus } from '../game/scheduling';
 import type { AircraftModel, CabinConfig, PlayerAircraft, ScheduledFlight } from '../game/types';
-import { Button, C, EmptyState, ModalShell, SearchInput, Segmented, SidePanel, inputStyle } from '../ui/kit';
-import { CabinEditor } from './CabinEditor';
+import { Button, C, EmptyState, SearchInput, Segmented, SidePanel, inputStyle } from '../ui/kit';
+import { BulkCabinModal, ManageAircraftModal, ReplaceAircraftModal } from './FleetActions';
 
 export interface FleetPanelProps {
   fleet: PlayerAircraft[];
   schedule: ScheduledFlight[];
+  catalog: AircraftModel[];
+  econMin: number;
+  cash: number;
+  sandbox: boolean;
   onOpenSchedule: (tailNumber: string) => void;
-  onSellOrReturn: (tailNumber: string) => void;
-  onUpdateCabin: (tailNumber: string, cabin: CabinConfig) => void;
+  /** Schedule several aircraft on one route together (picks the route on the map next). */
+  onScheduleTogether: (tails: string[]) => void;
+  onSellOrReturn: (tails: string[]) => void;
+  onBuyOut: (tail: string) => void;
+  onRename: (tail: string, reg: string) => string | null;
+  onRefit: (tails: string[], fit: { cabin: CabinConfig } | { preset: CabinPreset }) => void;
+  onReplace: (tails: string[], model: AircraftModel, mode: 'owned' | 'leased', leaseWeeks: number, dropClashing: boolean) => void;
   onBuy: () => void;
   iconForModel: (m: AircraftModel) => string;
   onClose: () => void;
@@ -56,7 +64,15 @@ export function FleetPanel(props: FleetPanelProps) {
     }
   };
   const [show, setShow] = useState<Show>('all');
-  const [editing, setEditing] = useState<{ tail: string; cabin: CabinConfig } | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [dialog, setDialog] = useState<{ kind: 'manage' | 'cabin' | 'replace'; tails: string[] } | null>(null);
+  const toggle = (tail: string) =>
+    setSelected((prev) => {
+      const n = new Set(prev);
+      if (n.has(tail)) n.delete(tail);
+      else n.add(tail);
+      return n;
+    });
 
   const all = useMemo(
     () => fleet.map((ac) => ({ ac, usage: calcAircraftScheduleUsage(ac, schedule), circuit: getAircraftCircuitStatus(ac, schedule) })),
@@ -94,7 +110,12 @@ export function FleetPanel(props: FleetPanelProps) {
   const leased = all.filter((r) => r.ac.acquisition === 'leased').length;
   const avgUse = all.length ? Math.round(all.reduce((s, r) => s + r.usage.usedPct, 0) / all.length) : 0;
   const shown = groups.reduce((n, [, rows]) => n + rows.length, 0);
-  const editingAc = editing ? fleet.find((a) => a.tailNumber === editing.tail) : null;
+  const shownTails = groups.flatMap(([, rows]) => rows.map((r) => r.ac.tailNumber));
+  // Selected aircraft that still exist (sold ones drop out)
+  const picked = fleet.filter((a) => selected.has(a.tailNumber));
+  const pickedTails = picked.map((a) => a.tailNumber);
+  const dialogAc = dialog ? fleet.filter((a) => dialog.tails.includes(a.tailNumber)) : [];
+  const allShownPicked = shownTails.length > 0 && shownTails.every((t) => selected.has(t));
 
   return (
     <SidePanel
@@ -160,6 +181,54 @@ export function FleetPanel(props: FleetPanelProps) {
               />
             </div>
           </div>
+          <div
+            className="bp-fleet-select"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              flexWrap: 'wrap',
+              padding: '8px 10px',
+              marginBottom: 12,
+              borderRadius: 10,
+              border: `1px solid ${picked.length ? C.brand + '66' : C.line}`,
+              background: picked.length ? `${C.brand}12` : 'transparent',
+              position: 'sticky',
+              top: 0,
+              zIndex: 2,
+              backdropFilter: 'blur(8px)',
+            }}
+          >
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: C.textDim, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                aria-label="Select all shown"
+                checked={allShownPicked}
+                onChange={() => setSelected(allShownPicked ? new Set([...selected].filter((t) => !shownTails.includes(t))) : new Set([...selected, ...shownTails]))}
+              />
+              {picked.length ? `${picked.length} selected` : 'Select to act on several'}
+            </label>
+            <span style={{ flex: 1 }} />
+            {picked.length > 0 && (
+              <>
+                <Button size="sm" onClick={() => props.onScheduleTogether(pickedTails)}>
+                  Schedule together
+                </Button>
+                <Button size="sm" disabled={picked.every((a) => a.model.is_cargo)} onClick={() => setDialog({ kind: 'cabin', tails: pickedTails })}>
+                  Cabin
+                </Button>
+                <Button size="sm" onClick={() => setDialog({ kind: 'replace', tails: pickedTails })}>
+                  Replace
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => props.onSellOrReturn(pickedTails)}>
+                  Sell or return
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+                  Clear
+                </Button>
+              </>
+            )}
+          </div>
           {shown === 0 && <div style={{ padding: '4px 2px', fontSize: 12.5, color: C.muted }}>No aircraft match these filters.</div>}
           {groups.map(([groupKey, rows]) => (
           <section key={groupKey || 'all'} style={{ marginBottom: 16 }}>
@@ -180,18 +249,24 @@ export function FleetPanel(props: FleetPanelProps) {
                 className="bp-row bp-fleet-row"
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '28px minmax(150px, 1.4fr) minmax(110px, 1fr) 120px auto',
+                  gridTemplateColumns: '22px 28px minmax(150px, 1.4fr) minmax(110px, 1fr) 120px auto',
                   alignItems: 'center',
                   gap: 12,
                   padding: '10px 12px',
                   borderTop: i ? `1px solid ${C.line}` : 'none',
                 }}
               >
+                <input type="checkbox" aria-label={`Select ${ac.tailNumber}`} checked={selected.has(ac.tailNumber)} onChange={() => toggle(ac.tailNumber)} />
                 <img src={iconForModel(ac.model)} alt="" style={{ width: 24, height: 24 }} />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 650 }}>
                     {ac.tailNumber}
-                    {ac.acquisition === 'leased' && <span style={{ fontSize: 11.5, color: C.muted, fontWeight: 500 }}> leased</span>}
+                    {ac.acquisition === 'leased' && (
+                      <span style={{ fontSize: 11.5, color: C.muted, fontWeight: 500 }}>
+                        {' '}
+                        leased{ac.lease ? `, ${weeksText(leaseStatus(ac, props.econMin).weeksLeft)}` : ''}
+                      </span>
+                    )}
                   </div>
                   <div style={{ fontSize: 12, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {view.groupBy === 'type' ? `${ac.model.icao_code}, based at ${ac.hubIata}` : ac.model.name}
@@ -215,18 +290,8 @@ export function FleetPanel(props: FleetPanelProps) {
                   <Button size="sm" onClick={() => props.onOpenSchedule(ac.tailNumber)}>
                     Schedule
                   </Button>
-                  {!ac.model.is_cargo && (
-                    <Button size="sm" onClick={() => setEditing({ tail: ac.tailNumber, cabin: { ...ac.cabin } })}>
-                      Cabin
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    title={ac.acquisition === 'owned' ? `Sell for ${formatMoneyM(calcAircraftResaleUsd(ac.model))}` : 'Return to the lessor'}
-                    onClick={() => props.onSellOrReturn(ac.tailNumber)}
-                  >
-                    {ac.acquisition === 'owned' ? 'Sell' : 'Return'}
+                  <Button size="sm" variant="ghost" onClick={() => setDialog({ kind: 'manage', tails: [ac.tailNumber] })}>
+                    Manage
                   </Button>
                 </div>
               </div>
@@ -237,27 +302,55 @@ export function FleetPanel(props: FleetPanelProps) {
         </>
       )}
 
-      {editing && editingAc && (
-        <ModalShell onClose={() => setEditing(null)} maxWidth={560}>
-          <div style={{ fontSize: 17, fontWeight: 650 }}>Cabin for {editingAc.tailNumber}</div>
-          <div style={{ fontSize: 12.5, color: C.muted, margin: '2px 0 16px' }}>
-            {editingAc.model.name}. Changes apply to all its flights straight away.
-          </div>
-          <CabinEditor model={editingAc.model} cabin={editing.cabin} onChange={(cabin) => setEditing({ ...editing, cabin })} />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
-            <Button onClick={() => setEditing(null)}>Cancel</Button>
-            <Button
-              variant="primary"
-              disabled={!calculateCabinUsage(editingAc.model, editing.cabin).isValid}
-              onClick={() => {
-                props.onUpdateCabin(editing.tail, editing.cabin);
-                setEditing(null);
-              }}
-            >
-              Save cabin ({cabinSeatTotal(editing.cabin)} seats)
-            </Button>
-          </div>
-        </ModalShell>
+      {dialog?.kind === 'manage' && dialogAc[0] && (
+        <ManageAircraftModal
+          aircraft={dialogAc[0]}
+          econMin={props.econMin}
+          flights={flightsForTail(schedule, dialogAc[0].tailNumber).length}
+          onRename={(reg) => {
+            const err = props.onRename(dialogAc[0].tailNumber, reg);
+            if (!err) setDialog({ kind: 'manage', tails: [reg.trim().toUpperCase()] });
+            return err;
+          }}
+          onSellOrReturn={() => {
+            props.onSellOrReturn([dialogAc[0].tailNumber]);
+            setDialog(null);
+          }}
+          onBuyOut={() => props.onBuyOut(dialogAc[0].tailNumber)}
+          onCabin={() => setDialog({ kind: 'cabin', tails: [dialogAc[0].tailNumber] })}
+          onReplace={() => setDialog({ kind: 'replace', tails: [dialogAc[0].tailNumber] })}
+          onSchedule={() => {
+            setDialog(null);
+            props.onOpenSchedule(dialogAc[0].tailNumber);
+          }}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === 'cabin' && dialogAc.length > 0 && (
+        <BulkCabinModal
+          aircraft={dialogAc}
+          onRefit={(fit) => {
+            props.onRefit(dialog.tails, fit);
+            setDialog(null);
+          }}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === 'replace' && dialogAc.length > 0 && (
+        <ReplaceAircraftModal
+          aircraft={dialogAc}
+          schedule={schedule}
+          catalog={props.catalog}
+          econMin={props.econMin}
+          cash={props.cash}
+          sandbox={props.sandbox}
+          onReplace={(model, mode, weeks, drop) => {
+            props.onReplace(dialog.tails, model, mode, weeks, drop);
+            setDialog(null);
+            setSelected(new Set());
+          }}
+          onClose={() => setDialog(null)}
+        />
       )}
     </SidePanel>
   );
