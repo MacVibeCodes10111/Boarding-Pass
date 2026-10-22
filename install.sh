@@ -53,20 +53,13 @@ if ! command -v cargo >/dev/null 2>&1; then
 fi
 echo "Rust $(rustc --version | cut -d' ' -f2): OK"
 
-# --- 2. Other airlines' traffic data (OpenFlights) ---------------------------
-say "2/5  Getting other airlines' traffic data"
-mkdir -p public/data/openflights
-for f in airports.dat routes.dat planes.dat; do
-  if [ -s "public/data/openflights/$f" ]; then
-    echo "$f: already here"
-  elif curl -fsSL --retry 3 -o "public/data/openflights/$f.part" "https://raw.githubusercontent.com/jpatokal/openflights/master/data/$f"; then
-    mv "public/data/openflights/$f.part" "public/data/openflights/$f"
-    echo "$f: downloaded"
-  else
-    rm -f "public/data/openflights/$f.part"
-    echo "$f: couldn't download. The game still works, without other airlines' traffic. Run this again later to add it."
-  fi
-done
+# --- 2. Airline route data ---------------------------------------------------
+say "2/5  Checking the airline route data"
+if [ -s public/data/network.json ]; then
+  echo "network.json: OK"
+else
+  echo "public/data/network.json is missing. The game still works, with simpler route demand and no other airlines' traffic. Download the game again to get it."
+fi
 
 # --- 3. The game's packages --------------------------------------------------
 say "3/5  Installing the game's packages (a few minutes the first time)"

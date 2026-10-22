@@ -15,7 +15,10 @@ The map credits are shown on the map itself (the (i) in the corner).
 ## Data (included in `public/data`)
 
 - **OurAirports** (`airports.csv`, `runways.csv`, `navaids.csv`): https://ourairports.com/data/, released into the public domain.
-- **OpenFlights** (`openflights/airports.dat`, `routes.dat`, `planes.dat`): https://openflights.org/data, made available under the Open Database Licence (ODbL 1.0), https://opendatacommons.org/licenses/odbl/1-0/. Individual contents are under the Database Contents Licence (DbCL 1.0), https://opendatacommons.org/licenses/dbcl/1-0/. The other airlines' schedules in the game are a derived database worked out from these routes, and are likewise made available under the ODbL 1.0.
+- **airline-route-data** by Jonty Wareing (`network.json`, routes and airlines): https://github.com/Jonty/airline-route-data, the routes airlines publish, collected weekly. Route demand and the other airlines' schedules in the game are worked out from these routes.
+- **GeoNames** (`network.json`, population around each airport): https://www.geonames.org, under the Creative Commons Attribution 4.0 licence (CC BY 4.0), https://creativecommons.org/licenses/by/4.0/. The game adds up the population of the towns and cities around each airport; the numbers are changed from the original (summed and shared between nearby airports).
+
+`network.json` is made from these by `tools/build-network.mjs`.
 
 ## Typefaces (included in the game since v2.35)
 

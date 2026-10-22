@@ -1,6 +1,7 @@
 // ============================================================================
 // CABIN LAYOUT, PASSENGER + CARGO DEMAND & FLIGHT ECONOMICS
 // ============================================================================
+import { marketDemand, PLAYER_MARKET_SHARE } from './demand';
 import { daysOrAll } from './time';
 import type { AircraftModel, Airport, CabinConfig, Fares, PlayerAircraft, ScheduledFlight } from './types';
 
@@ -109,8 +110,13 @@ export function calculateCabinUsage(model: AircraftModel, cabin: CabinConfig) {
 }
 
 // ----------------------------------------------------------------------------
-// Route demand (gravity model) with hub & connecting-feed bonuses
+// Route demand with hub & connecting-feed bonuses. Passengers come from the
+// real-world model in demand.ts (once network.json is loaded); before that,
+// and for an airport it doesn't know, the old size-based estimate.
 // ----------------------------------------------------------------------------
+function fallbackPax(origin: Airport, destination: Airport, distanceNm: number) {
+  return (12.5 * origin.demand_weight * destination.demand_weight) / Math.pow(Math.max(80, distanceNm), 0.85);
+}
 export function getRouteDemandAndFares(
   origin: Airport,
   destination: Airport,
@@ -118,8 +124,8 @@ export function getRouteDemandAndFares(
   playerHubs: string[] = [],
   allSchedule: ScheduledFlight[] = []
 ) {
-  const baseRawPax =
-    (12.5 * origin.demand_weight * destination.demand_weight) / Math.pow(Math.max(80, distanceNm), 0.85);
+  const market = marketDemand(origin.iata_code, destination.iata_code);
+  const baseRawPax = market === null ? fallbackPax(origin, destination, distanceNm) : market * PLAYER_MARKET_SHARE;
 
   const cargoWeight = (ap: Airport) =>
     ap.demand_weight * 0.16 + (ap.runway_count || 1) * 4.5 + (ap.max_runway_length_ft >= 9000 ? 12 : 4);
@@ -153,6 +159,8 @@ export function getRouteDemandAndFares(
     isHubToHub,
     origIsHub,
     destIsHub,
+    /** Everyone flying the route each day today, all airlines (null: not known). */
+    marketPax: market === null ? null : Math.round(market),
     basePax: Math.round(baseRawPax),
     hubBonusPax: Math.round(baseRawPax * hubBonusMult),
     connectingPax: Math.round(baseRawPax * connectingBoostMult),

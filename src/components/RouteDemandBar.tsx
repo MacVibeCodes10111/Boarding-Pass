@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { airlinesOnPair } from '../game/demand';
 import { calcRouteServedCapacity, getRouteDemandAndFares } from '../game/economics';
 import type { Airport, PlayerAircraft, ScheduledFlight } from '../game/types';
 import { C, Meter } from '../ui/kit';
@@ -24,6 +25,7 @@ export function RouteDemandBar({ origin, destination, distanceNm, playerHubs, al
     [origin.iata_code, destination.iata_code, allSchedule, fleet]
   );
 
+  const rivals = useMemo(() => airlinesOnPair(origin.iata_code, destination.iata_code), [origin.iata_code, destination.iata_code]);
   const totalDem = Math.max(1, demand.dailyPax.total);
   const paxPct = Math.round((served.dailySeats / totalDem) * 100);
   const cargoDem = Math.max(0.5, demand.dailyCargoTons);
@@ -56,6 +58,17 @@ export function RouteDemandBar({ origin, destination, distanceNm, playerHubs, al
         `you fly ${served.dailySeats.toLocaleString()} of ${totalDem.toLocaleString()} (${paxPct}%)`,
         paxPct,
         C.accent
+      )}
+      {demand.marketPax !== null && (
+        <div className="bp-route-market" style={{ fontSize: 11.5, color: C.muted, margin: '-2px 0 8px', lineHeight: 1.45 }}>
+          About {demand.marketPax.toLocaleString()} people a day travel this way.{' '}
+          {rivals.length > 0
+            ? `Flown today by ${rivals
+                .slice(0, 4)
+                .map((c) => c.name)
+                .join(', ')}${rivals.length > 4 ? ` and ${rivals.length - 4} more` : ''}.`
+            : 'No airline flies it today.'}
+        </div>
       )}
       {!compact && (
         <div className="num" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, fontSize: 11.5, color: C.muted, margin: '-2px 0 8px' }}>

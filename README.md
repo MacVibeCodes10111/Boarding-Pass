@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 2.36. Free to play. See [Credits and licences](#credits-and-licences).
+Version 2.37. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -127,7 +127,8 @@ Boarding Pass's own code is © 2026 Ermek Baker-Niffka under the [MIT licence](L
 - **Satellite imagery:** EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2024), under CC BY-NC-SA 4.0, used for non-commercial purposes only.
 - **Map engine:** [MapLibre GL JS](https://maplibre.org) (BSD 3-Clause).
 - **Airports, runways and navaids:** [OurAirports](https://ourairports.com/data/) (public domain).
-- **Other airlines' routes:** [OpenFlights](https://openflights.org/data) (ODbL 1.0). The schedules worked out from them are made available under the same licence.
+- **Airline routes flown today:** [airline-route-data](https://github.com/Jonty/airline-route-data) by Jonty Wareing. Route demand and the other airlines' schedules are worked out from them.
+- **Population around airports:** [GeoNames](https://www.geonames.org) (CC BY 4.0).
 - **Software:** React (MIT), Tauri (MIT / Apache 2.0).
 
 Full licence texts are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Because some of the maps and data are licensed for non-commercial use only, Boarding Pass is free and must stay free: no sales, ads or paid features.

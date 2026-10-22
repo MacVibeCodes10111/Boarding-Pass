@@ -157,8 +157,14 @@ function parseRunways(runwaysCsvText: string): Map<number, RunwaySummary> {
 /**
  * Commercial airports only: scheduled service, large/medium, unique 3-letter
  * IATA code. Runway data (when supplied) sets runway count, length and layout.
+ *
+ * airlineAirports: IATA codes of airports that airlines fly to today (from
+ * network.json). These are included even when OurAirports lists them as
+ * small or without scheduled service (many island and Arctic airports), as
+ * long as they are an airport with a runway (not a heliport or seaplane base)
+ * and in the same place (IATA codes are sometimes reused).
  */
-export function parseOurAirportsCsvFiles(airportsCsvText: string, runwaysCsvText?: string): Airport[] {
+export function parseOurAirportsCsvFiles(airportsCsvText: string, runwaysCsvText?: string, airlineAirports?: ReadonlyMap<string, { lat: number; lon: number }>): Airport[] {
   const runways = runwaysCsvText ? parseRunways(runwaysCsvText) : new Map<number, RunwaySummary>();
   const t = readCsv(airportsCsvText);
   const c = {
@@ -186,9 +192,17 @@ export function parseOurAirportsCsvFiles(airportsCsvText: string, runwaysCsvText
     const iata = (r[c.iata] || '').trim().toUpperCase();
     const lat = num(r[c.lat]);
     const lon = num(r[c.lon]);
+    const listed = r[c.sched] === 'yes' && (type === 'large_airport' || type === 'medium_airport');
+    const known = airlineAirports?.get(iata);
+    const airline =
+      !!known &&
+      lat !== null &&
+      lon !== null &&
+      Math.abs(known.lat - lat) < 0.25 &&
+      Math.abs(known.lon - lon) * Math.cos(lat * D2R) < 0.25 &&
+      (type === 'large_airport' || type === 'medium_airport' || type === 'small_airport');
     if (
-      r[c.sched] !== 'yes' ||
-      (type !== 'large_airport' && type !== 'medium_airport') ||
+      !(listed || airline) ||
       !/^[A-Z0-9]{3}$/.test(iata) ||
       seenIata.has(iata) ||
       lat === null ||
@@ -200,12 +214,14 @@ export function parseOurAirportsCsvFiles(airportsCsvText: string, runwaysCsvText
 
     const id = num(r[c.id]) ?? i + 1;
     const isLarge = type === 'large_airport';
+    const isSmall = type === 'small_airport';
     const rwy = runways.get(id);
     const rwyCount = rwy?.count || 1;
-    const maxRwy = rwy?.maxLenFt || (isLarge ? 10000 : 7003);
+    const maxRwy = rwy?.maxLenFt || (isLarge ? 10000 : isSmall ? 4000 : 7003);
+    // A first guess from size and runways; network.json replaces it with real traffic
     const demandWeight =
       Math.round(
-        (isLarge ? 100 : 22) * (1 + 0.35 * (rwyCount - 1)) * Math.max(0.5, Math.min(1.6, maxRwy / 8000)) * 10
+        (isLarge ? 100 : isSmall ? 10 : 22) * (1 + 0.35 * (rwyCount - 1)) * Math.max(0.5, Math.min(1.6, maxRwy / 8000)) * 10
       ) / 10;
     const name = r[c.name] || iata;
 
@@ -218,14 +234,14 @@ export function parseOurAirportsCsvFiles(airportsCsvText: string, runwaysCsvText
       iso_country: r[c.country] || 'US',
       country_name: r[c.country] || 'US',
       continent: r[c.continent] || 'NA',
-      type: isLarge ? 'large_airport' : 'medium_airport',
+      type: isLarge ? 'large_airport' : isSmall ? 'small_airport' : 'medium_airport',
       latitude_deg: lat,
       longitude_deg: lon,
       elevation_ft: num(r[c.elev]) ?? 0,
       runway_count: rwyCount,
       max_runway_length_ft: maxRwy,
       demand_weight: demandWeight,
-      hourly_slot_limit: rwyCount * (isLarge ? 28 : 14),
+      hourly_slot_limit: rwyCount * (isLarge ? 28 : isSmall ? 8 : 14),
       runways: rwy && rwy.pairs.length > 0 ? rwy.pairs : undefined,
     });
   });

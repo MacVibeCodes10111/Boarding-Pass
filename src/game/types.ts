@@ -60,7 +60,7 @@ export interface Airport {
   iso_country: string;
   country_name: string;
   continent: string;
-  type: 'large_airport' | 'medium_airport';
+  type: 'large_airport' | 'medium_airport' | 'small_airport';
   latitude_deg: number;
   longitude_deg: number;
   elevation_ft: number;

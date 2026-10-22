@@ -58,9 +58,13 @@ export function CreditsModal({ onClose }: { onClose: () => void }) {
 
         <Section title="Data">
           <Item name="Airports, runways and navaids:">{link('https://ourairports.com/data/', 'OurAirports')}, public domain.</Item>
-          <Item name="Other airlines' routes, airports and aircraft types:">
-            {link('https://openflights.org/data', 'OpenFlights')}, under the Open Database Licence (ODbL 1.0) and Database Contents Licence. The other airlines'
-            schedules in the game are worked out from these routes; they are a derived database made available under the same ODbL.
+          <Item name="Airline routes flown today:">
+            {link('https://github.com/Jonty/airline-route-data', 'airline-route-data')} by Jonty Wareing, gathered from airlines' published routes. Route demand and the
+            other airlines' schedules in the game are worked out from these routes.
+          </Item>
+          <Item name="Population around airports:">
+            {link('https://www.geonames.org', 'GeoNames')}, under the Creative Commons Attribution 4.0 licence (CC BY 4.0). The game adds up the people living around each
+            airport from its towns and cities.
           </Item>
         </Section>
 

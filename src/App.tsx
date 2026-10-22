@@ -24,7 +24,8 @@ import { SchedulePanel } from './components/SchedulePanel';
 import { StatsPanel } from './components/StatsPanel';
 import { AIRCRAFT_BY_ID, BUILTIN_AIRCRAFT } from './game/aircraftCatalog';
 import { AI_AIRLINES, findMatchingAiAirline } from './game/aiAirlines';
-import { generateAiTraffic, type AiTraffic } from './game/aiTraffic';
+import { generateAiTraffic, generateNetworkTraffic, type AiTraffic } from './game/aiTraffic';
+import { airlineAirportPositions, applyNetworkWeights, parseNetwork, setNetwork, type NetworkData } from './game/demand';
 import { BUILTIN_AIRPORTS } from './game/builtinData';
 import {
   ECONOMY_RATE,
@@ -313,7 +314,12 @@ export default function App() {
   // Cosmetic AI traffic (OpenFlights)
   const [aiTraffic, setAiTraffic] = useState<AiTraffic | null>(null);
   // Extreme: a denser schedule on the same routes (built when first chosen)
-  const aiSourceRef = useRef<{ airportsText: string; routesText: string; planesText?: string } | null>(null);
+  // What other airlines' traffic is built from: the real network, or the old OpenFlights files
+  const aiSourceRef = useRef<{ network: NetworkData } | { airportsText: string; routesText: string; planesText?: string } | null>(null);
+  const buildAiTraffic = (frequencyScale?: number) => {
+    const src = aiSourceRef.current!;
+    return 'network' in src ? generateNetworkTraffic({ network: src.network, frequencyScale }) : generateAiTraffic({ ...src, frequencyScale });
+  };
   const [aiTrafficExtreme, setAiTrafficExtreme] = useState<AiTraffic | null>(null);
   const [aiStatus, setAiStatus] = useState('Loading other airline traffic…');
   const [aiDensity, setAiDensityState] = useState<AiDensity>(() => {
@@ -342,7 +348,7 @@ export default function App() {
     // Next tick, so the menu shows the choice before the (sub-second) build
     const id = window.setTimeout(() => {
       try {
-        setAiTrafficExtreme(generateAiTraffic({ ...aiSourceRef.current!, frequencyScale: EXTREME_TRAFFIC_SCALE }));
+        setAiTrafficExtreme(buildAiTraffic(EXTREME_TRAFFIC_SCALE));
       } catch {
         /* keep the normal schedule */
       }
@@ -456,13 +462,25 @@ export default function App() {
     };
 
     (async () => {
-      const [navText, apText, rwyText] = await Promise.all([
+      const [navText, apText, rwyText, netText] = await Promise.all([
         fetchText('/data/navaids.csv'),
         fetchText('/data/airports.csv'),
         fetchText('/data/runways.csv'),
+        fetchText('/data/network.json'),
       ]);
       if (cancelled) return;
       const notes: string[] = [];
+
+      // The real airline network: route demand, more airports, other airlines' flights
+      let network: NetworkData | null = null;
+      if (netText) {
+        try {
+          network = parseNetwork(JSON.parse(netText));
+          setNetwork(network);
+        } catch {
+          network = null;
+        }
+      }
 
       if (navText) {
         const parsed = parseOurAirportsNavaidsCsv(navText);
@@ -474,24 +492,29 @@ export default function App() {
         }
       }
       if (apText) {
-        const parsed = parseOurAirportsCsvFiles(apText, rwyText ?? undefined);
+        let parsed = parseOurAirportsCsvFiles(apText, rwyText ?? undefined, network ? airlineAirportPositions(network) : undefined);
+        if (network) parsed = applyNetworkWeights(parsed, network);
         if (parsed.length > 500) {
           clearFlightGeometryCache();
           setAirports(parsed);
           notes.push(`${parsed.length.toLocaleString()} airports${rwyText ? ' with runways' : ' (runways.csv missing)'}`);
         }
       }
-      // OpenFlights → cosmetic AI traffic (optional)
-      const [ofAirports, ofRoutes, ofPlanes] = await Promise.all([
-        fetchText('/data/openflights/airports.dat'),
-        fetchText('/data/openflights/routes.dat'),
-        fetchText('/data/openflights/planes.dat'),
-      ]);
+      // Other airlines' traffic (cosmetic): the real network, or the old OpenFlights files
+      const [ofAirports, ofRoutes, ofPlanes] = network
+        ? [null, null, null]
+        : await Promise.all([
+            fetchText('/data/openflights/airports.dat'),
+            fetchText('/data/openflights/routes.dat'),
+            fetchText('/data/openflights/planes.dat'),
+          ]);
+      // Let the airports show first: the schedule takes about a second to build
+      await new Promise((r) => setTimeout(r, 0));
       if (cancelled) return;
-      if (ofAirports && ofRoutes) {
+      if (network || (ofAirports && ofRoutes)) {
         try {
-          aiSourceRef.current = { airportsText: ofAirports, routesText: ofRoutes, planesText: ofPlanes ?? undefined };
-          const traffic = generateAiTraffic(aiSourceRef.current);
+          aiSourceRef.current = network ? { network } : { airportsText: ofAirports!, routesText: ofRoutes!, planesText: ofPlanes ?? undefined };
+          const traffic = buildAiTraffic();
           setAiTraffic(traffic);
           setAiStatus(
             `Other airlines: ${traffic.airlines.length} carriers, ${traffic.stats.routes.toLocaleString()} routes, about ${traffic.stats.avgPerDay.toLocaleString()} flights a day`
@@ -500,12 +523,12 @@ export default function App() {
           setAiStatus(`Other airline traffic could not be built: ${(err as Error).message}`);
         }
       } else {
-        setAiStatus('Other airline traffic is off. Add OpenFlights airports.dat and routes.dat (planes.dat optional) to public/data/openflights/.');
+        setAiStatus('Other airline traffic is off. Add network.json to public/data/ (made by tools/build-network.mjs).');
       }
 
       setDataStatus(
         notes.length > 0
-          ? `Loaded ${notes.join(', ')} from OurAirports.`
+          ? `Loaded ${notes.join(', ')} from OurAirports${network ? `, and today\u2019s airline routes (${network.routes.length.toLocaleString()} routes, ${network.built})` : ''}.`
           : 'Using the small built-in airport list. Add airports.csv, runways.csv and navaids.csv to public/data/ for the full world.'
       );
     })();
@@ -711,7 +734,7 @@ export default function App() {
 
   /** Start button: if the airline copies a real one in the traffic list, ask first. */
   const requestLaunch = () => {
-    const match = findMatchingAiAirline(airlineName, airlineIata, airlineCallsign);
+    const match = findMatchingAiAirline(airlineName, airlineIata, airlineCallsign, aiTraffic?.airlines ?? AI_AIRLINES);
     if (!match) {
       launchNewCareer(null);
       return;
@@ -736,7 +759,7 @@ export default function App() {
   const launchNewCareer = (replaces: string | null) => {
     setReplacedAi(replaces);
     if (replaces) {
-      const a = AI_AIRLINES.find((x) => x.code === replaces);
+      const a = (aiTraffic?.airlines ?? AI_AIRLINES).find((x) => x.code === replaces);
       if (a) flashToast(`${a.name} is off the map. Yours are the only ${a.name} aircraft flying.`, 5000);
     }
     setActiveSaveId(`SAVE-${Date.now()}`);
@@ -1284,7 +1307,7 @@ export default function App() {
             aiBudget={aiStats.budget}
             aiDetail={aiDetail}
             onAiDetail={setAiDetail}
-            aiNote={replacedAi ? `${AI_AIRLINES.find((a) => a.code === replacedAi)?.name ?? replacedAi} is off the map: your airline takes its place.` : undefined}
+            aiNote={replacedAi ? `${(aiTraffic?.airlines ?? AI_AIRLINES).find((a) => a.code === replacedAi)?.name ?? replacedAi} is off the map: your airline takes its place.` : undefined}
             aiStatus={aiStatus}
             planeIconScale={planeIconScale}
             onPlaneIconScale={setPlaneIconScale}

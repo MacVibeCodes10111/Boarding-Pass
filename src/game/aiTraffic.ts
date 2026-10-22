@@ -1,14 +1,20 @@
 // ============================================================================
 // COSMETIC AI TRAFFIC
-//   Built at startup from the OpenFlights files in /public/data/openflights/:
-//   routes.dat (who flies where, with which aircraft), airports.dat (positions
-//   and time zones) and planes.dat (aircraft names). OpenFlights has no times
-//   or frequencies, so a believable weekly schedule is generated from airport
-//   size, distance and local-time departure banks. Everything is seeded, so the
-//   same flights appear every week. AI traffic never affects your economy.
+//   Built at startup from the real airline network (public/data/network.json):
+//   every airline's real routes today. The route data has no times or
+//   frequencies, so a believable weekly schedule is made from each route's
+//   demand (demand.ts), shared between the airlines flying it, with an
+//   aircraft from the airline's own fleet (aiAirlines.ts) and local-time
+//   departure banks. Everything is seeded, so the same flights appear every
+//   week. AI traffic never affects your economy.
+//
+//   The older OpenFlights files (/public/data/openflights/, routes from about
+//   2014) still work as a fallback when network.json is missing.
 // ============================================================================
-import { AI_AIRLINES, type AiAirlineDef } from './aiAirlines';
+import { AI_AIRLINES, airlineNameCore, type AiAirlineDef, type AiRegion } from './aiAirlines';
+import { AI_TYPES, GENERIC_FLEETS } from './aiFleets';
 import { splitCsvLine } from './csv';
+import { marketDemand, type NetworkData } from './demand';
 import { calcBearingDeg, type LonLat } from './geo';
 import { MIN_PER_DAY, dayIndexOf } from './time';
 import type { RadarIconGroup } from './types';
@@ -63,13 +69,14 @@ const TYPE_NAMES: Record<string, string> = {
   '76F': 'Boeing 767 Freighter', '77X': 'Boeing 777 Freighter', '33X': 'Airbus A330-200F', 'CRJ': 'Bombardier CRJ', 'ERJ': 'Embraer ERJ',
   'EMJ': 'Embraer E-Jet', 'DH8': 'De Havilland Dash 8', 'M80': 'McDonnell Douglas MD-80', 'M1F': 'McDonnell Douglas MD-11F',
   'BE1': 'Beechcraft 1900', 'L4T': 'Let L-410', '388': 'Airbus A380-800', '380': 'Airbus A380',
+  ...Object.fromEntries(Object.entries(AI_TYPES).map(([k, v]) => [k, v.name])),
 };
 
 // OpenFlights equipment codes (IATA aircraft codes) → silhouette family
 const COMMUTER = /^(BE1|BEH|BE9|DHT|DH6|L4T|SWM|J31|J32|CNA|CNC|D28|DHP|S20|BNI|PN6|TWN)$/;
 const PROP = /^(AT\d|ATR|DH\d|DH8|F50|F27|SF3|SH\d|J41|AN4|AN6|ANF|MA6|EM2|EMB|D38)$/;
 const RJ_TAIL = /^(CR\w|CRJ|ER\d|ERD|ERJ|E35|E45|EP\w|F70|F100|100|J5\w|ARJ|AJ2)$/;
-const SMALL_JET = /^(E\d\d|E7W|E75|E90|E95|EMJ|SU9|SU1|221|223|CS1|CS3|BCS|146|14\w|AR\d|RJ\w)$/;
+const SMALL_JET = /^(E\d\d|E7W|E75|E90|E95|EMJ|SU9|SU1|221|223|290|295|E2\w|CS1|CS3|BCS|146|14\w|AR\d|RJ\w)$/;
 const REAR_JET = /^(M8\d|M9\d|M80|M90|717|D9\w|DC9|TU5|T54|YK2|YK4)$/;
 const LONG_NARROW = /^(75\w|757|T20|T24|TU2)$/;
 const TRIJET = /^(M11|M1F|M1M|D10|D1\w|L10|L11|L15|TU5X)$/;
@@ -436,6 +443,254 @@ export function generateAiTraffic(opts: GenerateAiOptions): AiTraffic {
       skippedRoutes,
       buildMs: Math.round(t1 - t0),
     },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Schedule from the real network (network.json)
+// ---------------------------------------------------------------------------
+export interface GenerateNetworkOptions {
+  network: NetworkData;
+  /** Airlines with their own name, callsign and fleet (defaults to AI_AIRLINES). */
+  airlines?: AiAirlineDef[];
+  nowMs?: number;
+  /** More (or fewer) flights on every route: 1 = the normal schedule. */
+  frequencyScale?: number;
+}
+
+/** Region of an airport, for airlines without their own entry. */
+function regionAt(lat: number, lon: number): AiRegion {
+  if (lon < -30) return lat > 13 ? 'NA' : 'SA';
+  if (lon < 60) {
+    if (lat > 36 || (lat > 34 && lon < 30)) return 'EU';
+    return lat > 12 && lon > 34 ? 'ME' : 'AF';
+  }
+  if (lat < -10 || lon > 155) return 'OC';
+  return 'AS';
+}
+
+/** Radio callsign for an airline without one listed: its name, without "Airlines". */
+function callsignFromName(name: string) {
+  const core = airlineNameCore(name).toUpperCase();
+  return (core || name.toUpperCase()).slice(0, 20);
+}
+
+/** Most departures an airline puts on one route in a day, by distance. */
+const maxPerDay = (nm: number) => (nm < 500 ? 16 : nm < 1500 ? 10 : nm < 3000 ? 5 : 3);
+/** Average share of seats filled. */
+const LOAD_FACTOR = 0.8;
+/**
+ * Travellers the schedule is built for, from the route's demand. The demand
+ * model is fitted to the world's well-known routes, so on the many thin
+ * routes it is generous; for the flights on the map those are thinned out,
+ * which keeps the whole world at about the real number of flights a day
+ * (~90,000) while the big routes keep their real frequency.
+ */
+const AI_THIN_ROUTE = 4000;
+const AI_THIN_EXP = 1.3;
+const AI_PAX_SCALE = 0.95;
+/**
+ * Countries whose real flight count the demand model misses. Big connecting
+ * hubs (America's, the Gulf, Istanbul, Singapore, Addis Ababa) carry far
+ * more passengers changing planes than the travel between two cities alone;
+ * Chinese routes have many airlines each flying a few times a week. Tuned
+ * against each country's real departures.
+ */
+const COUNTRY_AI_BIAS: Record<string, number> = {
+  US: 2.1, CA: 1.3, GB: 1.3, AE: 2, QA: 2.5, SG: 1.4, HK: 1.4, ET: 2, AU: 1.8, BR: 1.8, CO: 1.6, CL: 1.5, AR: 1.5, PE: 1.5, MX: 1.3, JP: 1.3, CN: 0.4,
+};
+const scheduledPax = (market: number) => AI_PAX_SCALE * market * Math.min(1, Math.pow(market / AI_THIN_ROUTE, AI_THIN_EXP));
+
+/**
+ * Departures a day the airline would like on a route carrying `pax` of its
+ * travellers a day: more people, more flights (and bigger aircraft), with
+ * American airlines and short routes leaning to frequency.
+ */
+function preferredPerDay(pax: number, nm: number, region: AiRegion) {
+  const base = nm < 800 ? 50 : nm < 1500 ? 70 : nm < 2500 ? 110 : nm < 5000 ? 220 : 300;
+  const bias = nm > 1500 ? 1 : region === 'NA' ? 1.8 : region === 'EU' && nm < 1000 ? 1.2 : 1;
+  return Math.max(0.3, Math.min(maxPerDay(nm), Math.pow(pax / base, 0.55) * bias));
+}
+
+export function generateNetworkTraffic(opts: GenerateNetworkOptions): AiTraffic {
+  const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  const net = opts.network;
+  const nowMs = opts.nowMs ?? Date.now();
+  const scale = Math.max(0.1, opts.frequencyScale ?? 1);
+  const curated = new Map((opts.airlines ?? AI_AIRLINES).map((a) => [a.code, a]));
+  const typeNames = new Map<string, string>(Object.entries(TYPE_NAMES));
+
+  const airports: AiAirport[] = [];
+  const apIndex = new Map<string, number>();
+  const ensureAirport = (iata: string) => {
+    let i = apIndex.get(iata);
+    if (i !== undefined) return i;
+    const a = net.airports.get(iata);
+    if (!a) return -1;
+    i = airports.length;
+    airports.push({
+      iata,
+      name: a.name,
+      city: a.city,
+      country: a.cc,
+      lat: a.lat,
+      lon: a.lon,
+      elevFt: a.elevFt,
+      tz: a.tz,
+      tzHours: Math.round(a.lon / 15),
+      v: toVec(a.lat, a.lon),
+    });
+    apIndex.set(iata, i);
+    return i;
+  };
+
+  // Each airline's routes, to give unlisted airlines a region and a fleet
+  const byCarrier = new Map<number, typeof net.routes>();
+  for (const r of net.routes)
+    for (const c of r.carriers) {
+      const list = byCarrier.get(c);
+      if (list) list.push(r);
+      else byCarrier.set(c, [r]);
+    }
+
+  const airlines: AiAirlineDef[] = [];
+  const airlineOf = new Map<number, number>();
+  const fleetOf: { code: string; seats: number; rangeNm: number }[][] = [];
+  for (const [ci, routes] of byCarrier) {
+    const c = net.carriers[ci];
+    if (!c?.code) continue;
+    let def = curated.get(c.code);
+    if (!def) {
+      // Region where it flies most from; fleet from how far it flies
+      const count = new Map<string, number>();
+      for (const r of routes) count.set(r.o, (count.get(r.o) ?? 0) + 1);
+      const home = net.airports.get([...count].sort((a, b) => b[1] - a[1])[0][0]);
+      const km = routes.map((r) => r.km).sort((a, b) => a - b);
+      const medianKm = km[Math.floor(km.length / 2)];
+      const longest = km[km.length - 1];
+      const fleet = medianKm < 450 && longest < 1500 ? GENERIC_FLEETS.regional : longest > 6000 ? GENERIC_FLEETS.network : GENERIC_FLEETS.mainline;
+      def = { code: c.code, name: c.name, callsign: callsignFromName(c.name), region: home ? regionAt(home.lat, home.lon) : 'EU', fleet };
+    }
+    airlineOf.set(ci, airlines.length);
+    airlines.push(def);
+    fleetOf.push(
+      (def.fleet ?? GENERIC_FLEETS.mainline)
+        .split(/\s+/)
+        .filter((t) => AI_TYPES[t])
+        .map((t) => ({ code: t, ...AI_TYPES[t] }))
+        .sort((a, b) => a.seats - b.seats)
+    );
+  }
+
+  const flights: AiFlight[] = [];
+  const usedNumbers = new Set<string>();
+  let skippedRoutes = 0;
+  let routeCount = 0;
+
+  for (const r of net.routes) {
+    if (r.carriers.length === 0) continue;
+    const oi = ensureAirport(r.o);
+    const di = ensureAirport(r.d);
+    if (oi < 0 || di < 0 || oi === di) {
+      skippedRoutes++;
+      continue;
+    }
+    const O = airports[oi];
+    const D = airports[di];
+    const distanceNm = angleBetween(O.v, D.v) * EARTH_NM;
+    if (distanceNm < 8) {
+      skippedRoutes++;
+      continue;
+    }
+    routeCount++;
+    // The route's travellers, shared between the airlines flying it
+    const bias = Math.sqrt((COUNTRY_AI_BIAS[O.country] ?? 1) * (COUNTRY_AI_BIAS[D.country] ?? 1));
+    const share = Math.max(4, scheduledPax(marketDemand(r.o, r.d, net) ?? 20) * bias) / r.carriers.length;
+
+    for (const ci of r.carriers) {
+      const ai = airlineOf.get(ci);
+      if (ai === undefined) continue;
+      const airline = airlines[ai];
+      const rand = rng(hash32(`${airline.code}${r.o}${r.d}`));
+
+      // Aircraft: from those that can fly the distance, the one whose size
+      // gives the airline about the number of flights it would like
+      const fleet = fleetOf[ai].length ? fleetOf[ai] : [{ code: '320', ...AI_TYPES['320'] }];
+      let usable = fleet.filter((t) => t.rangeNm >= distanceNm * 1.05);
+      if (!usable.length) usable = [fleet.reduce((a, b) => (b.rangeNm > a.rangeNm ? b : a))];
+      // The biggest long-haul aircraft stay on long-haul, except on Asia's packed domestic trunks
+      if (distanceNm < 1500 && airline.region !== 'AS' && usable.some((t) => t.seats < 350)) usable = usable.filter((t) => t.seats < 350);
+      const wantPerDay = preferredPerDay(share, distanceNm, airline.region);
+      const idealSeats = share / (wantPerDay * LOAD_FACTOR);
+      const type = usable.reduce((best, t) => (Math.abs(Math.log(t.seats / idealSeats)) < Math.abs(Math.log(best.seats / idealSeats)) ? t : best), usable[0]);
+
+      const perDayRaw = Math.min(maxPerDay(distanceNm), share / (type.seats * LOAD_FACTOR)) * scale;
+      const weeklyRaw = perDayRaw * 7;
+      const weekly = Math.max(2, Math.min(maxPerDay(distanceNm) * 7 * Math.max(1, scale), Math.floor(weeklyRaw) + (rand() < weeklyRaw % 1 ? 1 : 0)));
+      const perDay = weekly >= 7 ? Math.round(weekly / 7) : 1;
+      let localMask = 0x7f;
+      if (weekly < 7) {
+        const order = [0, 1, 2, 3, 4, 5, 6];
+        for (let i = order.length - 1; i > 0; i--) {
+          const j = Math.floor(rand() * (i + 1));
+          [order[i], order[j]] = [order[j], order[i]];
+        }
+        localMask = order.slice(0, weekly).reduce((m, d) => m | (1 << d), 0);
+      }
+
+      const { group, cruiseKts } = groupForType(type.code);
+      // The timetable's flight time when the data has it
+      const computed = Math.max(30, Math.ceil(((distanceNm / cruiseKts) * 60 + 25) / 5) * 5);
+      const blockMin = r.min >= 20 && r.min < computed * 1.6 && r.min > computed * 0.6 ? Math.ceil(r.min / 5) * 5 : computed;
+
+      const tzOffset = O.tz ? tzOffsetMinutes(O.tz, nowMs) : null;
+      const offset = tzOffset ?? O.tzHours * 60;
+      for (const localDep of localDepartures(perDay, distanceNm, rand)) {
+        const utcRaw = localDep - offset;
+        const dayShift = Math.floor(utcRaw / MIN_PER_DAY);
+        const depUtcMin = ((utcRaw % MIN_PER_DAY) + MIN_PER_DAY) % MIN_PER_DAY;
+
+        // Long-haul 1–999, the rest 1000–9999, each number used once
+        const [lo, hi] = distanceNm > 2500 ? [1, 999] : [1000, 9999];
+        const span = hi - lo + 1;
+        let num = lo + Math.floor(rand() * span);
+        let flightNumber = `${airline.code}${num}`;
+        for (let tries = 0; tries < 24 && usedNumbers.has(flightNumber); tries++) {
+          num = lo + Math.floor(rand() * span);
+          flightNumber = `${airline.code}${num}`;
+        }
+        // Still taken: the next free number after it, then any free number up to 9999
+        for (let k = 1; usedNumbers.has(flightNumber) && k < 9999; k++) flightNumber = `${airline.code}${k < span ? lo + ((num - lo + k) % span) : 1 + ((num + k) % 9999)}`;
+        usedNumbers.add(flightNumber);
+
+        flights.push({
+          id: flights.length,
+          airline: ai,
+          flightNumber,
+          o: oi,
+          d: di,
+          depUtcMin,
+          blockMin,
+          daysMask: rotateMask(localMask, dayShift),
+          typeCode: type.code,
+          group,
+          cruiseKts,
+          distanceNm: Math.round(distanceNm),
+        });
+      }
+    }
+  }
+
+  sequenceRunways(flights);
+
+  const flightsPerWeek = flights.reduce((s, f) => s + popcount(f.daysMask), 0);
+  const t1 = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  return {
+    airlines,
+    airports,
+    flights,
+    typeNames,
+    stats: { routes: routeCount, flightsPerWeek, avgPerDay: Math.round(flightsPerWeek / 7), skippedRoutes, buildMs: Math.round(t1 - t0) },
   };
 }
 
