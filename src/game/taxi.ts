@@ -36,9 +36,12 @@ export function aerowayFromGeoJson(features: any[]): AerowayFeature[] {
   for (const f of features) {
     const g = f?.geometry;
     const p = f?.properties ?? {};
-    const cls = String(p.class ?? p.aeroway ?? '');
+    // OpenMapTiles layout (class), OSM (aeroway), or CARTO's newer layout:
+    // runways and taxiways as roads of kind "aeroway", gates and stands as places of interest
+    const cls = String(p.class ?? p.aeroway ?? (p.kind === 'aeroway' ? p.kind_detail : p.kind === 'gate' || p.kind === 'parking_position' ? p.kind : '') ?? '');
     if (!g || !cls) continue;
-    const ref = p.ref == null ? '' : String(p.ref).trim();
+    const refRaw = p.ref ?? (p.kind === 'gate' || p.kind === 'parking_position' ? p.name : undefined);
+    const ref = refRaw == null ? '' : String(refRaw).replace(/^Taxiway\s+/i, '').trim();
     const c = g.coordinates;
     switch (g.type) {
       case 'Point':

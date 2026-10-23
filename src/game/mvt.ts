@@ -131,9 +131,11 @@ export function decodeAerowayTile(data: Uint8Array, z: number, x: number, y: num
       }
       const props: Record<string, string> = {};
       for (let i = 0; i + 1 < tags.length; i += 2) props[keys[tags[i]]] = values[tags[i + 1]];
-      const cls = props.class ?? props.aeroway ?? '';
+      // OpenMapTiles layout (class), OSM (aeroway), or CARTO's newer layout (roads of kind "aeroway", gates and stands in pois)
+      const isStand = props.kind === 'gate' || props.kind === 'parking_position';
+      const cls = props.class ?? props.aeroway ?? (props.kind === 'aeroway' ? props.kind_detail : isStand ? props.kind : '') ?? '';
       if (!cls) continue;
-      const ref = (props.ref ?? '').trim();
+      const ref = (props.ref ?? (isStand ? props.name : '') ?? '').replace(/^Taxiway\s+/i, '').trim();
       // Geometry commands: MoveTo / LineTo / ClosePath with zigzag deltas
       const parts: LonLat[][] = [];
       let cur: LonLat[] = [];

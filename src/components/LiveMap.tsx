@@ -160,8 +160,6 @@ const SATELLITE_STYLE = {
   layers: [
     { id: 'satellite-base', type: 'raster', source: 's2cloudless' },
     ...SATELLITE_LABELS,
-    // Invisible: makes the airport layouts load, for taxiing
-    { id: 'aeroway-probe', type: 'line', source: 'carto', 'source-layer': 'aeroway', minzoom: 13, paint: { 'line-opacity': 0 } },
   ],
 };
 const mapStyleFor = (id: MapStyleId): any =>
@@ -363,13 +361,19 @@ const AIRPORT_LOD_FILTER = [
 
 /** 3D buildings from the basemap's own vector tiles (free), when zoomed into cities. */
 function addBuildings(map: any, styleId: MapStyleId) {
-  if (!map.getSource?.('carto') || map.getLayer?.('buildings-3d')) return;
+  if (map.getLayer?.('buildings-3d')) return;
+  // CARTO's earlier tiles call the layer "building"; its newer ones (from October 2026) "buildings"
+  const layers: any[] = map.getStyle?.()?.layers ?? [];
+  const own = layers.find((l) => l['source-layer'] === 'buildings' || l['source-layer'] === 'building');
+  const source = own?.source ?? (map.getSource?.('carto') ? 'carto' : null);
+  const sourceLayer = own?.['source-layer'] ?? 'building';
+  if (!source) return;
   try {
     map.addLayer({
       id: 'buildings-3d',
       type: 'fill-extrusion',
-      source: 'carto',
-      'source-layer': 'building',
+      source,
+      'source-layer': sourceLayer,
       minzoom: 13.5,
       paint: {
         'fill-extrusion-color': styleId === 'light' ? '#d5dae3' : styleId === 'satellite' ? '#dfe3ea' : '#2b3649',
@@ -383,7 +387,27 @@ function addBuildings(map: any, styleId: MapStyleId) {
   }
 }
 
+/**
+ * Airport layouts (runways, taxiways, aprons, gates) for taxiing. CARTO moved
+ * its map styles to new tiles in October 2026 that no longer have an aeroway
+ * layer, so the game reads the layouts from CARTO's earlier tiles (which
+ * still have it) in every map style, through an invisible layer that makes
+ * them load when zoomed in at an airport.
+ */
+const AERO_SOURCE = 'bp-aero';
+const AERO_TILES = 'https://tiles.basemaps.cartocdn.com/vector/carto.streets/v1/tiles.json';
+function addAerowaySource(map: any) {
+  try {
+    if (!map.getSource?.(AERO_SOURCE)) map.addSource(AERO_SOURCE, { type: 'vector', url: AERO_TILES });
+    if (!map.getLayer?.('bp-aeroway-probe'))
+      map.addLayer({ id: 'bp-aeroway-probe', type: 'line', source: AERO_SOURCE, 'source-layer': 'aeroway', minzoom: 13, paint: { 'line-opacity': 0 } });
+  } catch {
+    /* style not ready */
+  }
+}
+
 function addLayers(map: any) {
+  addAerowaySource(map);
   const src = (id: string) => map.addSource(id, { type: 'geojson', data: EMPTY_FC });
   ['ils-cones', 'navaids-source', 'routes', 'preview-route', 'track-flown', 'track-remaining', 'airports', 'ai-planes', 'ground-planes', 'live-planes'].forEach(src);
   ['route-3d', 'route-3d-curtain', 'planes-3d', 'ai-3d', 'planes-3d-stem', 'labels-3d'].forEach(src);
@@ -1855,10 +1879,12 @@ export function LiveMap(props: LiveMapProps) {
     let lastView: { coords: [number, number]; flown: LonLat[]; remaining: LonLat[]; html: () => string } | null = null;
     let lastViewAt = 0;
     let groundRefs: TaxiAirportRef[] = [];
-    const aeroSource: string = (() => {
+    const aeroSource: string = AERO_SOURCE;
+    /** The style's own tiles in CARTO's newer layout (runways and taxiways in "roads", gates in "pois"), if any: used when the layouts above find nothing. */
+    const newSchemaSource = (): string | null => {
       const layers: any[] = map.getStyle?.()?.layers ?? [];
-      return layers.find((l) => l['source-layer'] === 'aeroway')?.source ?? 'carto';
-    })();
+      return layers.find((l) => l['source-layer'] === 'roads' && l.source !== AERO_SOURCE)?.source ?? null;
+    };
     const onSourceData = (e: any) => {
       if (e?.sourceId === aeroSource) aerowayDirty = true;
     };
@@ -2225,7 +2251,13 @@ export function LiveMap(props: LiveMapProps) {
           aerowayDirty = false;
           groundRefs = groundAirportsInView();
           if (groundRefs.length && zoom >= 13) {
-            const raw = map.querySourceFeatures?.(aeroSource, { sourceLayer: 'aeroway' }) ?? [];
+            let raw = map.querySourceFeatures?.(aeroSource, { sourceLayer: 'aeroway' }) ?? [];
+            const alt = raw.length ? null : newSchemaSource();
+            if (alt)
+              raw = [
+                ...(map.querySourceFeatures?.(alt, { sourceLayer: 'roads', filter: ['==', ['get', 'kind'], 'aeroway'] }) ?? []),
+                ...(map.querySourceFeatures?.(alt, { sourceLayer: 'pois', filter: ['in', ['get', 'kind'], ['literal', ['gate', 'parking_position', 'apron']]] }) ?? []),
+              ];
             const rebuilt = taxiReg().ingest(groundRefs, aerowayFromGeoJson(raw));
             if (rebuilt.length) {
               groundLast = 0;
