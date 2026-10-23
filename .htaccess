@@ -1,0 +1,10 @@
+AddType application/manifest+json .webmanifest
+AddType application/javascript .js .mjs
+<IfModule mod_headers.c>
+  <FilesMatch "^(index\.html|manifest\.webmanifest)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+  <FilesMatch "\.(js|css)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+</IfModule>
