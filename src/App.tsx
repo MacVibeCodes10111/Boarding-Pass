@@ -1518,6 +1518,7 @@ export default function App() {
         mapMin={mapClock.min}
         airlineCallsign={airlineCallsign}
         inspectedAirport={inspectedAirport ?? routeFrom}
+        hidePlanes={Boolean(inspectedAirport)}
         onInspectAirport={onMapAirport}
         previewOrigin={routeFrom ? null : airportByIata.get(draft.originIata) ?? null}
         showWeatherRadar={showWeatherRadar}

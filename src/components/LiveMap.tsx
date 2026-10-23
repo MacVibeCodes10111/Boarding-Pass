@@ -279,6 +279,8 @@ export interface LiveMapProps {
   mapMin: number;
   airlineCallsign: string;
   inspectedAirport: Airport | null;
+  /** Hide the aircraft in the air (while the route planner is open). Defaults to "an airport is inspected". */
+  hidePlanes?: boolean;
   onInspectAirport: (airport: Airport | null) => void;
   /** Origin for the dashed preview line to the inspected airport. */
   previewOrigin: Airport | null;
@@ -663,8 +665,12 @@ const PLAYER_BUSY = 400;
 /** Other airlines always keep at least this many aircraft on the map. */
 const AI_MIN_WITH_FLEET = 150;
 
-/** Every layer that draws aircraft (hidden while planning a route). */
-const PLANE_LAYERS = ['ai-planes-symbol', 'ai-planes-dot', 'ground-planes-symbol', 'live-planes-symbol', 'labels-3d-hit', 'labels-3d-text', 'ai-3d', 'planes-3d', 'planes-3d-stem'];
+/**
+ * The layers that draw aircraft in the air (hidden while the route planner is
+ * open). Aircraft on the ground stay: they are only drawn zoomed in at an
+ * airport, where they are what you came to see.
+ */
+const PLANE_LAYERS = ['ai-planes-symbol', 'ai-planes-dot', 'live-planes-symbol', 'labels-3d-hit', 'labels-3d-text', 'ai-3d', 'planes-3d', 'planes-3d-stem'];
 const THREE_D_SOURCES = ['planes-3d', 'ai-3d', 'planes-3d-stem', 'route-3d', 'route-3d-curtain', 'labels-3d'];
 /** Other airlines' aircraft with a label / click target in 3D (nearest the view centre). */
 const AI_LABELS_3D_MAX = 700;
@@ -1603,14 +1609,15 @@ export function LiveMap(props: LiveMapProps) {
   useEffect(() => {
     const map = mapRef.current;
     if (!mapReady || !map) return;
-    const v = inspectedAirport ? 'none' : 'visible';
+    const hide = props.hidePlanes ?? Boolean(inspectedAirport);
+    const v = hide ? 'none' : 'visible';
     for (const id of PLANE_LAYERS)
       try {
         if (map.getLayer?.(id)) map.setLayoutProperty?.(id, 'visibility', v);
       } catch {
         /* layer not there yet */
       }
-  }, [inspectedAirport, mapReady, styleRev, mapRef]);
+  }, [inspectedAirport, props.hidePlanes, mapReady, styleRev, mapRef]);
 
   // ---------------------------------------------------------------------------
   // 4. ILS cones & navaids (hourly)
