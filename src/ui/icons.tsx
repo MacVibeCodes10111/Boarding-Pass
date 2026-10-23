@@ -4,6 +4,7 @@
 import type React from 'react';
 
 export type IconName =
+  | 'clock'
   | 'map'
   | 'fleet'
   | 'buy'
@@ -46,6 +47,7 @@ const PATHS: Record<IconName, React.ReactNode> = {
   close: <path d="m5 5 10 10M15 5 5 15" />,
   play: <path d="M7 4.5v11l8.5-5.5L7 4.5Z" />,
   pause: <path d="M6.5 4.5v11M13.5 4.5v11" />,
+  clock: <path d="M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14ZM10 6.2V10l2.6 1.7" />,
   plus: <path d="M10 4.5v11M4.5 10h11" />,
   minus: <path d="M4.5 10h11" />,
   search: <path d="M8.75 14.5a5.75 5.75 0 1 0 0-11.5 5.75 5.75 0 0 0 0 11.5ZM13 13l4 4" />,

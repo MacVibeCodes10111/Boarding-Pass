@@ -1552,37 +1552,36 @@ export default function App() {
           setBankTab('loans');
           setPanel('bank');
         }}
-        layers={
-          <LayersMenu
-            mapStyle={mapStyle}
-            onMapStyle={setMapStyle}
-            globe={globe}
-            onGlobe={setGlobe}
-            threeD={threeD}
-            onThreeD={setThreeD}
-            globeAvailable={maplibreHasGlobe()}
-            showApproaches={showApproaches}
-            onShowApproaches={setShowApproaches}
-            showNavaids={showNavaids}
-            onShowNavaids={setShowNavaids}
-            showAllRoutes={showAllRoutes}
-            onShowAllRoutes={setShowAllRoutes}
-            showWeather={showWeatherRadar}
-            onShowWeather={setShowWeatherRadar}
-            aiAvailable={aiTraffic !== null}
-            aiDensity={aiDensity}
-            onAiDensity={setAiDensity}
-            aiAirborne={aiStats.airborne}
-            aiDrawn={aiStats.drawn}
-            aiBudget={aiStats.budget}
-            aiDetail={aiDetail}
-            onAiDetail={setAiDetail}
-            aiNote={replacedAi ? `${(aiTraffic?.airlines ?? AI_AIRLINES).find((a) => a.code === replacedAi)?.name ?? replacedAi} is off the map: your airline takes its place.` : undefined}
-            aiStatus={aiStatus}
-            planeIconScale={planeIconScale}
-            onPlaneIconScale={setPlaneIconScale}
-          />
-        }
+      />
+      {/* Map layers: the round button above the zoom buttons */}
+      <LayersMenu
+        mapStyle={mapStyle}
+        onMapStyle={setMapStyle}
+        globe={globe}
+        onGlobe={setGlobe}
+        threeD={threeD}
+        onThreeD={setThreeD}
+        globeAvailable={maplibreHasGlobe()}
+        showApproaches={showApproaches}
+        onShowApproaches={setShowApproaches}
+        showNavaids={showNavaids}
+        onShowNavaids={setShowNavaids}
+        showAllRoutes={showAllRoutes}
+        onShowAllRoutes={setShowAllRoutes}
+        showWeather={showWeatherRadar}
+        onShowWeather={setShowWeatherRadar}
+        aiAvailable={aiTraffic !== null}
+        aiDensity={aiDensity}
+        onAiDensity={setAiDensity}
+        aiAirborne={aiStats.airborne}
+        aiDrawn={aiStats.drawn}
+        aiBudget={aiStats.budget}
+        aiDetail={aiDetail}
+        onAiDetail={setAiDetail}
+        aiNote={replacedAi ? `${(aiTraffic?.airlines ?? AI_AIRLINES).find((a) => a.code === replacedAi)?.name ?? replacedAi} is off the map: your airline takes its place.` : undefined}
+        aiStatus={aiStatus}
+        planeIconScale={planeIconScale}
+        onPlaneIconScale={setPlaneIconScale}
       />
 
       <NavRail

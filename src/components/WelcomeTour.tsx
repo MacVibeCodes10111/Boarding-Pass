@@ -40,7 +40,7 @@ function steps(p: { airlineName: string; hubIata: string; sandbox: boolean }): S
         ? ['Sandbox: money is unlimited, so build whatever you like. The economy clock runs one game week per real day.']
         : [
             'Cash, profit this week and cash flow. The economy runs one game week per real day, and keeps running while the game is closed.',
-            'Pause it here if you want to plan without the clock running.',
+            'The clock beside them pauses the economy if you want to plan without it running.',
           ],
     },
     {

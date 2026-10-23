@@ -20,7 +20,7 @@ import { HEIGHT_HINT, TILT_HINT } from '../game/platform';
 import { DEV_BUILD, IS_DEV } from '../game/channel';
 import type { GameMode } from '../game/types';
 import { Icon, type IconName } from '../ui/icons';
-import { C, DISPLAY, Segmented, glass } from '../ui/kit';
+import { Button, C, DISPLAY, Segmented, glass } from '../ui/kit';
 import { isTouchFirst, useLayout } from '../ui/layout';
 
 export type PanelId = 'fleet' | 'buy' | 'schedule' | 'airports' | 'bank' | 'stats';
@@ -108,14 +108,19 @@ function Readout({ label, children, title }: { label: string; children: React.Re
 const Divider = () => <div style={{ width: 1, flex: 'none', alignSelf: 'stretch', margin: '12px 0', background: C.line }} />;
 
 /** Red DEV tag on test builds (dev branch), so they are never mistaken for the real game */
-export const DevTag = ({ big }: { big?: boolean }) =>
+export const DevTag = ({ big, onBadge }: { big?: boolean; onBadge?: boolean }) =>
   IS_DEV ? (
     <span
       className="bp-dev-tag"
       title={DEV_BUILD ? `Test build ${DEV_BUILD} from the dev branch` : 'Test build from the dev branch'}
-      style={{ flex: 'none', fontFamily: DISPLAY, fontSize: big ? 15 : 12, fontWeight: 700, letterSpacing: '0.06em', lineHeight: big ? '22px' : '17px', padding: '0 6px', borderRadius: 5, background: '#e5383b', color: '#fff' }}
+      style={
+        onBadge
+          ? // Phone: a small tab across the foot of the airline badge, so it takes no room in the bar
+            { position: 'absolute', left: '50%', bottom: 3, transform: 'translateX(-50%)', fontFamily: DISPLAY, fontSize: 9.5, fontWeight: 700, letterSpacing: '0.08em', lineHeight: '13px', padding: '0 4px', borderRadius: 4, background: '#e5383b', color: '#fff', boxShadow: '0 0 0 1.5px rgba(0,0,0,.35)', pointerEvents: 'none' }
+          : { flex: 'none', fontFamily: DISPLAY, fontSize: big ? 15 : 12, fontWeight: 700, letterSpacing: '0.06em', lineHeight: big ? '22px' : '17px', padding: '0 6px', borderRadius: 5, background: '#e5383b', color: '#fff' }
+      }
     >
-      DEV{DEV_BUILD ? ` ${DEV_BUILD}` : ''}
+      DEV{DEV_BUILD && !onBadge ? ` ${DEV_BUILD}` : ''}
     </span>
   ) : null;
 
@@ -131,6 +136,134 @@ const topCard = (extra?: React.CSSProperties): React.CSSProperties => ({
   pointerEvents: 'auto',
   ...extra,
 });
+
+/** The window width, updated on resize (for layouts that depend on more than phone/tablet/desktop). */
+function useWindowWidth() {
+  const [w, setW] = useState(() => (typeof window === 'undefined' ? 1440 : window.innerWidth));
+  useEffect(() => {
+    const on = () => setW(window.innerWidth);
+    window.addEventListener('resize', on);
+    return () => window.removeEventListener('resize', on);
+  }, []);
+  return w;
+}
+
+/**
+ * Phone: the economy clock, its pause and the map clock in one small button
+ * at the end of the top bar; tap it for the details and the controls.
+ */
+function ClockButton(props: {
+  econMin: number;
+  econSpeed: EconomySpeed;
+  onEconSpeed: (s: EconomySpeed) => void;
+  mapClock: UtcClock;
+  mapSpeed: MapSpeed;
+  onMapSpeed: (s: MapSpeed) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    window.addEventListener('pointerdown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+  const paused = props.econSpeed === 'paused';
+  const week = econWeekOf(props.econMin);
+  const day = econDayOfWeek(props.econMin);
+  const econTime = formatClockShort(econMinOfDay(props.econMin));
+  const live = props.mapSpeed === 'live';
+  return (
+    <div ref={ref} style={{ display: 'flex', alignItems: 'center', flex: 'none' }}>
+      <button
+        type="button"
+        className="bp-clock-btn"
+        aria-expanded={open}
+        aria-label={`${paused ? 'Economy paused' : `Week ${week}, day ${day}`}: clocks`}
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 7,
+          height: 40,
+          padding: '0 9px 0 8px',
+          borderRadius: 10,
+          cursor: 'pointer',
+          background: open ? C.raised : paused ? `${C.brand}22` : 'transparent',
+          border: `1px solid ${paused ? C.brand : open ? C.border : C.line}`,
+          color: C.text,
+          font: 'inherit',
+          textAlign: 'left',
+        }}
+      >
+        <Icon name={paused ? 'pause' : 'clock'} size={15} color={paused ? C.brand : C.textSoft} />
+        <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.12 }}>
+          <span style={{ fontSize: 11, color: C.muted, whiteSpace: 'nowrap' }}>{paused ? 'Paused' : `Week ${week}`}</span>
+          <span className="num" style={{ fontFamily: DISPLAY, fontSize: 16, fontWeight: 600, whiteSpace: 'nowrap', color: paused ? C.brand : C.text }}>
+            Day {day}
+          </span>
+        </span>
+      </button>
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Clocks"
+          style={{
+            ...glass('f0'),
+            position: 'fixed',
+            top: 'calc(var(--bp-top-h) + 8px)',
+            right: 8,
+            width: 'min(330px, calc(100vw - 16px))',
+            borderRadius: 14,
+            padding: '12px 14px 14px',
+            zIndex: 300,
+            boxShadow: '0 18px 44px rgba(0,0,0,.5)',
+            display: 'grid',
+            gap: 14,
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 12, color: C.muted, marginBottom: 3 }}>{paused ? 'Economy paused' : props.econSpeed === 'test' ? 'Economy (test speed)' : 'Economy, 1 game week per real day'}</div>
+            <div className="num" style={{ fontFamily: DISPLAY, fontSize: 22, fontWeight: 700, marginBottom: 8 }}>
+              Week {week}, day {day} <span style={{ color: C.muted, fontWeight: 500 }}>{econTime}</span>
+            </div>
+            <Button size="sm" variant={paused ? 'primary' : 'subtle'} block onClick={() => props.onEconSpeed(paused ? 'normal' : 'paused')}>
+              <Icon name={paused ? 'play' : 'pause'} size={14} />
+              {paused ? 'Resume the economy' : 'Pause the economy'}
+            </Button>
+            <div style={{ fontSize: 12, color: C.faint, marginTop: 6, lineHeight: 1.4 }}>
+              {paused ? 'Nothing earns or costs money until you resume, and no catch-up while the game is closed.' : 'Keeps running while the game is closed. Pausing also stops that catch-up.'}
+            </div>
+          </div>
+          <div style={{ height: 1, background: C.line }} />
+          <div>
+            <div style={{ fontSize: 12, color: C.muted, marginBottom: 3 }}>{live ? 'Map time, live' : paused ? 'Map time, paused with the economy' : 'Map time, 7× with the economy'}</div>
+            <div className="num" style={{ fontFamily: DISPLAY, fontSize: 22, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
+              {live && <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '0.06em', lineHeight: '16px', padding: '0 5px', borderRadius: 4, background: C.brand, color: C.brandInk }}>LIVE</span>}
+              {DAY_NAMES_SHORT[dayIndexOf(props.mapClock.day)]} {formatClockShort(props.mapClock.min)}
+              {live && <span style={{ color: C.muted, fontWeight: 500 }}>UTC</span>}
+            </div>
+            <Segmented<MapSpeed>
+              size="sm"
+              block
+              value={props.mapSpeed}
+              onChange={props.onMapSpeed}
+              options={[
+                { value: 'live', label: '1×, real time', title: 'Real time (UTC)' },
+                { value: 'x7', label: '7×, with the economy', title: 'Follow the economy clock (7× real time)' },
+              ]}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function TopBar(props: {
   airlineName: string;
@@ -150,9 +283,12 @@ export function TopBar(props: {
   onOpenDebt: () => void;
   /** The airline badge opens My Airline. */
   onOpenAirline: () => void;
-  layers: React.ReactNode;
 }) {
-  const phone = useLayout() === 'phone';
+  const layout = useLayout();
+  const phone = layout === 'phone';
+  const width = useWindowWidth();
+  // Phones and narrow tablets: the clocks fold into one button so the bar fits without scrolling
+  const compactClocks = phone || (layout === 'tablet' && width < 960);
   const net = ledgerNet(props.weekSoFar);
   const w = props.weekSoFar;
   const career = props.gameMode !== 'sandbox';
@@ -185,7 +321,7 @@ export function TopBar(props: {
         onClick={props.onOpenAirline}
         title={`${props.airlineName}: open My Airline`}
         aria-label={`${props.airlineName}: open My Airline`}
-        style={{ ...topCard({ gap: 11, padding: phone ? 0 : '0 16px 0 7px', width: phone ? 50 : undefined, justifyContent: phone ? 'center' : undefined, maxWidth: 280 }), background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', textAlign: 'left', font: 'inherit' }}
+        style={{ ...topCard({ gap: 11, padding: phone ? 0 : '0 16px 0 7px', width: phone ? 46 : undefined, justifyContent: phone ? 'center' : undefined, maxWidth: 280 }), position: 'relative', alignSelf: 'stretch', height: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', textAlign: 'left', font: 'inherit' }}
       >
         <div
           style={{
@@ -206,7 +342,7 @@ export function TopBar(props: {
         >
           {props.airlineIata || 'BP'}
         </div>
-        <DevTag />
+        {phone ? <DevTag onBadge /> : <DevTag />}
         <div className="bp-hide-phone bp-hide-tablet" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
           <div style={{ fontFamily: DISPLAY, fontSize: 18, fontWeight: 700, lineHeight: 1.1, color: C.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{props.airlineName}</div>
           <div style={{ fontSize: 12, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -221,13 +357,13 @@ export function TopBar(props: {
         className="bp-topbar-strip bp-scroll-x"
         style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'stretch', justifyContent: phone ? undefined : 'space-between', gap: phone ? 14 : 6, alignSelf: 'stretch' }}
       >
-        <div className="bp-topcard" style={topCard()}>
+        <div className="bp-topcard" style={topCard(phone ? { gap: 12, padding: '0 2px' } : undefined)}>
           <Readout label="Cash">
             <span style={{ color: props.cash < 0 ? C.red : C.text }}>{props.gameMode === 'sandbox' ? 'Unlimited' : compactMoney(props.cash)}</span>
           </Readout>
           <Divider />
           <Readout
-            label="Profit this week"
+            label={phone ? 'This week' : 'Profit this week'}
             title={`Flights ${money(w.flightProfit)}, leases ${money(-w.leaseCost)}${interest ? `, interest ${money(-interest)}` : ''}. Repaying a loan's principal isn't a cost, so only interest counts.${props.lastWeek ? `\nLast week ${money(ledgerNet(props.lastWeek))}.` : ''}`}
           >
             <span style={{ color: tone(net) }}>{phone ? signedCompact(net) : money(net)}</span>
@@ -259,7 +395,8 @@ export function TopBar(props: {
           )}
         </div>
 
-        {!phone && <Divider />}
+        {!compactClocks && <Divider />}
+        {!compactClocks && (
         <div className="bp-topcard" style={topCard({ gap: 11, paddingLeft: 9 })}>
           <button
             type="button"
@@ -287,8 +424,10 @@ export function TopBar(props: {
             <span style={{ color: C.muted, fontWeight: 500 }}>{formatClockShort(econMinOfDay(props.econMin))}</span>
           </Readout>
         </div>
+        )}
 
-        {!phone && <Divider />}
+        {!compactClocks && <Divider />}
+        {!compactClocks && (
         <div className="bp-topcard" style={topCard({ gap: 12 })}>
           <Readout
             label={props.mapSpeed === 'live' ? 'Map time, live' : paused ? 'Map time, paused with economy' : 'Map time, 7× with economy'}
@@ -315,9 +454,19 @@ export function TopBar(props: {
             ]}
           />
         </div>
+        )}
       </div>
-      {!phone && <Divider />}
-      <div style={{ display: 'flex', alignItems: 'center', flex: 'none' }}>{props.layers}</div>
+      {/* Phone and narrow tablet: the two clocks fold into one button */}
+      {compactClocks && (
+        <ClockButton
+          econMin={props.econMin}
+          econSpeed={props.econSpeed}
+          onEconSpeed={props.onEconSpeed}
+          mapClock={props.mapClock}
+          mapSpeed={props.mapSpeed}
+          onMapSpeed={props.onMapSpeed}
+        />
+      )}
     </header>
   );
 }
@@ -634,33 +783,42 @@ export function LayersMenu(props: {
     Number(props.showNavaids) +
     Number(props.aiAvailable && props.aiDensity !== 'off');
 
+  // The round button sits above the zoom buttons (higher in 3D, where the camera box is under them)
+  const fabBottom = `calc(var(--bp-bottom-h) + ${props.threeD ? 78 : 38}px + 80px)`;
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
+    <div ref={ref}>
       <button
         type="button"
+        className="bp-layers-fab"
         aria-expanded={open}
         aria-label="Map layers"
+        title="Map layers"
         data-tour="layers"
         onClick={() => setOpen((v) => !v)}
         style={{
-          ...(phone
-            ? { background: open ? C.raised : 'transparent', border: `1px solid ${open ? C.border : C.line}`, padding: '6px 12px', borderRadius: 9 }
-            : { background: open ? C.raised : 'transparent', border: `1px solid ${open ? C.border : 'transparent'}`, height: 42, padding: '0 14px', borderRadius: 10 }),
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
+          position: 'absolute',
+          right: 10,
+          bottom: fabBottom,
+          zIndex: 30,
+          width: 46,
+          height: 46,
+          borderRadius: '50%',
+          display: 'grid',
+          placeItems: 'center',
           cursor: 'pointer',
-          fontFamily: DISPLAY,
-          fontSize: 17,
-          fontWeight: 600,
-          color: open ? C.text : C.textSoft,
+          padding: 0,
+          background: open ? C.brand : `${C.panel}f0`,
+          color: open ? C.brandInk : C.text,
+          border: `1px solid ${open ? C.brand : C.border}`,
+          boxShadow: '0 6px 18px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.08)',
         }}
       >
-        <Icon name="layers" size={18} color={open ? C.brand : 'currentColor'} />
-        {/* On a phone just the icon, so the money readouts get the room */}
-        {!phone && 'Map layers'}
+        <Icon name="layers" size={21} />
         {activeCount > 0 && (
-          <span className="num" style={{ fontSize: 13, background: C.brand, color: C.brandInk, borderRadius: 999, padding: '0 6px', lineHeight: '18px', fontWeight: 700 }}>
+          <span
+            className="num"
+            style={{ position: 'absolute', top: -4, right: -4, minWidth: 19, height: 19, fontSize: 12, background: C.brand, color: C.brandInk, borderRadius: 999, padding: '0 5px', lineHeight: '19px', fontWeight: 700, boxShadow: `0 0 0 2px ${C.panel}` }}
+          >
             {activeCount}
           </span>
         )}
@@ -671,20 +829,33 @@ export function LayersMenu(props: {
           role="dialog"
           aria-label="Map layers"
           style={{
-            position: 'absolute',
-            right: 0,
-            top: 'calc(100% + 8px)',
-            width: 'min(330px, calc(100vw - 16px))',
-            // Never taller than the window: the rest scrolls
-            maxHeight: 'calc(100dvh - var(--bp-top-h) - var(--bp-bottom-h) - 16px)',
+            position: 'fixed',
+            right: 10,
+            bottom: phone ? 'calc(var(--bp-bottom-h) + 10px)' : fabBottom,
+            width: 'min(340px, calc(100vw - 20px))',
+            // Never taller than the space between the bars: the rest scrolls
+            maxHeight: phone ? 'calc(100dvh - var(--bp-top-h) - var(--bp-bottom-h) - 20px)' : `calc(100dvh - var(--bp-top-h) - 30px - (${fabBottom}))`,
             overscrollBehavior: 'contain',
             overflowY: 'auto',
             ...glass('f0'),
             borderRadius: 14,
-            padding: '12px 14px 14px',
+            padding: '10px 14px 14px',
             zIndex: 60,
+            boxShadow: '0 18px 44px rgba(0,0,0,.5)',
           }}
         >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <Icon name="layers" size={17} color={C.brand} />
+            <span style={{ fontFamily: DISPLAY, fontSize: 18, fontWeight: 700, flex: 1 }}>Map layers</span>
+            <button
+              type="button"
+              aria-label="Close map layers"
+              onClick={() => setOpen(false)}
+              style={{ width: 32, height: 32, borderRadius: 9, display: 'grid', placeItems: 'center', background: C.raised, border: `1px solid ${C.border}`, color: C.textSoft, cursor: 'pointer' }}
+            >
+              <Icon name="close" size={14} />
+            </button>
+          </div>
           <MenuSection
             title="Map"
             first
