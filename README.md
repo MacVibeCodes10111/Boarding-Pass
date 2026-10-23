@@ -21,6 +21,18 @@ The downloads aren't code-signed, so the first time you open the game, macOS or 
 
 ## What's new
 
+Version 2.42:
+
+- **Today's airline network.** The game now runs on real 2026 routes: 59,288 routes flown by 603 airlines, all of them on the map as other traffic (about 102,000 flights a day, many with their real fleets). 4,023 airports, including the small island, Arctic and bush airports that were missing.
+- **Realistic demand.** Passengers come from each airport's real network, how many people live nearby, distance, water and borders, and how many airlines already fly the route. Quiet routes have a few hundred people a day, busy ones thousands. The planner shows who flies a route today, and not every flight is full.
+- **Plan a route in two taps.** Tap the airport you fly from, then the one to fly to; the planner opens only then. "Detailed view" in its corner opens the aircraft's whole week.
+- **My Airline and Buy.** The toolbar is now Map, My Airline (Overview, Fleet, Schedule), Buy (Aircraft, Airports & hubs), Bank and Menu. Your airline's badge opens My Airline.
+- **Run a big fleet.** Buy or lease up to 50 at once; tick aircraft in Fleet to sell, refit, replace them with another type (their flights carry over) or schedule them together. Leases have a term (13 weeks to 2 years) with a deposit, an early-return penalty and a buy-out. Registrations and flight numbers look like real airlines'.
+- **A tidy screen on phones.** The top bar fits without scrolling (the clocks are one button), Map layers is a round button above the zoom buttons, every window has a close button, buttons are bigger, and messages swipe away. Nothing overlaps on phones, tablets or computers.
+- **Smooth with hundreds of routes.** Route lines and aircraft are simplified when there are a lot of them (your own aircraft first), and saves are less than half the size.
+- **A welcome tour and a real menu.** New careers get a one-minute tour (skip it or turn it off). Menu saves, exports, replays the tour and leaves to the home screen.
+- **Fair play.** Saves are protected (an edited save opens in Sandbox), fares stop selling at three times the market price, and bank milestones and loans can't be farmed.
+
 Version 2.35:
 
 - **A new look.** Panels, the top bar and the airport drawer now float over the map as see-through cards, the sections are in a toolbar along the bottom of the screen, and headings and numbers use a bold condensed typeface based on airport signage (bundled with the game, so it works offline). Buttons are chunkier, your cash has a gold coin, and the map clock shows LIVE. Your themes and colours from Appearance apply to all of it.
