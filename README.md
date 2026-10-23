@@ -21,6 +21,11 @@ The downloads aren't code-signed, so the first time you open the game, macOS or 
 
 ## What's new
 
+Version 2.44:
+
+- **Aircraft are back on the ground.** CARTO, which provides the map, moved to new map tiles in October that the game couldn't read airport layouts from, so nothing parked or taxied at any airport. The game now gets the layouts another way, and aircraft park at gates and taxi again. 3D buildings are back on the dark and light maps too.
+- **Tapping an airport no longer hides the aircraft.** Only the aircraft in the air step aside, and only while the route planner is open.
+
 Version 2.42:
 
 - **Today's airline network.** The game now runs on real 2026 routes: 59,288 routes flown by 603 airlines, all of them on the map as other traffic (about 102,000 flights a day, many with their real fleets). 4,023 airports, including the small island, Arctic and bush airports that were missing.
