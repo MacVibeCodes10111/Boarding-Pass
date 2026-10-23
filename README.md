@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 2.41. Free to play. See [Credits and licences](#credits-and-licences).
+Version 2.42. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 

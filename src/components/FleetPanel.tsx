@@ -197,11 +197,12 @@ export function FleetPanel(props: FleetPanelProps) {
               marginBottom: 12,
               borderRadius: 10,
               border: `1px solid ${picked.length ? C.brand + '66' : C.line}`,
-              background: picked.length ? `${C.brand}12` : 'transparent',
+              // Solid, so the list never shows through it as it scrolls under
+              background: picked.length ? `linear-gradient(${C.brand}14, ${C.brand}14), ${C.panel}` : C.panel,
               position: 'sticky',
               top: 0,
               zIndex: 2,
-              backdropFilter: 'blur(8px)',
+              boxShadow: picked.length ? '0 6px 14px rgba(0,0,0,.35)' : 'none',
             }}
           >
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: C.textDim, cursor: 'pointer' }}>

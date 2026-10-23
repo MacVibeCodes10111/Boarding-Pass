@@ -695,6 +695,7 @@ function Switch({ on, onChange, label, hint }: { on: boolean; onChange: (v: bool
       <button
         type="button"
         role="switch"
+        className="bp-switch"
         aria-checked={on}
         onClick={() => onChange(!on)}
         style={{
@@ -784,7 +785,7 @@ export function LayersMenu(props: {
     Number(props.aiAvailable && props.aiDensity !== 'off');
 
   // The round button sits above the zoom buttons (higher in 3D, where the camera box is under them)
-  const fabBottom = `calc(var(--bp-bottom-h) + ${props.threeD ? 78 : 38}px + 80px)`;
+  const fabBottom = props.threeD ? 'calc(var(--bp-bottom-h) + 38px + var(--bp-cam-space) + 80px)' : 'calc(var(--bp-bottom-h) + 38px + 80px)';
   return (
     <div ref={ref}>
       <button

@@ -261,7 +261,7 @@ function AppearanceModal({ onClose, mapStyle, onMapStyle }: { onClose: () => voi
   const light = isLightColour(live.base);
 
   return (
-    <ModalShell onClose={onClose} maxWidth={640} zIndex={420}>
+    <ModalShell onClose={onClose} maxWidth={640} zIndex={420} closeButton={false}>
       <div role="dialog" aria-label="Appearance" style={{ padding: '22px 24px', maxHeight: 'calc(100dvh - 80px)', overflowY: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
           <div>

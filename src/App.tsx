@@ -386,6 +386,17 @@ export default function App() {
 
   // Route builder & dialogs
   const [inspectedAirport, setInspectedAirport] = useState<Airport | null>(null);
+  // Escape closes the planner (unless a dialog over it takes the key first)
+  useEffect(() => {
+    if (!inspectedAirport) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (document.querySelector('.bp-modal-backdrop, .bp-tour, [aria-modal=true], [role=dialog]')) return;
+      setInspectedAirport(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [inspectedAirport]);
   // Route planning takes two taps: the airport you fly from, then where to.
   // The planner opens only once both are picked.
   const [routeFrom, setRouteFrom] = useState<Airport | null>(null);

@@ -234,7 +234,7 @@ function buildAiPopupHtml(t: AiTraffic, f: AiFlight, pos: AiPosition): string {
     (pos.altitudeFt === 0 ? (pos.progress < 0.5 ? 'Taking off' : 'Landed') : pos.progress < 0.15 ? 'Climbing' : pos.progress > 0.82 ? 'Descending' : 'Cruising');
   const pct = Math.round(pos.progress * 100);
   return `<div style="${popupCss()}">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+    <div class="bp-pop-head" style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
       <b style="font-size:15px">${e(f.flightNumber)}</b>${muted(e(al.name))}
     </div>
     <div style="margin:2px 0 8px">${muted(`${e(al.callsign)} ${e(f.flightNumber.replace(/^\D+/, ''))}, ${e(type)}`)}</div>
@@ -329,7 +329,7 @@ function buildPlanePopupHtml(raw: Record<string, any>): string {
          ${Number(raw.capFirst) ? `<span>First ${p.soldFirst}/${p.capFirst}</span>` : ''}${Number(raw.capBus) ? `<span>Business ${p.soldBus}/${p.capBus}</span>` : ''}${Number(raw.capPrem) ? `<span>Premium ${p.soldPrem}/${p.capPrem}</span>` : ''}<span>Economy ${p.soldEcon}/${p.capEcon}</span><span>Cargo ${p.soldCargoTons}/${p.maxCargoTons} t</span>
        </div>`;
   return `<div style="${popupCss()}min-width:280px">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+    <div class="bp-pop-head" style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
       <b style="font-size:15px;color:${C.brand}">${p.callsign}</b>${muted(`${p.flightNumber}, ${p.tailNumber}`)}
     </div>
     <div style="margin:2px 0 8px">${muted(p.modelName)}</div>
@@ -1358,6 +1358,7 @@ export function LiveMap(props: LiveMapProps) {
           camEl.title = CAMERA_READOUT_TITLE;
           camEl.style.cssText = `position:absolute;right:10px;bottom:calc(38px + var(--bp-bottom-h));z-index:2;font-size:11.5px;padding:2px 4px 2px 8px;border-radius:8px;pointer-events:auto;font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:6px;`; // colours: .bp-camera-alt in the theme CSS
           const camText = document.createElement('span');
+          camText.className = 'bp-cam-text';
           camEl.appendChild(camText);
           // Raise / lower buttons: the touch-screen way to change the camera height (hold to keep going)
           const camBtn = (label: string, aria: string, f: number) => {
@@ -1391,7 +1392,7 @@ export function LiveMap(props: LiveMapProps) {
           // Zoom buttons, always there (above the camera box)
           const zoomEl = document.createElement('div');
           zoomEl.className = 'bp-zoom';
-          zoomEl.style.cssText = `position:absolute;right:10px;bottom:calc(78px + var(--bp-bottom-h));z-index:2;display:flex;flex-direction:column;gap:0;border-radius:10px;overflow:hidden;pointer-events:auto;`;
+          zoomEl.style.cssText = `position:absolute;right:10px;bottom:calc(38px + var(--bp-cam-space) + var(--bp-bottom-h));z-index:2;display:flex;flex-direction:column;gap:0;border-radius:10px;overflow:hidden;pointer-events:auto;`;
           const zoomBtn = (label: string, aria: string, dz: number) => {
             const b = document.createElement('button');
             b.type = 'button';
@@ -1479,7 +1480,7 @@ export function LiveMap(props: LiveMapProps) {
     const camEl = map.getContainer?.()?.querySelector?.('.bp-camera-alt') as HTMLElement | null;
     if (camEl) camEl.style.display = threeD ? 'flex' : 'none';
     const zoomEl = map.getContainer?.()?.querySelector?.('.bp-zoom') as HTMLElement | null;
-    if (zoomEl) zoomEl.style.bottom = threeD ? 'calc(78px + var(--bp-bottom-h))' : 'calc(38px + var(--bp-bottom-h))';
+    if (zoomEl) zoomEl.style.bottom = threeD ? 'calc(38px + var(--bp-cam-space) + var(--bp-bottom-h))' : 'calc(38px + var(--bp-bottom-h))';
     const rotation = (on: boolean) => {
       try {
         if (on) {

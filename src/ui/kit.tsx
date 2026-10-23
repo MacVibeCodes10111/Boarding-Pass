@@ -3,7 +3,7 @@
 // Look: a dispatcher's console. Deep navy surfaces, one amber accent for your
 // airline, quiet steel-blue for information, green/red reserved for money.
 // ============================================================================
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { DAY_LETTERS } from '../game/time';
 import type { WeekDays } from '../game/types';
 import { Icon, type IconName } from './icons';
@@ -151,7 +151,17 @@ export const globalCss = () => `
   .bp-orbit-leader { position: absolute; left: 50%; top: 50%; width: 1px; height: 1px; overflow: visible; pointer-events: none; z-index: -1; }
   .bp-orbit-leader line { stroke: ${C.brand}; stroke-width: 1.5; stroke-dasharray: 3 3; opacity: 0.85; }
   .maplibregl-popup-close-button { color: ${C.muted}; font-size: 18px; padding: 2px 8px; }
+  /* The close button sits in the top corner: the first line of a popup keeps clear of it */
+  .bp-pop-head { padding-right: 26px; }
+  html[data-input=touch] .bp-pop-head { padding-right: 40px; }
+  /* A flight's info sheet covers the bottom of the map: the map buttons step aside until it closes */
+  html:has(.bp-sheet-popup) .bp-layers-fab, html:has(.bp-sheet-popup) .bp-zoom, html:has(.bp-sheet-popup) .bp-camera-alt { visibility: hidden; }
   .bp-camera-alt { color: ${C.textDim}; background: ${C.panel}b8; }
+  /* Room the camera box takes under the zoom buttons in 3D (a narrow column on phones) */
+  :root { --bp-cam-space: 40px; }
+  html[data-layout=phone] { --bp-cam-space: 82px; }
+  html[data-layout=phone] .bp-camera-alt { flex-direction: column; padding: 3px !important; gap: 4px !important; }
+  html[data-layout=phone] .bp-cam-text { display: none; }
   .bp-cam-btn { border: 1px solid ${C.border}; background: ${C.raised}; color: ${C.text}; }
   .bp-zoom { border: 1px solid ${C.border}; background: ${C.panel}d8; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
   .bp-zoom-btn { background: transparent; color: ${C.text}; }
@@ -162,6 +172,10 @@ export const globalCss = () => `
   html[data-input=touch] button:not(:disabled):hover { filter: none; }
   html[data-input=touch] .maplibregl-ctrl-group button { width: 38px; height: 38px; }
   html[data-input=touch] .maplibregl-popup-close-button { font-size: 24px; padding: 4px 12px; }
+  /* Touch screens: every button at least 32 px each way, so nothing is fiddly to hit */
+  html[data-input=touch] button:not(.bp-no-min) { min-height: 32px; min-width: 32px; }
+  html[data-input=touch] .bp-switch { width: 44px !important; height: 26px !important; min-height: 26px !important; min-width: 44px !important; }
+  html[data-input=touch] .bp-switch > span { width: 22px !important; height: 22px !important; }
   .bp-scroll-x { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
   .bp-scroll-x::-webkit-scrollbar { display: none; }
 
@@ -186,7 +200,7 @@ export const globalCss = () => `
   html[data-layout=phone] .maplibregl-popup { max-width: calc(100vw - 16px) !important; }
   .bp-sheet-popup { position: fixed !important; left: 8px !important; right: 8px !important; top: auto !important;
     bottom: calc(var(--bp-bottom-h) + 8px) !important; transform: none !important; max-width: none !important; z-index: 30; }
-  .bp-sheet-popup.bp-sheet-side { left: auto !important; right: 12px !important; width: min(380px, calc(100vw - 24px)); bottom: 46px !important; }
+  .bp-sheet-popup.bp-sheet-side { left: auto !important; right: 12px !important; width: min(380px, calc(100vw - 24px)); bottom: calc(var(--bp-bottom-h) + 10px) !important; }
   .bp-sheet-popup .maplibregl-popup-tip { display: none !important; }
   .bp-sheet-popup .maplibregl-popup-content { width: 100%; max-height: 46dvh; overflow-y: auto; overscroll-behavior: contain; }
   html[data-layout=phone] .bp-buy { height: auto !important; }
@@ -549,21 +563,35 @@ export function ModalShell({
   onClose,
   maxWidth = 860,
   zIndex = 200,
+  closeButton = true,
 }: {
   children: React.ReactNode;
   onClose?: () => void;
   maxWidth?: number;
   zIndex?: number;
+  /** A close tile in the top corner (default); off for windows that draw their own. */
+  closeButton?: boolean;
 }) {
+  const backdrop = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!onClose) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // The window takes Escape for itself: the panel or planner under it stays open
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // Only the window on top (the last one opened) answers
+      const shells = document.querySelectorAll('.bp-modal-backdrop');
+      if (backdrop.current && shells[shells.length - 1] !== backdrop.current) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      onClose();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [onClose]);
 
   return (
     <div
+      ref={backdrop}
       className="bp-modal-backdrop"
       onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}
       style={{
@@ -594,6 +622,21 @@ export function ModalShell({
           boxShadow: '0 28px 70px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05)',
         }}
       >
+        {onClose && closeButton && (
+          // Stays in the corner while the window scrolls
+          <div style={{ position: 'sticky', top: 0, height: 0, zIndex: 5 }}>
+            <button
+              type="button"
+              className="bp-modal-close"
+              aria-label="Close"
+              title="Close"
+              onClick={onClose}
+              style={{ position: 'absolute', top: -12, right: -12, width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', background: C.raised, border: `1px solid ${C.border}`, color: C.textSoft, cursor: 'pointer', boxShadow: '0 2px 0 rgba(0,0,0,.25)' }}
+            >
+              <Icon name="close" size={14} />
+            </button>
+          </div>
+        )}
         {children}
       </div>
     </div>

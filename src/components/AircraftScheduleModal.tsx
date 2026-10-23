@@ -106,7 +106,7 @@ export function AircraftScheduleModal({
   const isCargo = aircraft.model.is_cargo;
 
   return (
-    <ModalShell onClose={onClose}>
+    <ModalShell onClose={onClose} closeButton={false}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 14, borderBottom: `1px solid ${C.line}`, marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

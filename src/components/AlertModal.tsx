@@ -109,12 +109,12 @@ export function Toast({ message, onDismiss }: { message: string; onDismiss?: () 
         setDrag(null);
       }}
       style={{
-        // Just under the top bar: never over the buttons at the bottom of panels and the drawer
+        // Over the top bar itself (centred on it), so it never covers a panel's tabs or buttons
         position: 'fixed',
-        top: 'calc(var(--bp-top-h) + 8px)',
+        top: 'calc(var(--bp-top-h) / 2)',
         cursor: onDismiss ? 'grab' : undefined,
         left: '50%',
-        transform: `translate(calc(-50% + ${offset.x}px), ${offset.y}px)`,
+        transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px))`,
         opacity: leaving ? 0 : Math.max(0.25, 1 - dist / 260),
         transition: drag && !leaving ? 'none' : 'transform .18s ease-out, opacity .18s ease-out',
         touchAction: 'none',
@@ -125,15 +125,17 @@ export function Toast({ message, onDismiss }: { message: string; onDismiss?: () 
         background: C.raised,
         color: C.text,
         border: `1px solid ${C.border}`,
-        padding: '9px 16px',
-        borderRadius: 14,
+        padding: '7px 14px',
+        borderRadius: 12,
         fontWeight: 500,
         fontSize: 13,
-        zIndex: 250,
+        zIndex: 190, // under dialogs (200+): a message never covers a window you opened
         boxShadow: '0 12px 30px rgba(0,0,0,0.5)',
-        maxWidth: 'min(calc(100vw - 24px), 620px)',
+        maxWidth: 'min(calc(100vw - 16px), 620px)',
         width: 'max-content',
-        lineHeight: 1.4,
+        minHeight: 'min(46px, calc(var(--bp-top-h) - 8px))',
+        boxSizing: 'border-box',
+        lineHeight: 1.35,
         animation: 'bp-fade-in .15s ease-out',
       }}
     >

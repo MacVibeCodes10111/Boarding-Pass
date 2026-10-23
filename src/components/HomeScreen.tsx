@@ -33,6 +33,7 @@ export interface HomeScreenProps {
 }
 
 export function HomeScreen(props: HomeScreenProps) {
+  const link: React.CSSProperties = { font: 'inherit', fontSize: 13, fontWeight: 500, background: 'none', border: 'none', color: C.accent, cursor: 'pointer', padding: '6px 0', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', minHeight: 32 };
   const { airlineName, airlineIata, airlineCallsign, hubIata, gameMode, onChange, airports, airportByIata, savedGames } = props;
   const [hubSearch, setHubSearch] = useState('');
   const [showCredits, setShowCredits] = useState(false);
@@ -87,22 +88,22 @@ export function HomeScreen(props: HomeScreenProps) {
                 Boarding Pass <DevTag big />
               </h1>
               <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>
-                Version {APP_VERSION}. {airports.length.toLocaleString()} airports, {props.aircraftCount} aircraft types.{' '}
-                <button type="button" onClick={() => setShowCredits(true)} style={{ background: 'none', border: 'none', color: C.accent, fontSize: 13, cursor: 'pointer', padding: 0 }}>
+                Version {APP_VERSION}. {airports.length.toLocaleString()} airports, {props.aircraftCount} aircraft types.
+              </div>
+              {/* Links on their own row, each a comfortable tap */}
+              <div className="bp-home-links" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 16, rowGap: 0, marginTop: 2 }}>
+                <button type="button" onClick={() => setShowCredits(true)} style={link}>
                   Credits and licences
                 </button>
-                {' · '}
-                <button type="button" onClick={openAppearance} style={{ background: 'none', border: 'none', color: C.accent, fontSize: 13, cursor: 'pointer', padding: 0 }}>
+                <button type="button" onClick={openAppearance} style={link}>
                   Appearance
                 </button>
                 {!inDesktopApp() && (
                   <>
-                    {' · '}
-                    <a href={WEBSITE} style={{ color: C.accent, textDecoration: 'none' }}>
+                    <a href={WEBSITE} style={link}>
                       boardingpass.my
                     </a>
-                    {' · '}
-                    <a href={`${WEBSITE}/#download`} style={{ color: C.accent, textDecoration: 'none' }}>
+                    <a href={`${WEBSITE}/#download`} style={link}>
                       Get the app
                     </a>
                   </>

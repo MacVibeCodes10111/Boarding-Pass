@@ -35,7 +35,7 @@ export function MainMenu(props: {
   );
   return (
     <>
-      <ModalShell onClose={props.onClose} maxWidth={420}>
+      <ModalShell onClose={props.onClose} maxWidth={420} closeButton={false}>
         <div style={{ padding: '18px 18px 16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 2 }}>
             <span style={{ fontFamily: DISPLAY, fontSize: 24, fontWeight: 700 }}>Menu</span>
