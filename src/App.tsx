@@ -1448,7 +1448,7 @@ export default function App() {
   const overlays = (
     <>
       {gameAlert && <AlertModal alert={gameAlert} onDismiss={() => setGameAlert(null)} />}
-      {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
+      {toast && <Toast key={toast} message={toast} onDismiss={() => setToast(null)} />}
       <UpdateBanner onBeforeInstall={() => screen === 'dashboard' && persistRef.current(true)} />
       <AppearanceHost mapStyle={mapStyle} onMapStyle={setMapStyle} />
     </>

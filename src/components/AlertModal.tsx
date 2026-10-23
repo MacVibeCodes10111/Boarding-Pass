@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import { formatAway, formatGameSpan, type CatchUpReport } from '../game/clock';
 import type { GameAlert, GameMode } from '../game/types';
 import { Icon } from '../ui/icons';
@@ -55,19 +56,69 @@ export function AlertModal({ alert, onDismiss }: { alert: GameAlert; onDismiss: 
   );
 }
 
+/**
+ * A short message under the top bar. Tap it, or swipe it away in any
+ * direction (it follows your finger and slides off when let go far enough).
+ */
 export function Toast({ message, onDismiss }: { message: string; onDismiss?: () => void }) {
+  const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
+  const [leaving, setLeaving] = useState<{ x: number; y: number } | null>(null);
+  const start = useRef<{ x: number; y: number; id: number } | null>(null);
+  const moved = useRef(false);
+  const SWIPE = 60;
+  const leave = (dx: number, dy: number) => {
+    // Off the side it went towards; straight up when it was mostly a vertical flick
+    const side = Math.abs(dx) >= Math.abs(dy) ? { x: Math.sign(dx || 1) * window.innerWidth, y: dy } : { x: dx, y: -160 };
+    setLeaving(side);
+    window.setTimeout(() => onDismiss?.(), 180);
+  };
+  const offset = leaving ?? drag ?? { x: 0, y: 0 };
+  const dist = Math.hypot(offset.x, Math.min(0, offset.y) * 1.6);
   return (
     <div
       role="status"
-      onClick={onDismiss}
-      title={onDismiss ? 'Tap to dismiss' : undefined}
+      className="bp-toast"
+      title={onDismiss ? 'Tap or swipe to dismiss' : undefined}
+      onPointerDown={(e) => {
+        if (!onDismiss || leaving) return;
+        start.current = { x: e.clientX, y: e.clientY, id: e.pointerId };
+        moved.current = false;
+        (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+      }}
+      onPointerMove={(e) => {
+        const s0 = start.current;
+        if (!s0 || s0.id !== e.pointerId) return;
+        const dx = e.clientX - s0.x;
+        const dy = e.clientY - s0.y;
+        if (Math.hypot(dx, dy) > 6) moved.current = true;
+        // Downwards it only gives a little (it lives under the top bar)
+        if (moved.current) setDrag({ x: dx, y: dy > 0 ? dy * 0.25 : dy });
+      }}
+      onPointerUp={(e) => {
+        const s0 = start.current;
+        start.current = null;
+        if (!s0 || s0.id !== e.pointerId) return;
+        const dx = e.clientX - s0.x;
+        const dy = e.clientY - s0.y;
+        if (!moved.current) return onDismiss?.(); // a tap
+        if (Math.abs(dx) > SWIPE || dy < -SWIPE / 2) leave(dx, dy);
+        else setDrag(null);
+      }}
+      onPointerCancel={() => {
+        start.current = null;
+        setDrag(null);
+      }}
       style={{
         // Just under the top bar: never over the buttons at the bottom of panels and the drawer
         position: 'fixed',
         top: 'calc(var(--bp-top-h) + 8px)',
-        cursor: onDismiss ? 'pointer' : undefined,
+        cursor: onDismiss ? 'grab' : undefined,
         left: '50%',
-        transform: 'translateX(-50%)',
+        transform: `translate(calc(-50% + ${offset.x}px), ${offset.y}px)`,
+        opacity: leaving ? 0 : Math.max(0.25, 1 - dist / 260),
+        transition: drag && !leaving ? 'none' : 'transform .18s ease-out, opacity .18s ease-out',
+        touchAction: 'none',
+        userSelect: 'none',
         display: 'flex',
         alignItems: 'center',
         gap: 8,

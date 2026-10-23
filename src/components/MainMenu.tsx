@@ -37,9 +37,18 @@ export function MainMenu(props: {
     <>
       <ModalShell onClose={props.onClose} maxWidth={420}>
         <div style={{ padding: '18px 18px 16px' }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 2 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 2 }}>
             <span style={{ fontFamily: DISPLAY, fontSize: 24, fontWeight: 700 }}>Menu</span>
-            <span style={{ fontSize: 13, color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{props.airlineName}</span>
+            <span style={{ fontSize: 13, color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{props.airlineName}</span>
+            <button
+              type="button"
+              aria-label="Back to the game"
+              title="Back to the game"
+              onClick={props.onClose}
+              style={{ width: 36, height: 36, flex: 'none', borderRadius: 10, display: 'grid', placeItems: 'center', background: C.raised, border: `1px solid ${C.border}`, color: C.textSoft, cursor: 'pointer', boxShadow: '0 2px 0 rgba(0,0,0,.25)' }}
+            >
+              <Icon name="close" size={15} />
+            </button>
           </div>
           <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 14 }}>Your career saves itself every minute, and money keeps coming in while you're away.</div>
           <div style={{ display: 'grid', gap: 8 }}>
@@ -59,10 +68,16 @@ export function MainMenu(props: {
             {row('letter', 'Credits and licences', 'Maps, data and software the game is built on', () => setCredits(true))}
           </div>
           <div style={{ height: 1, background: C.line, margin: '16px 0 14px' }} />
-          <Button variant="primary" size="lg" block onClick={props.onLeave}>
-            <Icon name="exit" size={18} />
-            Save and leave to home screen
-          </Button>
+          <div style={{ display: 'grid', gap: 8 }}>
+            <Button size="lg" block onClick={props.onClose}>
+              <Icon name="map" size={18} />
+              Back to the game
+            </Button>
+            <Button variant="primary" size="lg" block onClick={props.onLeave}>
+              <Icon name="exit" size={18} />
+              Save and leave to home screen
+            </Button>
+          </div>
           <div className="num" style={{ fontSize: 11.5, color: C.faint, textAlign: 'center', marginTop: 10 }}>
             Boarding Pass {props.version}
             {IS_DEV ? ' dev' : ''}
