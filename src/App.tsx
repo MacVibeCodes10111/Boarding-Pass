@@ -139,6 +139,8 @@ function readPrefs(): {
   mapStyle?: MapStyleChoice;
   globe?: boolean;
   threeD?: boolean;
+  /** 3D: detailed aircraft shapes (on unless turned off). */
+  detailed3d?: boolean;
   showWeather?: boolean;
   showApproaches?: boolean;
   showNavaids?: boolean;
@@ -309,6 +311,11 @@ export default function App() {
   const setThreeD = (v: boolean) => {
     setThreeDState(v);
     writePrefs({ threeD: v });
+  };
+  const [detailed3d, setDetailed3dState] = useState(() => readPrefs().detailed3d !== false);
+  const setDetailed3d = (v: boolean) => {
+    setDetailed3dState(v);
+    writePrefs({ detailed3d: v });
   };
   const [showWeatherRadar, setShowWeatherState] = useState(() => readPrefs().showWeather === true);
   const setShowWeatherRadar = (v: boolean) => {
@@ -1527,6 +1534,7 @@ export default function App() {
         mapStyle={mapStyle}
         globe={globe}
         threeD={threeD}
+        detailed3d={detailed3d}
         showAllRoutes={showAllRoutes}
         planeIconScale={planeIconScale}
         aiTraffic={shownAiTraffic}
@@ -1573,6 +1581,8 @@ export default function App() {
         onGlobe={setGlobe}
         threeD={threeD}
         onThreeD={setThreeD}
+        detailed3d={detailed3d}
+        onDetailed3d={setDetailed3d}
         globeAvailable={maplibreHasGlobe()}
         showApproaches={showApproaches}
         onShowApproaches={setShowApproaches}

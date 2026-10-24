@@ -29,7 +29,8 @@ import {
   type PlayerGroundInfo,
 } from '../game/groundTraffic';
 import { fetchAerowayAround } from '../game/mvt';
-import { AI_3D_MAX, labelHeightM, pushPlane3d, pushRoute3d, scaleFor, thinRoute, type RoutePoint, type Scale3d } from '../game/planes3d';
+import { AI_3D_MAX, labelHeightM, PitchTracker, plane3dInstance, pushPlane3d, pushRoute3d, scaleFor, thinRoute, type RoutePoint, type Scale3d } from '../game/planes3d';
+import { createAircraftLayer, hexToRgb, type Aircraft3d, type AircraftLayerHandle } from '../game/aircraftLayer';
 import type { LonLat } from '../game/geo';
 import type { UtcClock } from '../game/clock';
 import {
@@ -293,6 +294,8 @@ export interface LiveMapProps {
   globe: boolean;
   /** Tilted view with aircraft drawn in 3D at their altitude. */
   threeD: boolean;
+  /** 3D: aircraft with wings, engines and tails (WebGL2) instead of simple flat shapes. */
+  detailed3d?: boolean;
   showAllRoutes: boolean;
   planeIconScale: number;
   /** Cosmetic background traffic (null until the OpenFlights files load). */
@@ -651,6 +654,8 @@ function addLayers(map: any) {
   extrusion('planes-3d-stem', 0.5);
   extrusion('ai-3d', 1);
   extrusion('planes-3d', 1);
+  // Detailed aircraft (wings, engines, tail) when "Detailed aircraft" is on and WebGL2 is there
+  map.addLayer(aircraftLayerFor(map).layer);
   // Labels and click targets of aircraft in the air: placed at the point on the
   // ground that sits under the floating aircraft on screen, so they line up with it
   map.addLayer({
@@ -695,7 +700,26 @@ const AI_MIN_WITH_FLEET = 150;
  * open). Aircraft on the ground stay: they are only drawn zoomed in at an
  * airport, where they are what you came to see.
  */
-const PLANE_LAYERS = ['ai-planes-symbol', 'ai-planes-dot', 'live-planes-symbol', 'labels-3d-hit', 'labels-3d-text', 'ai-3d', 'planes-3d', 'planes-3d-stem'];
+const PLANE_LAYERS = ['ai-planes-symbol', 'ai-planes-dot', 'live-planes-symbol', 'labels-3d-hit', 'labels-3d-text', 'ai-3d', 'planes-3d', 'planes-3d-stem', 'aircraft-3d'];
+
+/** The detailed 3D aircraft layer of each map (kept across basemap changes). */
+const AIRCRAFT_LAYERS = new WeakMap<object, AircraftLayerHandle>();
+function aircraftLayerFor(map: any): AircraftLayerHandle {
+  let h = AIRCRAFT_LAYERS.get(map);
+  if (!h) {
+    h = createAircraftLayer('aircraft-3d');
+    AIRCRAFT_LAYERS.set(map, h);
+  }
+  return h;
+}
+
+/** Instances of the detailed 3D layer, by shape. */
+const addInstance = (byGroup: Map<RadarIconGroup, Aircraft3d[]>, group: RadarIconGroup, a: Aircraft3d | null) => {
+  if (!a) return;
+  const list = byGroup.get(group);
+  if (list) list.push(a);
+  else byGroup.set(group, [a]);
+};
 const THREE_D_SOURCES = ['planes-3d', 'ai-3d', 'planes-3d-stem', 'route-3d', 'route-3d-curtain', 'labels-3d'];
 /** Other airlines' aircraft with a label / click target in 3D (nearest the view centre). */
 const AI_LABELS_3D_MAX = 700;
@@ -1506,7 +1530,10 @@ export function LiveMap(props: LiveMapProps) {
     const map = mapRef.current;
     if (!mapReady || !map) return;
     apply3dLook(map, threeD);
-    if (!threeD) THREE_D_SOURCES.forEach((id) => map.getSource(id)?.setData(EMPTY_FC));
+    if (!threeD) {
+      THREE_D_SOURCES.forEach((id) => map.getSource(id)?.setData(EMPTY_FC));
+      aircraftLayerFor(map).clear();
+    }
     // Tilt, turn and camera height belong to the 3D view; the flat map stays flat and north-up
     const camEl = map.getContainer?.()?.querySelector?.('.bp-camera-alt') as HTMLElement | null;
     if (camEl) camEl.style.display = threeD ? 'flex' : 'none';
@@ -1855,6 +1882,11 @@ export function LiveMap(props: LiveMapProps) {
     let ai3dHasData = false;
     let aiStems: any[] = [];
     let p3dHasData = false;
+    // Detailed 3D aircraft: nose up or down from each one's altitude changes
+    const playerPitch = new PitchTracker();
+    const aiPitch = new PitchTracker();
+    let detailedHasData = false;
+    let aiDetailedOn = false;
     let route3d: { key: string; pts: TimedPoint[] } | null = null;
     let route3dDrawn = '';
     const cruiseById = new Map<string, number>();
@@ -2235,6 +2267,13 @@ export function LiveMap(props: LiveMapProps) {
       const playerLabels3d: { at: LonLat; aglFt: number; sizePx: number; props: Record<string, unknown> }[] = [];
       const bodies3d: any[] = [];
       const stems3d: any[] = [];
+      // Detailed aircraft instead of the simple shapes (needs WebGL2; off in Map layers)
+      const acLayer = aircraftLayerFor(map);
+      const detailed = Boolean(k3) && latest.current.detailed3d !== false && acLayer.supported();
+      const player3d = new Map<RadarIconGroup, Aircraft3d[]>();
+      const fleetRgb = detailed ? hexToRgb(C.fleet) : null;
+      // Switching between the two: draw the other airlines straight away
+      if (detailed !== aiDetailedOn) aiLastDraw = 0;
       // Zooming changes their size and height: redraw other airlines sooner
       if (k3 && Math.abs(zoom - ai3dZoom) > 0.12) aiLastDraw = 0;
       const groundZoom = zoom >= GROUND_MIN_ZOOM;
@@ -2343,7 +2382,12 @@ export function LiveMap(props: LiveMapProps) {
         features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: pos.coordinates }, properties: props });
         if (k3 && agl > 0) {
           const p3 = { ...props, kind: 'player', at_lng: pos.coordinates[0], at_lat: pos.coordinates[1] };
-          pushPlane3d({ at: pos.coordinates, bearing, aglFt: agl, sizePx: PLANE_3D_PX * info.iconScale, color: C.fleet, props: p3 }, k3, bodies3d, stems3d);
+          const plane = { at: pos.coordinates, bearing, aglFt: agl, sizePx: PLANE_3D_PX * info.iconScale, color: C.fleet, props: p3 };
+          if (detailed) {
+            const group = getRadarIconGroup(info.model);
+            addInstance(player3d, group, plane3dInstance(plane, k3, group, playerPitch.pitch(info.flight.id, pos.altitudeFt, t), fleetRgb!));
+            pushPlane3d(plane, k3, [], stems3d); // the line down to the ground only
+          } else pushPlane3d(plane, k3, bodies3d, stems3d);
           playerLabels3d.push({ at: pos.coordinates, aglFt: agl, sizePx: PLANE_3D_PX * info.iconScale, props: { ...p3, label: info.flight.flightNumber, color: C.fleet } });
         }
         drawnTails.add(info.flight.tailNumber);
@@ -2365,6 +2409,11 @@ export function LiveMap(props: LiveMapProps) {
       if (k3 || p3dHasData) {
         map.getSource('planes-3d')?.setData({ type: 'FeatureCollection', features: bodies3d });
         p3dHasData = bodies3d.length > 0;
+      }
+      if (detailed || detailedHasData) {
+        acLayer.set('player', player3d);
+        detailedHasData = detailed;
+        if (!detailed) acLayer.clear();
       }
 
       // --- AI traffic -------------------------------------------------------
@@ -2411,6 +2460,9 @@ export function LiveMap(props: LiveMapProps) {
             : { w: -180, e: 180, s: -90, n: 90 };
           const aiFeatures: any[] = [];
           const ai3d: any[] = [];
+          const aiDetailed = new Map<RadarIconGroup, Aircraft3d[]>();
+          const aiRgb = detailed ? hexToRgb(aiTintFor(latest.current.mapStyle)) : null;
+          aiDetailedOn = detailed;
           aiStems = [];
           aiLabels3d = [];
           const aiColor = aiTintFor(latest.current.mapStyle);
@@ -2442,7 +2494,11 @@ export function LiveMap(props: LiveMapProps) {
             });
             if (k3 && pos.altitudeFt > 0) {
               const sizePx = PLANE_3D_PX * (AI_ICON_SCALE[f.group] ?? 0.56) * st.planeIconScale;
-              pushPlane3d({ at: pos.coordinates, bearing: pos.bearing, aglFt: pos.altitudeFt, sizePx, color: aiColor, props: { kind: 'ai', aiId: f.id } }, k3, ai3d, f.id === trackedAiId ? aiStems : undefined);
+              const plane = { at: pos.coordinates, bearing: pos.bearing, aglFt: pos.altitudeFt, sizePx, color: aiColor, props: { kind: 'ai', aiId: f.id } };
+              if (detailed) {
+                addInstance(aiDetailed, f.group, plane3dInstance(plane, k3, f.group, aiPitch.pitch(f.id, pos.altitudeFt, t), aiRgb!));
+                if (f.id === trackedAiId) pushPlane3d(plane, k3, [], aiStems);
+              } else pushPlane3d(plane, k3, ai3d, f.id === trackedAiId ? aiStems : undefined);
               aiLabels3d.push({ at: pos.coordinates, aglFt: pos.altitudeFt, sizePx, props: { kind: 'ai', aiId: f.id, label: f.flightNumber, color: latest.current.mapStyle === 'light' ? '#475569' : MAP_C.muted } });
             }
           }
@@ -2466,6 +2522,7 @@ export function LiveMap(props: LiveMapProps) {
           if (k3 || ai3dHasData) {
             map.getSource('ai-3d')?.setData({ type: 'FeatureCollection', features: ai3d });
             ai3dHasData = ai3d.length > 0;
+            acLayer.set('ai', aiDetailed);
             ai3dZoom = zoom;
             // Labels / click targets only for the aircraft nearest the view centre
             if (aiLabels3d.length > AI_LABELS_3D_MAX) {
@@ -2490,6 +2547,7 @@ export function LiveMap(props: LiveMapProps) {
       } else if (aiHasData) {
         map.getSource('ai-planes')?.setData(EMPTY_FC);
         map.getSource('ai-3d')?.setData(EMPTY_FC);
+        acLayer.set('ai', new Map());
         ai3dHasData = false;
         aiStems = [];
         aiHasData = false;

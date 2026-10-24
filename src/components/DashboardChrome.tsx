@@ -736,6 +736,8 @@ export function LayersMenu(props: {
   onGlobe: (v: boolean) => void;
   threeD: boolean;
   onThreeD: (v: boolean) => void;
+  detailed3d: boolean;
+  onDetailed3d: (v: boolean) => void;
   /** False when the map engine can't draw a globe (older MapLibre). */
   globeAvailable: boolean;
   showAllRoutes: boolean;
@@ -889,6 +891,14 @@ export function LayersMenu(props: {
               label="3D aircraft"
               hint={`Tilted view with aircraft at their altitude. ${TILT_HINT}; ${HEIGHT_HINT}.`}
             />
+            {props.threeD && (
+              <Switch
+                on={props.detailed3d}
+                onChange={props.onDetailed3d}
+                label="Detailed aircraft"
+                hint="Wings, engines and tails shaped for each type. Turn off for simple shapes on slower computers."
+              />
+            )}
             {props.threeD && (
               <div style={{ fontSize: 11.5, color: C.faint, marginTop: 2 }}>
                 Heights are 6× real at every zoom, so cruise levels stand apart. Zoomed in close, cruising aircraft pass above the camera. Up to 3,000 other airlines' aircraft are drawn in 3D.

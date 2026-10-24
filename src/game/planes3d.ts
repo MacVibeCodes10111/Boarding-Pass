@@ -12,6 +12,9 @@
 //   above the earth while you zoom, and different cruise levels stay apart.
 // ============================================================================
 import type { LonLat } from './geo';
+import type { Aircraft3d } from './aircraftLayer';
+import { aircraftMeshBounds } from './aircraftMeshes';
+import type { RadarIconGroup } from './types';
 
 /**
  * Vertical exaggeration, the same at every zoom. A real airliner at 35,000 ft
@@ -126,6 +129,31 @@ export function pushPlane3d(p: Plane3d, k: Scale3d, bodies: unknown[], stems?: u
   }
 }
 
+/** Tallest a detailed aircraft is drawn (fin top to engines), like the simple shapes' fin. */
+const MAX_MODEL_H_M = 9000;
+
+/**
+ * One aircraft for the detailed 3D layer (aircraftLayer.ts): same place,
+ * size and height as pushPlane3d's simple shape, with its belly at the drawn
+ * height. Returns null for aircraft on the ground (the flat icons draw those).
+ */
+export function plane3dInstance(p: Plane3d, k: Scale3d, group: RadarIconGroup, pitchDeg: number, rgb: [number, number, number]): Aircraft3d | null {
+  if (!(p.aglFt > 0) || (!k.globe && Math.abs(p.at[1]) > MAX_LAT)) return null;
+  const half = (p.sizePx * mppAt(k, p.at[1])) / 2;
+  const b = aircraftMeshBounds(group);
+  const vScale = Math.min(1, MAX_MODEL_H_M / Math.max(1, (b.maxZ - b.minZ) * half));
+  return {
+    lng: p.at[0],
+    lat: p.at[1],
+    elevM: drawnHeightM(p.aglFt, k) - b.minZ * half * vScale,
+    halfLenM: half,
+    headingDeg: p.bearing,
+    pitchDeg,
+    rgb,
+    vScale,
+  };
+}
+
 export interface RoutePoint {
   at: LonLat;
   aglFt: number;
@@ -195,5 +223,39 @@ export function pushRoute3d(points: RoutePoint[], splitIdx: number, k: Scale3d, 
         curtain.push(poly(quad, { color, base: 0, top: Math.max(0, h - thick / 2) }));
       }
     }
+  }
+}
+
+/**
+ * Nose up while climbing, down while descending, level in cruise, eased so
+ * aircraft tilt smoothly. Follows each aircraft's altitude from one redraw to
+ * the next; forgets aircraft not seen for a few seconds.
+ */
+export class PitchTracker {
+  private m = new Map<string | number, { alt: number; target: number; pitch: number; changedAt: number; at: number }>();
+  private lastPrune = 0;
+
+  pitch(id: string | number, altFt: number, now: number): number {
+    const e = this.m.get(id);
+    if (!e) {
+      this.m.set(id, { alt: altFt, target: 0, pitch: 0, changedAt: now, at: now });
+      return 0;
+    }
+    const d = altFt - e.alt;
+    if (d > 0.5) {
+      e.target = 7;
+      e.changedAt = now;
+    } else if (d < -0.5) {
+      e.target = -3;
+      e.changedAt = now;
+    } else if (now - e.changedAt > 2500) e.target = 0; // level (or the game is paused)
+    e.alt = altFt;
+    e.pitch += (e.target - e.pitch) * Math.min(1, Math.max(0, now - e.at) / 700);
+    e.at = now;
+    if (now - this.lastPrune > 5000) {
+      this.lastPrune = now;
+      for (const [k, v] of this.m) if (now - v.at > 5000) this.m.delete(k);
+    }
+    return e.pitch;
   }
 }
