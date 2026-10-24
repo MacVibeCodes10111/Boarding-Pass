@@ -11,6 +11,7 @@
 //   The older OpenFlights files (/public/data/openflights/, routes from about
 //   2014) still work as a fallback when network.json is missing.
 // ============================================================================
+import { aiCruiseAltitudeFt } from './altitude';
 import { AI_AIRLINES, airlineNameCore, type AiAirlineDef, type AiRegion } from './aiAirlines';
 import { AI_TYPES, GENERIC_FLEETS } from './aiFleets';
 import { splitCsvLine } from './csv';
@@ -840,7 +841,8 @@ export function aiFlightPosition(t: AiTraffic, f: AiFlight, day: number, min: nu
   const coordinates = slerpVec(O.v, D.v, airT);
   const bearing = airT < 1 ? calcBearingDeg(coordinates, [D.lon, D.lat]) : calcBearingDeg([O.lon, O.lat], [D.lon, D.lat]);
 
-  const cruiseAlt = f.distanceNm < 180 ? 18000 : f.distanceNm < 450 ? 28000 : f.distanceNm < 1200 ? 35000 : 38000;
+  // Same level as the detailed model would give it (the type's and the route's limits)
+  const cruiseAlt = aiCruiseAltitudeFt(f, calcBearingDeg([O.lon, O.lat], [D.lon, D.lat]), Math.max(O.elevFt || 0, D.elevFt || 0));
   const climb = 0.12;
   const descent = 0.15;
   const altitudeFt =

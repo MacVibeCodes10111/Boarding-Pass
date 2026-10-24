@@ -11,6 +11,7 @@
 //   distances), so cruising aircraft are in the same place either way and the
 //   only change when a procedure arrives is the exact track near the airport.
 // ============================================================================
+import { CLIMB_NM_PER_KFT, DESCENT_NM_PER_KFT, aiCruiseAltitudeFt } from './altitude';
 import { calcBearingDeg, calcCoordDistanceNm, offsetLatLonNm, type LonLat } from './geo';
 import { buildTerminalPaths, landingRollNm, terminalDistances, type TerminalPaths } from './navdata';
 import { aiDepartureDay, aiTaxiMin, type AiAirport, type AiFlight, type AiPosition, type AiTraffic } from './aiTraffic';
@@ -205,12 +206,9 @@ export class AiPathModel {
       tDep *= k;
       tArr *= k;
     }
-    // Semicircular rule: eastbound odd thousands, westbound even, a few levels apart per flight
-    const base = gcNm < 180 ? 17000 : gcNm < 450 ? 27000 : gcNm < 1200 ? 34000 : 37000;
-    const east = calcBearingDeg(oLL, dLL) < 180;
+    // The type's and the route's limits, semicircular rule, a few levels apart per flight (shared with the simple model)
+    const cruiseAlt = aiCruiseAltitudeFt(f, calcBearingDeg(oLL, dLL), Math.max(O.elevFt || 0, D.elevFt || 0));
     const h = Math.imul(f.id + 17, 0x9e3779b1) >>> 0;
-    const level = Math.floor(base / 1000) + ((h & 3) - 1) * 2; // -2, 0, +2, +4 thousand
-    const cruiseAlt = (level % 2 === (east ? 1 : 0) ? level : level + 1) * 1000;
     // Slightly different track per flight in cruise so aircraft on the same airway don't stack
     const lateralNm = ((((h >>> 8) & 0xff) / 255) * 2 - 1) * Math.min(4, gcNm / 120);
     const vExit = toVec(exit);
@@ -411,13 +409,14 @@ export class AiPathModel {
 
     // ~3 nm per 1,000 ft climbing, ~3.2 nm descending, 3° glide on final
     const onGround = sinceLiftoff <= 0 || toTouchdown <= 0;
-    const climbAlt = (climbNm / 3) * 1000;
+    const climbAlt = (climbNm / CLIMB_NM_PER_KFT) * 1000;
     // On final the real distance to touchdown sets a 3° glide
-    const descentAlt = Math.min(descendNm * 312, inArr && proc ? Math.max(0, toTouchdown) * 318 : Infinity);
+    const descentAlt = Math.min((descendNm / DESCENT_NM_PER_KFT) * 1000, inArr && proc ? Math.max(0, toTouchdown) * 318 : Infinity);
     const altitudeFt = onGround ? 0 : Math.max(0, Math.round(Math.min(p.cruiseAlt, climbAlt, descentAlt) / 100) * 100);
     if (!phaseLabel) {
       phaseLabel = altitudeFt >= p.cruiseAlt ? 'Cruising' : climbAlt < descentAlt ? 'Climbing' : 'Descending';
-      if (altitudeFt < p.cruiseAlt) groundSpeedKts = Math.round(250 + (altitudeFt / p.cruiseAlt) * (f.cruiseKts - 250));
+      const lowKts = Math.min(250, f.cruiseKts * 0.8);
+      if (altitudeFt < p.cruiseAlt) groundSpeedKts = Math.round(lowKts + (altitudeFt / p.cruiseAlt) * (f.cruiseKts - lowKts));
     }
     return {
       coordinates: at,

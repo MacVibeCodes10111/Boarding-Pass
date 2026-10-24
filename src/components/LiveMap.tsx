@@ -1,3 +1,4 @@
+import { typeMaxCruiseFt } from '../game/altitude';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { FlightEconomics } from '../game/economics';
 import { interpolateCoordPair, offsetLatLonNm } from '../game/geo';
@@ -751,7 +752,7 @@ function pick3dAt(picks: Pick3d[], x: number, y: number): Pick3d | null {
 }
 
 /** Your flight's path in the air with its height above the ground, sampled by time. */
-function samplePlayerRoute(fl: ScheduledFlight, depDay: number, cruiseKts: number): TimedPoint[] {
+function samplePlayerRoute(fl: ScheduledFlight, depDay: number, cruiseKts: number, maxCruiseFt: number): TimedPoint[] {
   const dur = Math.max(1, fl.blockTimeMin);
   const step = Math.max(0.5, dur / 700);
   const oE = fl.origin.elevation_ft || 0;
@@ -760,7 +761,7 @@ function samplePlayerRoute(fl: ScheduledFlight, depDay: number, cruiseKts: numbe
   for (let e = 0; e <= dur + 1e-6; e += step) {
     const abs = depDay * MIN_PER_DAY + fl.depTimeMin + e;
     const day = Math.floor(abs / MIN_PER_DAY);
-    const pos = getLiveFlightPosition(fl, abs - day * MIN_PER_DAY, day, cruiseKts);
+    const pos = getLiveFlightPosition(fl, abs - day * MIN_PER_DAY, day, cruiseKts, maxCruiseFt);
     if (!pos) continue;
     const agl = pos.altitudeText === 'Ground' ? 0 : Math.max(0, pos.altitudeFt - (oE + (dE - oE) * pos.progress));
     pts.push({ at: pos.coordinates, aglFt: agl, t: abs });
@@ -1779,6 +1780,8 @@ export function LiveMap(props: LiveMapProps) {
         flight: fl,
         model: ac?.model,
         cruiseKts: ac?.model.cruise_speed_kts ?? 450,
+        /** Highest cruising altitude of the type (turboprops FL250, and so on). */
+        maxCruiseFt: typeMaxCruiseFt(ac?.model),
         iconScale: Number((acTier.iconScale * planeIconScale).toFixed(3)),
         props: {
           flightId: fl.id,
@@ -1855,6 +1858,7 @@ export function LiveMap(props: LiveMapProps) {
     let route3d: { key: string; pts: TimedPoint[] } | null = null;
     let route3dDrawn = '';
     const cruiseById = new Map<string, number>();
+    const ceilingById = new Map<string, number>();
     let aiLabels3d: { at: LonLat; aglFt: number; sizePx: number; props: Record<string, unknown> }[] = [];
     let labels3dKey = '';
     let labels3dHasData = false;
@@ -2290,7 +2294,8 @@ export function LiveMap(props: LiveMapProps) {
       let playerCount = 0;
       for (const info of st.flightInfo) {
         cruiseById.set(info.flight.id, info.cruiseKts);
-        const pos = getLiveFlightPosition(info.flight, clock.min, clock.day, info.cruiseKts);
+        ceilingById.set(info.flight.id, info.maxCruiseFt);
+        const pos = getLiveFlightPosition(info.flight, clock.min, clock.day, info.cruiseKts, info.maxCruiseFt);
         if (!pos) {
           shownBearing.delete(info.flight.id);
           continue;
@@ -2598,12 +2603,12 @@ export function LiveMap(props: LiveMapProps) {
         if (tracked && !trackedGround) {
           const { flight: fl, depDay, cruiseKts } = tracked;
           key = `p:${fl.id}:${depDay}`;
-          sample = () => samplePlayerRoute(fl, depDay, cruiseKts);
+          sample = () => samplePlayerRoute(fl, depDay, cruiseKts, ceilingById.get(fl.id) ?? 39000);
         } else if (trackedGround) {
           // On the ground before or after the flight: the whole route still shows (all ahead, or all flown)
           const { flight: fl, depDay } = trackedGround.info;
           key = `p:${fl.id}:${depDay}`;
-          sample = () => samplePlayerRoute(fl, depDay, cruiseById.get(fl.id) ?? 450);
+          sample = () => samplePlayerRoute(fl, depDay, cruiseById.get(fl.id) ?? 450, ceilingById.get(fl.id) ?? 39000);
         } else if (traffic && st.trackedFlightId?.startsWith('aig:')) {
           const entry = groundRef.current.ai.get(st.trackedFlightId.slice(4));
           if (entry) {

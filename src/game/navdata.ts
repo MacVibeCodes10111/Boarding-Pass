@@ -1,6 +1,7 @@
 // ============================================================================
 // NAVAIDS, RUNWAYS, COSMETIC WEATHER, SID/STAR/ILS GEOMETRY & LIVE POSITIONS
 // ============================================================================
+import { CLIMB_NM_PER_KFT, DESCENT_NM_PER_KFT, cruiseAltitudeFt } from './altitude';
 import { BUILTIN_NAVAIDS } from './builtinData';
 import {
   calcBearingDeg,
@@ -842,7 +843,9 @@ export function getLiveFlightPosition(
   flight: ScheduledFlight,
   simMin: number,
   simDay: number,
-  cruiseSpeedKts = 450
+  cruiseSpeedKts = 450,
+  /** Highest usual cruising altitude of the aircraft type (see altitude.ts). */
+  maxCruiseFt = 39000
 ): LiveFlightPosition | null {
   const depSimDay = getAirborneDepartureDay(flight, simMin, simDay);
   if (depSimDay === null) return null;
@@ -894,14 +897,16 @@ export function getLiveFlightPosition(
           [flight.destination.longitude_deg, flight.destination.latitude_deg]
         );
 
-  // Altitude by distance: ~3 nm per 1,000 ft climbing, ~3.2 nm per 1,000 ft descending
-  const cruiseAlt =
-    flight.distanceNm < 180 ? 18000 : flight.distanceNm < 450 ? 28000 : flight.distanceNm < 1200 ? 35000 : 38000;
+  // Altitude: the type's and the route's limits (altitude.ts), ~3 nm per 1,000 ft
+  // climbing and ~3.2 nm descending, then the 3° glide path (~318 ft per nm).
+  // The lowest of climb, cruise, descent and glide, so the height never jumps.
   const originElev = flight.origin.elevation_ft || 50;
   const destElev = flight.destination.elevation_ft || 20;
   const airborneNm = Math.max(1, proc.touchdownNm - proc.liftoffNm);
-  let climbNm = (cruiseAlt / 1000) * 3;
-  let descentNm = (cruiseAlt / 1000) * 3.2;
+  const trackDeg = calcBearingDeg([flight.origin.longitude_deg, flight.origin.latitude_deg], [flight.destination.longitude_deg, flight.destination.latitude_deg]);
+  const cruiseAlt = cruiseAltitudeFt({ airborneNm, maxTypeFt: maxCruiseFt, trackDeg, fieldElevFt: Math.max(originElev, destElev) });
+  let climbNm = (cruiseAlt / 1000) * CLIMB_NM_PER_KFT;
+  let descentNm = (cruiseAlt / 1000) * DESCENT_NM_PER_KFT;
   if (climbNm + descentNm > airborneNm * 0.95) {
     const k = (airborneNm * 0.95) / (climbNm + descentNm);
     climbNm *= k;
@@ -909,22 +914,20 @@ export function getLiveFlightPosition(
   }
   const sinceLiftoff = alongNm - proc.liftoffNm;
   const toTouchdown = proc.touchdownNm - alongNm;
-  const peak = Math.min(cruiseAlt, Math.max(3000, Math.min(sinceLiftoff + toTouchdown, climbNm + descentNm) * 300));
+  const peak = Math.max(Math.min(originElev, destElev) + 1000, cruiseAlt);
+  // Climb and descent speed: 250 kt for jets, a bit under cruise for slow aircraft
+  const lowKts = Math.min(250, cruiseSpeedKts * 0.8);
 
   let altitudeFt: number;
   let arrow = '';
   if (sinceLiftoff <= 0 || toTouchdown <= 0) {
     altitudeFt = sinceLiftoff <= 0 ? originElev : destElev;
-  } else if (sinceLiftoff < climbNm && sinceLiftoff / climbNm < toTouchdown / descentNm) {
-    altitudeFt = originElev + (sinceLiftoff / climbNm) * (peak - originElev);
-    arrow = '↑';
-  } else if (toTouchdown < descentNm) {
-    // Even descent, then the 3° glide path on final (~318 ft per nm)
-    const linear = destElev + (toTouchdown / descentNm) * (peak - destElev);
-    altitudeFt = alongNm >= proc.finalStartNm ? Math.min(linear, destElev + toTouchdown * 318) : linear;
-    arrow = '↓';
   } else {
-    altitudeFt = peak;
+    const climbing = originElev + (sinceLiftoff / climbNm) * (peak - originElev);
+    const descending = destElev + (toTouchdown / descentNm) * (peak - destElev);
+    const glide = destElev + toTouchdown * 318;
+    altitudeFt = Math.min(peak, climbing, descending, glide);
+    if (altitudeFt < peak - 1) arrow = climbing <= Math.min(descending, glide) ? '↑' : '↓';
   }
   altitudeFt = Math.round(altitudeFt);
   const onGround = sinceLiftoff <= 0 || toTouchdown <= 0;
@@ -933,10 +936,10 @@ export function getLiveFlightPosition(
   let groundSpeedKts = cruiseSpeedKts;
   if (onGround) groundSpeedKts = sinceLiftoff <= 0 ? Math.round(40 + Math.max(0, alongNm / Math.max(0.1, proc.liftoffNm)) * 110) : 60;
   else if (alongNm < proc.sidEndNm) groundSpeedKts = Math.round(170 + (sinceLiftoff / Math.max(1, proc.sidEndNm - proc.liftoffNm)) * 80);
-  else if (arrow === '↑') groundSpeedKts = Math.round(250 + (altitudeFt / Math.max(1, peak)) * (cruiseSpeedKts - 250));
+  else if (arrow === '↑') groundSpeedKts = Math.round(lowKts + (altitudeFt / Math.max(1, peak)) * (cruiseSpeedKts - lowKts));
   else if (alongNm >= proc.finalStartNm) groundSpeedKts = 140;
   else if (alongNm >= proc.starStartNm) groundSpeedKts = Math.round(170 + Math.min(1, (proc.finalStartNm - alongNm) / Math.max(1, proc.finalStartNm - proc.starStartNm)) * 80);
-  else if (arrow === '↓') groundSpeedKts = Math.round(250 + (altitudeFt / Math.max(1, peak)) * (cruiseSpeedKts - 250));
+  else if (arrow === '↓') groundSpeedKts = Math.round(lowKts + (altitudeFt / Math.max(1, peak)) * (cruiseSpeedKts - lowKts));
 
   let phaseLabel = 'Cruising';
   if (sinceLiftoff <= 0) phaseLabel = `Taking off from runway ${proc.depRwy.ident}`;
