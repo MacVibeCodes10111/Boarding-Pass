@@ -195,7 +195,7 @@ export async function signInWithUsername(username: string, password: string, cre
       res = await fetch(`${SUPABASE_URL}/functions/v1/create-account`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', apikey: SUPABASE_KEY },
-        body: JSON.stringify({ username: u, password }),
+        body: JSON.stringify({ username: u, password, device: deviceId() }),
       });
     } catch {
       throw new Error('Can’t reach the cloud. Check your connection.');
@@ -206,7 +206,7 @@ export async function signInWithUsername(username: string, password: string, cre
         code === 'taken'
           ? 'That username is taken. Pick another.'
           : code === 'rate_limited'
-            ? 'Too many new accounts from your connection. Try again in an hour.'
+            ? 'Too many new accounts from this device or connection today. Try again tomorrow.'
             : code === 'bad_username'
               ? `Usernames are ${USERNAME_RULE}.`
               : code === 'bad_password' || code === 'weak_password'
