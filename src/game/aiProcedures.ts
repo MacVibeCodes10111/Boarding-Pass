@@ -11,6 +11,7 @@
 //   distances), so cruising aircraft are in the same place either way and the
 //   only change when a procedure arrives is the exact track near the airport.
 // ============================================================================
+import { AI_ARR_ROLL_MIN, AI_DEP_ROLL_MIN } from './runwayUse';
 import { CLIMB_NM_PER_KFT, DESCENT_NM_PER_KFT, aiCruiseAltitudeFt } from './altitude';
 import { calcBearingDeg, calcCoordDistanceNm, offsetLatLonNm, type LonLat } from './geo';
 import { buildTerminalPaths, landingRollNm, terminalDistances, type TerminalPaths } from './navdata';
@@ -174,6 +175,14 @@ function airportFromAi(ap: AiAirport, i: number): Airport {
   };
 }
 
+/**
+ * Share of the landing roll covered after share `x` of its time: slowing down
+ * from touchdown to about a third of the roll's average speed at the end, the
+ * speed it turns off at (taxi.ts), not to a standstill.
+ */
+const ROLL_END_SPEED = 0.35;
+const rollShare = (x: number) => (2 - ROLL_END_SPEED) * x - (1 - ROLL_END_SPEED) * x * x;
+
 export class AiPathModel {
   private plans = new Map<number, AiPlan>();
   private procs = new Map<string, AiProc>();
@@ -231,7 +240,7 @@ export class AiPathModel {
     if (budget.left <= 0 || (budget.until !== undefined && now() > budget.until)) return null;
     budget.left--;
     const arrMin = f.depUtcMin + f.blockMin - aiTaxiMin(f);
-    const tp = buildTerminalPaths(this.airports[f.o], this.airports[f.d], depDay, f.depUtcMin, depDay, arrMin);
+    const tp = buildTerminalPaths(this.airports[f.o], this.airports[f.d], depDay, f.depUtcMin + aiTaxiMin(f), depDay, arrMin, { dep: f.depLane ?? 0, arr: f.arrLane ?? 0 });
     const liftIdx = tp.liftoffIdx;
     const dep = makeTrack(tp.dep, (s) => (s < 0.6 ? 70 : 160 + Math.min(1, s / 30) * 90));
     const liftoffNm = dep.cumNm[liftIdx] ?? 0;
@@ -248,10 +257,10 @@ export class AiPathModel {
     }
     const plan = this.plan(f);
     const touchdownNm = arr.lenNm - rollNm;
-    // Takeoff roll and landing roll take a fixed minute (lift-off and touchdown then happen exactly
-    // on the sequenced runway times); initial climb 180 kt for 5 nm; final approach 150 kt
+    // Takeoff roll and landing roll take fixed times (runwayUse.ts), so lift-off and touchdown happen
+    // exactly on the sequenced runway times; initial climb 180 kt for 5 nm; final approach 150 kt
     const depClimbEndNm = Math.min(dep.lenNm, liftoffNm + 5);
-    let depRollT = 1;
+    let depRollT = AI_DEP_ROLL_MIN;
     let depClimbT = ((depClimbEndNm - liftoffNm) / 180) * 60;
     if (depRollT + depClimbT > plan.tDep * 0.8) {
       const k = (plan.tDep * 0.8) / (depRollT + depClimbT);
@@ -259,7 +268,7 @@ export class AiPathModel {
       depClimbT *= k;
     }
     let arrFinalT = ((touchdownNm - finalNm) / 150) * 60;
-    let arrRollT = 1;
+    let arrRollT = AI_ARR_ROLL_MIN;
     if (arrFinalT + arrRollT > plan.tArr * 0.8) {
       const k = (plan.tArr * 0.8) / (arrFinalT + arrRollT);
       arrFinalT *= k;
@@ -373,7 +382,7 @@ export class AiPathModel {
             ? (e2 / pre) * proc.finalNm
             : e2 < pre + proc.arrFinalT
             ? proc.finalNm + ((e2 - pre) / Math.max(1e-6, proc.arrFinalT)) * (proc.touchdownNm - proc.finalNm)
-            : proc.touchdownNm + proc.rollNm * (1 - (1 - Math.min(1, (e2 - pre - proc.arrFinalT) / Math.max(1e-6, proc.arrRollT))) ** 2);
+            : proc.touchdownNm + proc.rollNm * rollShare(Math.min(1, (e2 - pre - proc.arrFinalT) / Math.max(1e-6, proc.arrRollT)));
         const o = { ...atDistance(proc.arr, along), alongNm: along };
         at = o.at;
         bearing = o.brg;

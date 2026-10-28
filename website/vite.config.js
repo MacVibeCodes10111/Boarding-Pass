@@ -21,6 +21,8 @@ export default defineConfig({
         main: resolve(root, 'index.html'),
         credits: resolve(root, 'credits.html'),
         privacy: resolve(root, 'privacy.html'),
+        terms: resolve(root, 'terms.html'),
+        cookies: resolve(root, 'cookies.html'),
       },
     },
   },

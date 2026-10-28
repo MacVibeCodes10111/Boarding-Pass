@@ -115,6 +115,81 @@ export function getAirportRunways(airport: Airport): RunwayEndPair[] {
   return list;
 }
 
+/** Both ends of one runway (e.g. "09L/27R"): takeoffs and landings at either end use the same strip. */
+export function runwayPairKey(airport: Airport, ident: string): string {
+  for (const r of getAirportRunways(airport)) if (r.le_ident === ident || r.he_ident === ident) return `${r.le_ident}/${r.he_ident}`;
+  return ident;
+}
+
+interface RunwayEnd {
+  /** Both ends of one runway share this (the pair's le_ident). */
+  pair: string;
+  ident: string;
+  hdg: number;
+  lon: number;
+  lat: number;
+  lenFt: number;
+  dispFt: number;
+}
+const endsOf = (pair: RunwayEndPair): [RunwayEnd, RunwayEnd] => [
+  { pair: pair.le_ident, ident: pair.le_ident, hdg: pair.le_heading_degT, lon: pair.le_lon, lat: pair.le_lat, lenFt: pair.length_ft, dispFt: pair.le_displaced_ft ?? 0 },
+  { pair: pair.le_ident, ident: pair.he_ident, hdg: pair.he_heading_degT, lon: pair.he_lon, lat: pair.he_lat, lenFt: pair.length_ft, dispFt: pair.he_displaced_ft ?? 0 },
+];
+const hdgDiff = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
+
+/**
+ * The airport's sets of parallel runways (headings within 20°) long enough for
+ * airliners, the main one first: the largest set, or the one with the longest
+ * runway. Airports run their traffic on the main set unless the crosswind is
+ * too strong; with several runways in it, takeoffs and landings use different
+ * ones. With a single main runway and another one crossing it, takeoffs use
+ * the crossing runway (as at La Guardia or Vienna).
+ */
+const familyCache = new WeakMap<object, RunwayEndPair[][]>();
+export function runwayFamilies(airport: Airport): RunwayEndPair[][] {
+  const hit = familyCache.get(airport);
+  if (hit) return hit;
+  const all = getAirportRunways(airport);
+  const longest = Math.max(...all.map((r) => r.length_ft || 0), 0);
+  const usable = all.filter((r) => (r.length_ft || 0) >= Math.min(longest, Math.max(4000, longest * 0.45)));
+  const parallel = (a: RunwayEndPair, b: RunwayEndPair) => {
+    const d = hdgDiff(a.le_heading_degT % 180, b.le_heading_degT % 180);
+    return d <= 20 || d >= 160;
+  };
+  const len = (f: RunwayEndPair[]) => Math.max(...f.map((q) => q.length_ft || 0));
+  const families: RunwayEndPair[][] = [];
+  const left = [...usable];
+  while (left.length) {
+    // The largest set around any runway still left, then its longest runway
+    let best: RunwayEndPair[] = [];
+    for (const r of left) {
+      const fam = left.filter((q) => parallel(q, r));
+      if (fam.length > best.length || (fam.length === best.length && len(fam) > len(best))) best = fam;
+    }
+    families.push(best);
+    for (const q of best) left.splice(left.indexOf(q), 1);
+  }
+  const out = families.length ? families : [all.slice(0, 1)];
+  familyCache.set(airport, out);
+  return out;
+}
+
+export const mainRunwayFamily = (airport: Airport) => runwayFamilies(airport)[0];
+
+/** How many runways takeoffs and landings use at once, and whether they share one runway. */
+export function runwayLanes(airport: Airport): { dep: number; arr: number; shared: boolean } {
+  const fams = runwayFamilies(airport);
+  const n = fams[0].length;
+  if (n <= 1) return fams.length > 1 ? { dep: 1, arr: 1, shared: false } : { dep: 1, arr: 1, shared: true };
+  const dep = Math.floor(n / 2);
+  return { dep, arr: n - dep, shared: false };
+}
+
+/** True when takeoffs and landings share one runway (a single main runway). */
+export function runwaysShared(airport: Airport): boolean {
+  return runwayLanes(airport).shared;
+}
+
 // ----------------------------------------------------------------------------
 // 100% cosmetic weather (deterministic per airport per 3-hour block)
 // ----------------------------------------------------------------------------
@@ -238,43 +313,63 @@ export interface ActiveRunwaySelection {
 }
 
 /**
- * Runway in use. Arrivals use the best runway for the wind; departures use a
- * parallel runway facing the same way when the airport has one, so takeoffs
- * and landings don't share the same strip.
+ * Runway in use. Airports use their main parallel runways (mainRunwayFamily)
+ * in the direction with the best headwind, unless the crosswind there is
+ * stronger than 25 kt; then the best runway for the wind. With several
+ * parallel runways, landings and takeoffs use different ones, longest first,
+ * alternating (landings on the 1st, 3rd…, takeoffs on the 2nd, 4th…); `lane`
+ * picks one of them, for busy airports that use more than one at a time
+ * (see runwayLanes). With a single runway, both use it.
  */
-export function getActiveRunwayForAirport(airport: Airport, simDay = 1, simMin = 720, purpose: 'arrival' | 'departure' = 'arrival'): ActiveRunwaySelection {
+export function getActiveRunwayForAirport(airport: Airport, simDay = 1, simMin = 720, purpose: 'arrival' | 'departure' = 'arrival', lane = 0): ActiveRunwaySelection {
   const wx = getAirportWeather(airport, simDay, simMin);
-  let best = { ident: '', hdg: 0, lon: airport.longitude_deg, lat: airport.latitude_deg, headwind: -Infinity, crosswind: 0, lenFt: 8000, dispFt: 0 };
-
-  for (const pair of getAirportRunways(airport)) {
-    const ends = [
-      { ident: pair.le_ident, hdg: pair.le_heading_degT, lon: pair.le_lon, lat: pair.le_lat, lenFt: pair.length_ft, dispFt: pair.le_displaced_ft ?? 0 },
-      { ident: pair.he_ident, hdg: pair.he_heading_degT, lon: pair.he_lon, lat: pair.he_lat, lenFt: pair.length_ft, dispFt: pair.he_displaced_ft ?? 0 },
-    ];
-    for (const end of ends) {
-      const diffRad = ((wx.windDirDeg - end.hdg) * Math.PI) / 180;
-      const headwind = wx.windSpeedKts * Math.cos(diffRad);
+  type Pick = RunwayEnd & { headwind: number; crosswind: number };
+  const score = (end: RunwayEnd): Pick => {
+    const diffRad = ((wx.windDirDeg - end.hdg) * Math.PI) / 180;
+    return { ...end, headwind: wx.windSpeedKts * Math.cos(diffRad), crosswind: Math.abs(wx.windSpeedKts * Math.sin(diffRad)) };
+  };
+  const bestOf = (ends: RunwayEnd[]): Pick | null => {
+    let best: Pick | null = null;
+    for (const e of ends) {
+      const c = score(e);
       // Prefer the longer runway when two give much the same headwind
-      if (headwind > best.headwind + 1.5 || (Math.abs(headwind - best.headwind) <= 1.5 && end.lenFt > best.lenFt)) {
-        best = { ...end, headwind, crosswind: Math.abs(wx.windSpeedKts * Math.sin(diffRad)) };
-      }
+      if (!best || c.headwind > best.headwind + 1.5 || (Math.abs(c.headwind - best.headwind) <= 1.5 && c.lenFt > best.lenFt)) best = c;
     }
-  }
-
-  if (purpose === 'departure') {
-    // Same direction (within 20°), different runway, the longest of those
-    let alt: typeof best | null = null;
-    for (const pair of getAirportRunways(airport)) {
-      for (const end of [
-        { ident: pair.le_ident, hdg: pair.le_heading_degT, lon: pair.le_lon, lat: pair.le_lat, lenFt: pair.length_ft, dispFt: pair.le_displaced_ft ?? 0 },
-        { ident: pair.he_ident, hdg: pair.he_heading_degT, lon: pair.he_lon, lat: pair.he_lat, lenFt: pair.length_ft, dispFt: pair.he_displaced_ft ?? 0 },
-      ]) {
-        if (end.ident === best.ident) continue;
-        const d = Math.abs(((end.hdg - best.hdg + 540) % 360) - 180);
-        if (d <= 20 && (!alt || end.lenFt > alt.lenFt)) alt = { ...end, headwind: best.headwind, crosswind: best.crosswind };
-      }
+    return best;
+  };
+  const families = runwayFamilies(airport);
+  const family = families[0];
+  const lead = bestOf(family.flatMap(endsOf));
+  let best: Pick;
+  if (lead && lead.crosswind <= 25) {
+    // Every runway of the main set facing that way, longest first; the same order
+    // whichever way they face, so a runway keeps its role when the wind turns
+    const lanes = family
+      .flatMap(endsOf)
+      .filter((e) => hdgDiff(e.hdg, lead.hdg) <= 20)
+      .map(score)
+      .sort((a, b) => b.lenFt - a.lenFt || (a.pair < b.pair ? -1 : a.pair > b.pair ? 1 : 0));
+    const arr = lanes.filter((_, i) => i % 2 === 0);
+    let dep = lanes.length > 1 ? lanes.filter((_, i) => i % 2 === 1) : arr;
+    // A single main runway: takeoffs from the runway crossing it, when the wind allows
+    if (lanes.length === 1 && families.length > 1) {
+      const cross = bestOf(families[1].flatMap(endsOf));
+      if (cross && cross.crosswind <= 25 && cross.headwind >= -5) dep = [cross];
     }
-    if (alt) best = alt;
+    const list = purpose === 'departure' ? dep : arr;
+    best = list[((Math.floor(lane) % list.length) + list.length) % list.length] ?? lead;
+  } else {
+    // Strong crosswind on the main runways: the best runway for the wind, takeoffs from a parallel one if there is
+    const all = getAirportRunways(airport).flatMap(endsOf);
+    best = bestOf(all) ?? score(all[0]);
+    if (purpose === 'departure') {
+      let alt: Pick | null = null;
+      for (const e of all) {
+        if (e.ident === best.ident) continue;
+        if (hdgDiff(e.hdg, best.hdg) <= 20 && (!alt || e.lenFt > alt.lenFt)) alt = { ...e, headwind: best.headwind, crosswind: best.crosswind };
+      }
+      if (alt) best = alt;
+    }
   }
   // Kept to a tenth of a degree: whole degrees put a long landing roll tens of metres off the centreline
   const headingDegT = Math.round(best.hdg * 10) / 10;
@@ -436,15 +531,19 @@ export function buildFlightProcedureGeometry(
   simMin = 720,
   /** Arrival time (sim day + minute, may run past 1440); defaults to the departure time. */
   arrDay?: number,
-  arrMin?: number
+  arrMin?: number,
+  /** Which of the runways in use (runway lanes at busy airports, see getActiveRunwayForAirport). */
+  lanes: RunwayLaneChoice = NO_LANES
 ): FlightProcedureWaypoints {
-  const minOfDay = ((Math.floor(simMin) % MIN_PER_DAY) + MIN_PER_DAY) % MIN_PER_DAY;
-  const arr = normalizeSimTime(arrDay ?? simDay, arrMin ?? minOfDay);
-  const key = `${origin.iata_code}>${destination.iata_code}@${simDay}:${Math.floor(minOfDay / 180)}>${arr.day}:${Math.floor(arr.min / 180)}`;
+  // Times past midnight belong to the next day (its weather, and so its runways)
+  const dep = normalizeSimTime(simDay, Math.floor(simMin));
+  const minOfDay = dep.min;
+  const arr = normalizeSimTime(arrDay ?? dep.day, arrMin ?? minOfDay);
+  const key = `${origin.iata_code}>${destination.iata_code}@${dep.day}:${Math.floor(minOfDay / 180)}>${arr.day}:${Math.floor(arr.min / 180)}:${lanes.dep}:${lanes.arr}`;
   const cached = geometryCache.get(key);
   if (cached) return cached;
 
-  const result = computeProcedureGeometry(origin, destination, simDay, minOfDay, arr.day, arr.min);
+  const result = computeProcedureGeometry(origin, destination, dep.day, minOfDay, arr.day, arr.min, lanes);
   if (geometryCache.size >= GEOMETRY_CACHE_LIMIT) {
     const oldest = geometryCache.keys().next().value;
     if (oldest !== undefined) geometryCache.delete(oldest);
@@ -608,14 +707,15 @@ export function buildTerminalPaths(
   depDay: number,
   depMin: number,
   arrDay: number,
-  arrMin: number
+  arrMin: number,
+  lanes: RunwayLaneChoice = NO_LANES
 ): TerminalPaths {
   const directDistNm = calcDistanceNm(origin, destination);
   // Times may run past midnight; weather (and so the runway) is looked up on the right day
   const dT = normalizeSimTime(depDay, depMin);
   const aT = normalizeSimTime(arrDay, arrMin);
-  const depRwy = getActiveRunwayForAirport(origin, dT.day, dT.min, 'departure');
-  const arrRwy = getActiveRunwayForAirport(destination, aT.day, aT.min);
+  const depRwy = getActiveRunwayForAirport(origin, dT.day, dT.min, 'departure', lanes.dep);
+  const arrRwy = getActiveRunwayForAirport(destination, aT.day, aT.min, 'arrival', lanes.arr);
   const oLL: LonLat = [origin.longitude_deg, origin.latitude_deg];
   const dLL: LonLat = [destination.longitude_deg, destination.latitude_deg];
   const courseOut = calcBearingDeg(oLL, dLL);
@@ -657,9 +757,10 @@ function computeProcedureGeometry(
   simDay: number,
   simMin: number,
   arrDay: number,
-  arrMin: number
+  arrMin: number,
+  lanes: RunwayLaneChoice
 ): FlightProcedureWaypoints {
-  const tp = buildTerminalPaths(origin, destination, simDay, simMin, arrDay, arrMin);
+  const tp = buildTerminalPaths(origin, destination, simDay, simMin, arrDay, arrMin, lanes);
   const { exit, entry, directDistNm, depRwy, arrRwy } = tp;
   const cruise: LonLat[] = [];
   const CRUISE_SEGMENTS = Math.max(2, Math.min(32, Math.round(directDistNm / 60)));
@@ -734,8 +835,39 @@ function computeProcedureGeometry(
  * path (and runway choice) stays fixed for the whole flight instead of
  * jumping when the weather block changes mid-flight.
  */
-export function getFlightGeometryForDeparture(flight: ScheduledFlight, depSimDay: number) {
-  return buildFlightProcedureGeometry(flight.origin, flight.destination, depSimDay, flight.depTimeMin, depSimDay, flight.depTimeMin + flight.blockTimeMin);
+export function getFlightGeometryForDeparture(flight: ScheduledFlight, depSimDay: number, lanes?: RunwayLaneChoice) {
+  // Runways as in use at takeoff and at landing (the wind can turn them while the aircraft taxis)
+  const taxi = playerTaxiMin(flight.blockTimeMin);
+  return buildFlightProcedureGeometry(
+    flight.origin,
+    flight.destination,
+    depSimDay,
+    flight.depTimeMin + taxi.out,
+    depSimDay,
+    flight.depTimeMin + flight.blockTimeMin - taxi.in,
+    lanes ?? playerLanes?.(flight, depSimDay) ?? NO_LANES
+  );
+}
+
+/** Which runway (of those in use) a flight takes off from and lands on. */
+export interface RunwayLaneChoice {
+  dep: number;
+  arr: number;
+}
+export const NO_LANES: RunwayLaneChoice = { dep: 0, arr: 0 };
+let playerLanes: ((flight: ScheduledFlight, depSimDay: number) => RunwayLaneChoice) | null = null;
+/**
+ * Where your flights get their runway at busy airports (the live map's runway
+ * sequencing, runwaySequence.ts). Every view of a flight then shows the same runway.
+ */
+export function setPlayerRunwayLanes(fn: ((flight: ScheduledFlight, depSimDay: number) => RunwayLaneChoice) | null) {
+  playerLanes = fn;
+}
+
+/** The runway a flight would use, by lane, at a time that may run past midnight. */
+export function runwayAt(airport: Airport, day: number, min: number, purpose: 'arrival' | 'departure', lane = 0): ActiveRunwaySelection {
+  const t = normalizeSimTime(day, min);
+  return getActiveRunwayForAirport(airport, t.day, t.min, purpose, lane);
 }
 
 /**
@@ -839,13 +971,39 @@ export function getAirborneDepartureDay(flight: ScheduledFlight, simMin: number,
 const altText = (ft: number, arrow: string) =>
   ft >= 18000 ? `FL${Math.round(ft / 100)}${arrow ? ` ${arrow}` : ''}` : `${Math.round(ft / 100) * 100} ft${arrow ? ` ${arrow}` : ''}`;
 
+/** Minutes a flight waits for its turn on the runway: before takeoff, and on arrival before landing. */
+export interface RunwaySlots {
+  dep: number;
+  arr: number;
+}
+
+/** Share of the block time spent up to `nm` along the path. */
+function timeShareAt(proc: FlightProcedureWaypoints, nm: number): number {
+  const C = proc.cumulativeNm;
+  let i = 1;
+  while (i < C.length - 1 && C[i] < nm) i++;
+  const f = C[i] > C[i - 1] ? Math.max(0, Math.min(1, (nm - C[i - 1]) / (C[i] - C[i - 1]))) : 0;
+  return proc.cumulativeT[i - 1] + (proc.cumulativeT[i] - proc.cumulativeT[i - 1]) * f;
+}
+
+/** Your flight's takeoff roll and landing roll, minutes (they follow its block time). */
+export function playerRollMinutes(flight: ScheduledFlight, depSimDay: number): { dep: number; arr: number } {
+  const proc = getFlightGeometryForDeparture(flight, depSimDay, NO_LANES);
+  const dur = Math.max(1, flight.blockTimeMin);
+  const taxi = playerTaxiMin(dur);
+  const airMin = Math.max(1, dur - taxi.out - taxi.in);
+  return { dep: timeShareAt(proc, proc.liftoffNm) * airMin, arr: (1 - timeShareAt(proc, proc.touchdownNm)) * airMin };
+}
+
 export function getLiveFlightPosition(
   flight: ScheduledFlight,
   simMin: number,
   simDay: number,
   cruiseSpeedKts = 450,
   /** Highest usual cruising altitude of the aircraft type (see altitude.ts). */
-  maxCruiseFt = 39000
+  maxCruiseFt = 39000,
+  /** Waits for the runway (runwaySequence.ts), by departure day. */
+  slotsFor?: (depSimDay: number) => RunwaySlots
 ): LiveFlightPosition | null {
   const depSimDay = getAirborneDepartureDay(flight, simMin, simDay);
   if (depSimDay === null) return null;
@@ -853,16 +1011,21 @@ export function getLiveFlightPosition(
   const elapsed = simMin + (simDay - depSimDay) * MIN_PER_DAY - flight.depTimeMin;
   const dur = Math.max(1, flight.blockTimeMin);
   const remainingMin = Math.max(0, Math.round(dur - elapsed));
-  // Taxi out and in at both ends of the block; the flight itself fills the rest
+  // Taxi out and in at both ends of the block; the flight itself fills the rest.
+  // Waiting for the runway: a later takeoff, and a later landing (the flight
+  // is stretched or squeezed by that much; the taxi in is shorter).
   const taxi = playerTaxiMin(dur);
-  const airMin = Math.max(1, dur - taxi.out - taxi.in);
-  const progress = Math.max(0, Math.min(1, (elapsed - taxi.out) / airMin));
+  const slots = slotsFor?.(depSimDay);
+  const outMin = taxi.out + (slots?.dep ?? 0);
+  const inFrom = dur - taxi.in + Math.min(slots?.arr ?? 0, Math.max(0, taxi.in - 0.5));
+  const airMin = Math.max(1, inFrom - outMin);
+  const progress = Math.max(0, Math.min(1, (elapsed - outMin) / airMin));
 
   const proc = getFlightGeometryForDeparture(flight, depSimDay);
-  if (elapsed < taxi.out || elapsed > dur - taxi.in) {
+  if (elapsed < outMin || elapsed > inFrom) {
     // On the ground. The live map moves the aircraft along the real taxiways
     // when it has them for this airport; otherwise it waits at the runway end.
-    const out = elapsed < taxi.out;
+    const out = elapsed < outMin;
     const rwy = out ? proc.depRwy : proc.arrRwy;
     return {
       coordinates: out ? proc.points[0] : proc.points[proc.points.length - 1],

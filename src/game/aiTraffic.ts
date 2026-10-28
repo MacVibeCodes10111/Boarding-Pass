@@ -11,6 +11,7 @@
 //   The older OpenFlights files (/public/data/openflights/, routes from about
 //   2014) still work as a fallback when network.json is missing.
 // ============================================================================
+import { AI_ARR_ROLL_MIN, AI_DEP_ROLL_MIN, bookInterval, earliestFit, runwayOccupancy, type RunwayInterval } from './runwayUse';
 import { aiCruiseAltitudeFt } from './altitude';
 import { AI_AIRLINES, airlineNameCore, type AiAirlineDef, type AiRegion } from './aiAirlines';
 import { AI_TYPES, GENERIC_FLEETS } from './aiFleets';
@@ -50,6 +51,9 @@ export interface AiFlight {
   distanceNm: number;
   /** Taxi minutes at each end, fixed at generation so runway sequencing holds. */
   taxiMin?: number;
+  /** Which of the runways in use it takes off from / lands on, at busy airports (0 = the first). */
+  depLane?: number;
+  arrLane?: number;
 }
 
 export interface AiTraffic {
@@ -457,6 +461,12 @@ export interface GenerateNetworkOptions {
   nowMs?: number;
   /** More (or fewer) flights on every route: 1 = the normal schedule. */
   frequencyScale?: number;
+  /**
+   * Runways each airport uses at once (navdata.runwayLanes): busy airports
+   * spread their flights over them; with a single runway, takeoffs and
+   * landings are sequenced together, one at a time.
+   */
+  runwayLanes?: (iata: string) => RunwayLaneCount;
 }
 
 /** Region of an airport, for airlines without their own entry. */
@@ -682,7 +692,7 @@ export function generateNetworkTraffic(opts: GenerateNetworkOptions): AiTraffic 
     }
   }
 
-  sequenceRunways(flights);
+  sequenceRunways(flights, opts.runwayLanes ? (i) => opts.runwayLanes!(airports[i].iata) : undefined);
 
   const flightsPerWeek = flights.reduce((s, f) => s + popcount(f.daysMask), 0);
   const t1 = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -698,43 +708,102 @@ export function generateNetworkTraffic(opts: GenerateNetworkOptions): AiTraffic 
 // ---------------------------------------------------------------------------
 // Runway sequencing
 //   Without it, flights scheduled in the same 5-minute slot took off and
-//   landed on top of each other. Like a tower, departures from each airport
-//   are queued at least `gap` minutes apart, and arrivals are spaced the same
-//   way on final by adding a short delay (vectoring/holding) to the flight.
-//   The gap shrinks at very busy airports, which in reality have more runways.
+//   landed on top of each other. Like a tower, each airport's departures are
+//   queued so that only one aircraft is on the runway at a time (line-up to
+//   lift-off, see runwayUse.ts) and at least `gap` minutes apart; arrivals the
+//   same way on final, with a short delay (vectoring/holding) added to the
+//   flight. Where takeoffs and landings share one runway, arrivals are fitted
+//   between the departures. The gap shrinks at very busy airports, which in
+//   reality have more runways.
 // ---------------------------------------------------------------------------
 function runwayGap(dailyMovements: number) {
   return Math.max(1, Math.min(2, (1440 * 0.6) / Math.max(1, dailyMovements)));
 }
 
-function sequenceRunways(flights: AiFlight[]) {
+const DEP_OCC = runwayOccupancy('dep', AI_DEP_ROLL_MIN);
+/**
+ * Longest wait for the runway. The network schedules more flights at a few
+ * airports than their runways can take at the busiest hours (Naples, Catania…);
+ * a flight that still has no turn after this wait is left out of the schedule.
+ */
+const MAX_DEP_DELAY_MIN = 30;
+const MAX_ARR_DELAY_MIN = 15;
+const ARR_OCC = runwayOccupancy('arr', AI_ARR_ROLL_MIN);
+
+export interface RunwayLaneCount {
+  dep: number;
+  arr: number;
+  shared: boolean;
+}
+const ONE_LANE: RunwayLaneCount = { dep: 1, arr: 1, shared: false };
+
+/** Sequences every airport's runways; flights that can't get a turn are removed (ids are renumbered). */
+function sequenceRunways(flights: AiFlight[], lanesOf?: (airportIdx: number) => RunwayLaneCount) {
   for (const f of flights) f.taxiMin = Math.min(12, f.blockMin * 0.15);
+  const overflow = new Set<AiFlight>();
   const perDay = (f: AiFlight) => popcount(f.daysMask) / 7;
-  const queue = (list: AiFlight[], timeOf: (f: AiFlight) => number, push: (f: AiFlight, by: number) => void) => {
-    const gap = runwayGap(list.reduce((s, f) => s + perDay(f), 0));
-    if (list.length < 2) return;
-    // The clock is circular: start the queue at the quietest moment of the
-    // day, so delays never spill over midnight into the early arrivals.
+  const depTime = (f: AiFlight) => (f.depUtcMin + f.taxiMin!) % MIN_PER_DAY;
+  const arrTime = (f: AiFlight) => (f.depUtcMin + f.blockMin - f.taxiMin!) % MIN_PER_DAY;
+  /**
+   * One queue on the 24-hour clock, over `lanes` runways (each flight takes the
+   * one free first). It starts at the quietest moment of the day, so delays
+   * never spill over midnight into the early movements. `fixed` are runway
+   * times already taken (time of day, length), on a single runway.
+   */
+  const queue = (
+    list: AiFlight[],
+    timeOf: (f: AiFlight) => number,
+    occ: [number, number],
+    maxDelay: number,
+    lanes: number,
+    push: (f: AiFlight, by: number, lane: number) => void,
+    fixed: number[] = []
+  ) => {
+    if (!list.length) return;
+    // Sharing the runway with departures, arrivals only need the runway free (no extra gap)
+    const gap = fixed.length ? 0 : runwayGap(list.reduce((s, f) => s + perDay(f), 0) / lanes);
     list.sort((a, b) => timeOf(a) - timeOf(b) || a.id - b.id);
     let start = 0;
     let widest = -1;
     for (let i = 0; i < list.length; i++) {
       const prev = timeOf(list[(i + list.length - 1) % list.length]);
-      const space = (timeOf(list[i]) - prev + MIN_PER_DAY) % MIN_PER_DAY;
+      const space = list.length < 2 ? MIN_PER_DAY : (timeOf(list[i]) - prev + MIN_PER_DAY) % MIN_PER_DAY;
       if (space > widest) {
         widest = space;
         start = i;
       }
     }
     const t0 = timeOf(list[start]);
-    let last = -Infinity;
+    // Runway time already taken, on the queue's clock (and a day either side, for the wrap)
+    const booked: RunwayInterval[][] = Array.from({ length: lanes }, () => []);
+    for (let i = 0; i < fixed.length; i += 2) {
+      const u = (fixed[i] - t0 + MIN_PER_DAY) % MIN_PER_DAY;
+      for (const w of [-MIN_PER_DAY, 0, MIN_PER_DAY]) booked[0].push({ from: u + w, to: u + w + fixed[i + 1] });
+    }
+    booked[0].sort((a, b) => a.from - b.from);
+    const last = new Array<number>(lanes).fill(-Infinity);
     for (let k = 0; k < list.length; k++) {
       const f = list[(start + k) % list.length];
-      const u = (timeOf(f) - t0 + MIN_PER_DAY) % MIN_PER_DAY;
-      if (u < last + gap) {
-        push(f, last + gap - u);
-        last += gap;
-      } else last = u;
+      const u0 = (timeOf(f) - t0 + MIN_PER_DAY) % MIN_PER_DAY;
+      // The runway that is free first (the first one when equal)
+      let lane = 0;
+      let u = Infinity;
+      for (let l = 0; l < lanes; l++) {
+        const ul = Math.max(u0, last[l] + gap);
+        const fit = earliestFit(booked[l], ul, occ[0], occ[1], u0 + maxDelay - ul);
+        if (Number.isFinite(fit) && ul + fit < u - 1e-9) {
+          u = ul + fit;
+          lane = l;
+        }
+      }
+      // Busier than the runways can take: the flight doesn't operate
+      if (!Number.isFinite(u)) {
+        overflow.add(f);
+        continue;
+      }
+      push(f, u - u0, lane);
+      last[lane] = u;
+      bookInterval(booked[lane], { from: u + occ[0], to: u + occ[1] });
     }
   };
   const byOrigin = new Map<number, AiFlight[]>();
@@ -744,8 +813,11 @@ function sequenceRunways(flights: AiFlight[]) {
     (byDest.get(f.d) ?? byDest.set(f.d, []).get(f.d)!).push(f);
   }
   // Departures: a later push-back (the flight keeps its length)
-  for (const list of byOrigin.values()) {
-    queue(list, (f) => (f.depUtcMin + f.taxiMin!) % MIN_PER_DAY, (f, by) => {
+  for (const [ap, list] of byOrigin) {
+    const lanes = (lanesOf?.(ap) ?? ONE_LANE).dep;
+    queue(list, depTime, DEP_OCC, MAX_DEP_DELAY_MIN, lanes, (f, by, lane) => {
+      if (lanes > 1) f.depLane = lane;
+      if (by <= 0) return;
       const t = f.depUtcMin + by;
       if (t >= MIN_PER_DAY) {
         f.depUtcMin = t - MIN_PER_DAY;
@@ -753,11 +825,26 @@ function sequenceRunways(flights: AiFlight[]) {
       } else f.depUtcMin = t;
     });
   }
-  // Arrivals: touchdown time on a continuous clock, delay added to the flight
-  for (const list of byDest.values()) {
+  // Arrivals: a delay added to the flight (it lands later; nothing else moves).
+  // On a shared runway, the departures (now fixed) are taken into account.
+  for (const [ap, all] of byDest) {
+    const list = all.filter((f) => !overflow.has(f));
+    const l = lanesOf?.(ap) ?? ONE_LANE;
+    const fixed: number[] = [];
+    if (l.shared)
+      for (const f of byOrigin.get(ap) ?? []) if (!overflow.has(f)) fixed.push((depTime(f) + DEP_OCC[0] + MIN_PER_DAY) % MIN_PER_DAY, DEP_OCC[1] - DEP_OCC[0]);
     // Time of day, so a flight landing after midnight queues with that morning's arrivals
-    queue(list, (f) => (f.depUtcMin + f.blockMin - f.taxiMin!) % MIN_PER_DAY, (f, by) => {
-      f.blockMin += by;
+    queue(list, arrTime, ARR_OCC, MAX_ARR_DELAY_MIN, l.shared ? 1 : l.arr, (f, by, lane) => {
+      if (l.arr > 1 && !l.shared) f.arrLane = lane;
+      if (by > 0) f.blockMin += by;
+    }, fixed);
+  }
+  if (overflow.size) {
+    const kept = flights.filter((f) => !overflow.has(f));
+    flights.length = 0;
+    kept.forEach((f, i) => {
+      f.id = i;
+      flights.push(f);
     });
   }
 }

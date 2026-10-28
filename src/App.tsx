@@ -85,7 +85,7 @@ import {
   maplibreHasGlobe,
   type PlaneIcon,
 } from './game/icons';
-import { clearFlightGeometryCache, setGlobalNavaidsMemory } from './game/navdata';
+import { clearFlightGeometryCache, runwayLanes, setGlobalNavaidsMemory } from './game/navdata';
 import {
   downloadSaveFile,
   hydrateSave,
@@ -340,9 +340,14 @@ export default function App() {
   // Extreme: a denser schedule on the same routes (built when first chosen)
   // What other airlines' traffic is built from: the real network, or the old OpenFlights files
   const aiSourceRef = useRef<{ network: NetworkData } | { airportsText: string; routesText: string; planesText?: string } | null>(null);
+  // Airports with runways: busy airports spread other airlines' flights over their runways, and single-runway
+  // airports sequence takeoffs and landings together
+  const runwayAirportsRef = useRef<Map<string, Airport> | null>(null);
   const buildAiTraffic = (frequencyScale?: number) => {
     const src = aiSourceRef.current!;
-    return 'network' in src ? generateNetworkTraffic({ network: src.network, frequencyScale }) : generateAiTraffic({ ...src, frequencyScale });
+    const aps = runwayAirportsRef.current;
+    const runwayLanesOf = aps ? (iata: string) => { const a = aps.get(iata); return a ? runwayLanes(a) : { dep: 1, arr: 1, shared: false }; } : undefined;
+    return 'network' in src ? generateNetworkTraffic({ network: src.network, frequencyScale, runwayLanes: runwayLanesOf }) : generateAiTraffic({ ...src, frequencyScale });
   };
   const [aiTrafficExtreme, setAiTrafficExtreme] = useState<AiTraffic | null>(null);
   const [aiStatus, setAiStatus] = useState('Loading other airline traffic…');
@@ -544,6 +549,7 @@ export default function App() {
         if (parsed.length > 500) {
           clearFlightGeometryCache();
           setAirports(parsed);
+          runwayAirportsRef.current = new Map(parsed.map((a) => [a.iata_code, a]));
           notes.push(`${parsed.length.toLocaleString()} airports${rwyText ? ' with runways' : ' (runways.csv missing)'}`);
         }
       }

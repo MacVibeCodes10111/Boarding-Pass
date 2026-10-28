@@ -1,6 +1,6 @@
 # Third-party notices
 
-Boarding Pass's own code is © 2026 Ermek Baker-Niffka under the MIT licence (see `LICENSE`). It is built on the maps, data and software below, which belong to their makers and are used under their own licences. The same credits are shown in the game under **Credits and licences** (on the home screen, and in the Map layers menu).
+Boarding Pass's own code is © 2026 Mac under the MIT licence (see `LICENSE`). It is built on the maps, data and software below, which belong to their makers and are used under their own licences. The same credits are shown in the game under **Credits and licences** (on the home screen, and in the Map layers menu).
 
 Boarding Pass is a game. It is not affiliated with, endorsed or sponsored by any airline, aircraft maker or airport. Airline, aircraft and airport names are used only to identify them and belong to their owners. Schedules, passengers, weather and flight paths are simulated: not for navigation or real flight planning.
 
@@ -120,7 +120,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ## Software
 
-### MapLibre GL JS (BSD 3-Clause), loaded from unpkg.com at start-up
+### MapLibre GL JS (BSD 3-Clause), included in the game (npm package maplibre-gl 5.24.0)
 
 ```
 Copyright (c) 2023, MapLibre contributors

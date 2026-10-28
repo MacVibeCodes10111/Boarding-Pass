@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 2.46. Free to play. See [Credits and licences](#credits-and-licences).
+Version 2.48. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -20,6 +20,17 @@ Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 2.48:
+
+- **One aircraft on a runway at a time.** A departure has the runway from lining up until it lifts off, an arrival from short final until it has turned off. Your flights wait their turn: a departure holds at the hold-short line, an arrival is held on the approach for a minute or two. Other airlines' schedules are sequenced the same way.
+- **Busy airports use several runways.** Atlanta lands on three runways and takes off from two, O'Hare uses three of each, and La Guardia and Vienna take off from their crossing runway. Each runway keeps its job whatever the wind, and the airport panel lists them.
+- **Better taxiing.** Aircraft keep a proper gap behind the one ahead, their wingspan counts, and waiting aircraft stay out of junctions. Arrivals turn off briskly and never stop on the runway.
+- **Detailed 3D aircraft.** In 3D, aircraft have real shapes: a round fuselage, swept wings, a tail and engines or propellers, in 14 families from commuters to the A380, lit by the sun and the sky. They pitch up on the climb and down on the descent. Turn off **Detailed aircraft** in Map layers for the simple shapes on slower computers.
+- **Realistic cruising altitudes.** Every aircraft cruises no higher than its real type (no more propeller aircraft at 34,000 ft), short hops stay low, levels follow the east-odd, west-even rule, and climbs, cruise and descents join smoothly with no jumps.
+- **Privacy policy, Terms of use and Cookies pages** on boardingpass.my, linked from Credits and licences. Boarding Pass still has no accounts, ads, tracking or cookies.
+- **Safer and more private.** The map engine now comes with the game instead of being downloaded when it starts, the desktop apps only run their own code, and the website's typefaces come from boardingpass.my instead of Google.
+- **Credits.** Boarding Pass is made by Mac, with the help of AI (Claude, by Anthropic).
 
 Version 2.44:
 
@@ -138,7 +149,7 @@ The first build takes 5–15 minutes. Windows may warn that the app is from an u
 
 ## Credits and licences
 
-Boarding Pass's own code is © 2026 Ermek Baker-Niffka under the [MIT licence](LICENSE). The game is built on:
+Boarding Pass's own code is © 2026 Mac under the [MIT licence](LICENSE). It is designed and directed by Mac and developed with the help of AI (Claude, by Anthropic). The game is built on:
 
 - **Maps:** © [CARTO](https://carto.com/attributions) basemaps; map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL).
 - **Satellite imagery:** EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2024), under CC BY-NC-SA 4.0, used for non-commercial purposes only.

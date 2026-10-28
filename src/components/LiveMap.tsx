@@ -16,6 +16,8 @@ import {
 } from '../game/icons';
 import { aiDepartureDay, densityBucket, findAirborneAi, type AiFlight, type AiPosition, type AiTraffic } from '../game/aiTraffic';
 import { AiPathModel } from '../game/aiProcedures';
+import { RunwaySequencer } from '../game/runwaySequence';
+import { runwayLanes, setPlayerRunwayLanes, type RunwaySlots } from '../game/navdata';
 import { aerowayFromGeoJson, groundPoses, taxiPath, TaxiRegistry, type GroundMove, type GroundPose, type TaxiAirportRef } from '../game/taxi';
 import {
   aiArrivalMove,
@@ -776,7 +778,7 @@ function pick3dAt(picks: Pick3d[], x: number, y: number): Pick3d | null {
 }
 
 /** Your flight's path in the air with its height above the ground, sampled by time. */
-function samplePlayerRoute(fl: ScheduledFlight, depDay: number, cruiseKts: number, maxCruiseFt: number): TimedPoint[] {
+function samplePlayerRoute(fl: ScheduledFlight, depDay: number, cruiseKts: number, maxCruiseFt: number, slots?: RunwaySlots): TimedPoint[] {
   const dur = Math.max(1, fl.blockTimeMin);
   const step = Math.max(0.5, dur / 700);
   const oE = fl.origin.elevation_ft || 0;
@@ -785,7 +787,7 @@ function samplePlayerRoute(fl: ScheduledFlight, depDay: number, cruiseKts: numbe
   for (let e = 0; e <= dur + 1e-6; e += step) {
     const abs = depDay * MIN_PER_DAY + fl.depTimeMin + e;
     const day = Math.floor(abs / MIN_PER_DAY);
-    const pos = getLiveFlightPosition(fl, abs - day * MIN_PER_DAY, day, cruiseKts, maxCruiseFt);
+    const pos = getLiveFlightPosition(fl, abs - day * MIN_PER_DAY, day, cruiseKts, maxCruiseFt, slots && (() => slots));
     if (!pos) continue;
     const agl = pos.altitudeText === 'Ground' ? 0 : Math.max(0, pos.altitudeFt - (oE + (dE - oE) * pos.progress));
     pts.push({ at: pos.coordinates, aglFt: agl, t: abs });
@@ -1691,20 +1693,26 @@ export function LiveMap(props: LiveMapProps) {
       const important = a.demand_weight >= 80 || hubs.includes(a.iata_code) || inspectedAirport?.iata_code === a.iata_code;
       const wx = getAirportWeather(a, mapDay, wxMin);
       if (showApproaches && (important || a.max_runway_length_ft >= 6000)) {
-        const rwy = getActiveRunwayForAirport(a, mapDay, wxMin);
-        // From the landing threshold (displaced thresholds included)
-        const left = offsetLatLonNm(rwy.landLat, rwy.landLon, (rwy.reciprocalDegT - 4.5 + 360) % 360, 9.5);
-        const right = offsetLatLonNm(rwy.landLat, rwy.landLon, (rwy.reciprocalDegT + 4.5) % 360, 9.5);
-        const thr = [rwy.landLon, rwy.landLat];
-        ilsFeatures.push({
-          type: 'Feature',
-          geometry: { type: 'Polygon', coordinates: [[thr, left, right, thr]] },
-          properties: {
-            iata: a.iata_code,
-            rwy: rwy.ident,
-            cone_color: wx.flightCategory === 'IFR' ? MAP_C.red : wx.flightCategory === 'MVFR' ? MAP_C.accent : '#10b981',
-          },
-        });
+        // Every runway in use for landings (busy airports land on more than one)
+        const seen = new Set<string>();
+        for (let lane = 0; lane < runwayLanes(a).arr; lane++) {
+          const rwy = getActiveRunwayForAirport(a, mapDay, wxMin, 'arrival', lane);
+          if (seen.has(rwy.ident)) continue;
+          seen.add(rwy.ident);
+          // From the landing threshold (displaced thresholds included)
+          const left = offsetLatLonNm(rwy.landLat, rwy.landLon, (rwy.reciprocalDegT - 4.5 + 360) % 360, 9.5);
+          const right = offsetLatLonNm(rwy.landLat, rwy.landLon, (rwy.reciprocalDegT + 4.5) % 360, 9.5);
+          const thr = [rwy.landLon, rwy.landLat];
+          ilsFeatures.push({
+            type: 'Feature',
+            geometry: { type: 'Polygon', coordinates: [[thr, left, right, thr]] },
+            properties: {
+              iata: a.iata_code,
+              rwy: rwy.ident,
+              cone_color: wx.flightCategory === 'IFR' ? MAP_C.red : wx.flightCategory === 'MVFR' ? MAP_C.accent : '#10b981',
+            },
+          });
+        }
       }
     }
     if (showApproaches) ilsSource?.setData({ type: 'FeatureCollection', features: ilsFeatures });
@@ -1927,6 +1935,31 @@ export function LiveMap(props: LiveMapProps) {
     map.on?.('sourcedata', onSourceData);
     let aiIndex: { traffic: AiTraffic; index: AiAirportIndex; byIata: Map<string, number> } | null = null;
     let aiKeep: (f: AiFlight) => boolean = () => true;
+    // Your flights' turns on the runways, fitted around the other airlines shown
+    // (rebuilt when your schedule or the other airlines on the map change)
+    let seqCache: { list: unknown; traffic: unknown; key: string; seq: RunwaySequencer } | null = null;
+    const runwaySeq = (st: typeof animState.current): RunwaySequencer => {
+      const traffic = st.aiTraffic && st.aiDensity !== 'off' ? st.aiTraffic : null;
+      const hidden = latest.current.hiddenAiAirlines;
+      const key = `${st.aiDensity}|${hidden.join(',')}`;
+      if (seqCache && seqCache.list === st.flightInfo && seqCache.traffic === traffic && seqCache.key === key) return seqCache.seq;
+      let ai = null;
+      if (traffic) {
+        if (aiIndex?.traffic !== traffic)
+          aiIndex = { traffic, index: buildAiAirportIndex(traffic), byIata: new Map(traffic.airports.map((a, i) => [a.iata, i])) };
+        const hiddenIdx = new Set(hidden.map((code) => traffic.airlines.findIndex((a) => a.code === code)).filter((i) => i >= 0));
+        const maxBucket = DENSITY_BUCKETS[st.aiDensity];
+        ai = { traffic, index: aiIndex.index, byIata: aiIndex.byIata, keep: (f: AiFlight) => densityBucket(f) < maxBucket && !hiddenIdx.has(f.airline) };
+      }
+      const seq = new RunwaySequencer(
+        st.flightInfo.map((i) => i.flight),
+        ai
+      );
+      seqCache = { list: st.flightInfo, traffic, key, seq };
+      // Every view of your flights (paths, popups, taxi routes) uses the runway it was given
+      setPlayerRunwayLanes((f, dd) => seq.lanes(f, dd));
+      return seq;
+    };
     let infoById: { list: unknown; map: Map<string, (typeof animState.current.flightInfo)[number]> } = { list: null, map: new Map() };
 
     /** Airports with runways in view, nearest the centre first (at most 4). */
@@ -2055,7 +2088,8 @@ export function LiveMap(props: LiveMapProps) {
         turnaroundOf,
         new Set([fl.origin.iata_code, fl.destination.iata_code]),
         undefined,
-        true
+        true,
+        (f, dd) => runwaySeq(st).slots(f, dd)
       );
       return {
         dep: all.get(fl.origin.iata_code)?.find((m) => m.key === `p:${fl.id}:${depDay}:d`),
@@ -2100,7 +2134,9 @@ export function LiveMap(props: LiveMapProps) {
           lengthOf,
           turnaroundOf,
           new Set(nets.map((n) => n.iata)),
-          pinfo
+          pinfo,
+          false,
+          (f, dd) => runwaySeq(st).slots(f, dd)
         );
         const aiOn = traffic && st.aiDensity !== 'off';
         if (aiOn && aiIndex?.traffic !== traffic) {
@@ -2115,7 +2151,8 @@ export function LiveMap(props: LiveMapProps) {
             const apIdx = aiIndex.byIata.get(net.iata);
             if (apIdx !== undefined) {
               const airport = aiModel(traffic!).airports[apIdx];
-              moves = moves.concat(aiGroundMoves(traffic!, aiIndex.index, apIdx, airport, clock.day, clock.min, aiKeep, ainfo));
+              const seq = runwaySeq(st);
+              moves = moves.concat(aiGroundMoves(traffic!, aiIndex.index, apIdx, airport, clock.day, clock.min, aiKeep, ainfo, (f, dd) => seq.aiSuppressed(f, dd)));
             }
           }
           if (!moves.length) continue;
@@ -2334,7 +2371,8 @@ export function LiveMap(props: LiveMapProps) {
       for (const info of st.flightInfo) {
         cruiseById.set(info.flight.id, info.cruiseKts);
         ceilingById.set(info.flight.id, info.maxCruiseFt);
-        const pos = getLiveFlightPosition(info.flight, clock.min, clock.day, info.cruiseKts, info.maxCruiseFt);
+        const seq = runwaySeq(st);
+        const pos = getLiveFlightPosition(info.flight, clock.min, clock.day, info.cruiseKts, info.maxCruiseFt, (dd) => seq.slots(info.flight, dd));
         if (!pos) {
           shownBearing.delete(info.flight.id);
           continue;
@@ -2473,11 +2511,15 @@ export function LiveMap(props: LiveMapProps) {
           // New takeoff/arrival procedures: at most ~6 ms of building per redraw; the rest follow next time
           const model = aiModel(traffic);
           const buildBudget = { left: 300, until: performance.now() + 6 };
+          const seqNow = runwaySeq(st);
           for (const f of aiCandidates) {
             if (aiFeatures.length >= aiBudget && f.id !== trackedAiId) {
               if (trackedAiId < 0) break;
               continue; // keep looking only for the selected aircraft
             }
+            // Other airlines' flights that give way to yours on a full runway don't operate
+            const dd = aiDepartureDay(f, clock.day, clock.min);
+            if (dd !== null && seqNow.aiSuppressed(f, dd)) continue;
             const pos = model.position(f, clock.day, clock.min, buildBudget);
             if (!pos || !inView(pos.coordinates[0], pos.coordinates[1], b)) continue;
             aiFeatures.push({
@@ -2661,12 +2703,12 @@ export function LiveMap(props: LiveMapProps) {
         if (tracked && !trackedGround) {
           const { flight: fl, depDay, cruiseKts } = tracked;
           key = `p:${fl.id}:${depDay}`;
-          sample = () => samplePlayerRoute(fl, depDay, cruiseKts, ceilingById.get(fl.id) ?? 39000);
+          sample = () => samplePlayerRoute(fl, depDay, cruiseKts, ceilingById.get(fl.id) ?? 39000, runwaySeq(st).slots(fl, depDay));
         } else if (trackedGround) {
           // On the ground before or after the flight: the whole route still shows (all ahead, or all flown)
           const { flight: fl, depDay } = trackedGround.info;
           key = `p:${fl.id}:${depDay}`;
-          sample = () => samplePlayerRoute(fl, depDay, cruiseById.get(fl.id) ?? 450, ceilingById.get(fl.id) ?? 39000);
+          sample = () => samplePlayerRoute(fl, depDay, cruiseById.get(fl.id) ?? 450, ceilingById.get(fl.id) ?? 39000, runwaySeq(st).slots(fl, depDay));
         } else if (traffic && st.trackedFlightId?.startsWith('aig:')) {
           const entry = groundRef.current.ai.get(st.trackedFlightId.slice(4));
           if (entry) {

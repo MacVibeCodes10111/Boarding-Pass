@@ -9,10 +9,10 @@
 //   the landing roll.
 // ============================================================================
 import { aiTaxiMin, type AiFlight, type AiTraffic } from './aiTraffic';
-import { getActiveRunwayForAirport, getFlightGeometryForDeparture, playerTaxiMin, rolloutEndPoint } from './navdata';
+import { getActiveRunwayForAirport, getFlightGeometryForDeparture, playerTaxiMin, rolloutEndPoint, type RunwaySlots } from './navdata';
 import { dayIndexOf, daysOrAll, MIN_PER_DAY } from './time';
 import type { Airport, RadarIconGroup, ScheduledFlight } from './types';
-import type { GroundMove, RunwayPoint } from './taxi';
+import { ARR_PLAN_AHEAD_MIN, type GroundMove, type RunwayPoint } from './taxi';
 
 /** Aircraft length per silhouette group, metres (parking distance, drawing at true scale). */
 export const GROUP_LENGTH_M: Record<RadarIconGroup, number> = {
@@ -44,9 +44,9 @@ const norm = (day: number, min: number) => {
 
 // The runway in use only changes with the weather (3-hour blocks), so lookups are cached
 const rwyCache = new Map<string, RunwayPoint>();
-function cachedRunway(kind: 'd' | 'a', ap: Airport, day: number, min: number, make: (d: number, m: number) => RunwayPoint): RunwayPoint {
+function cachedRunway(kind: 'd' | 'a', ap: Airport, day: number, min: number, lane: number, make: (d: number, m: number) => RunwayPoint): RunwayPoint {
   const t = norm(day, min);
-  const key = `${kind}:${ap.iata_code}:${ap.id}:${t.day}:${Math.floor(t.min / 180)}`;
+  const key = `${kind}:${ap.iata_code}:${ap.id}:${t.day}:${Math.floor(t.min / 180)}:${lane}`;
   let r = rwyCache.get(key);
   if (!r) {
     if (rwyCache.size > 20_000) rwyCache.clear();
@@ -56,16 +56,16 @@ function cachedRunway(kind: 'd' | 'a', ap: Airport, day: number, min: number, ma
   return r;
 }
 
-function depRunway(ap: Airport, day: number, min: number): RunwayPoint {
-  return cachedRunway('d', ap, day, min, (d, m) => {
-    const r = getActiveRunwayForAirport(ap, d, m, 'departure');
+export function depRunway(ap: Airport, day: number, min: number, lane = 0): RunwayPoint {
+  return cachedRunway('d', ap, day, min, lane, (d, m) => {
+    const r = getActiveRunwayForAirport(ap, d, m, 'departure', lane);
     return { ident: r.ident, lon: r.thresholdLon, lat: r.thresholdLat, hdg: r.headingDegT };
   });
 }
 
-function arrStop(ap: Airport, day: number, min: number): RunwayPoint {
-  return cachedRunway('a', ap, day, min, (d, m) => {
-    const r = getActiveRunwayForAirport(ap, d, m);
+export function arrStop(ap: Airport, day: number, min: number, lane = 0): RunwayPoint {
+  return cachedRunway('a', ap, day, min, lane, (d, m) => {
+    const r = getActiveRunwayForAirport(ap, d, m, 'arrival', lane);
     const [lon, lat] = rolloutEndPoint(r);
     return { ident: r.ident, lon, lat, hdg: r.headingDegT };
   });
@@ -99,7 +99,8 @@ export function aiDepartureMove(t: AiTraffic, f: AiFlight, depDay: number, airpo
     pref: t.airlines[f.airline]?.code ?? String(f.airline),
     halfLen: GROUP_LENGTH_M[f.group] / 2,
     kind: 'dep',
-    rwy: depRunway(airport, depDay, f.depUtcMin),
+    // The runway in use at takeoff
+    rwy: depRunway(airport, depDay, f.depUtcMin + aiTaxiMin(f), f.depLane ?? 0),
     parkFrom,
     pushAt: G,
     takeoffAt: T,
@@ -121,7 +122,7 @@ export function aiArrivalMove(t: AiTraffic, f: AiFlight, depDay: number, airport
     pref: t.airlines[f.airline]?.code ?? String(f.airline),
     halfLen: GROUP_LENGTH_M[f.group] / 2,
     kind: 'arr',
-    rwy: arrStop(airport, depDay, arrMin),
+    rwy: arrStop(airport, depDay, arrMin, f.arrLane ?? 0),
     flowRwy: depRunway(airport, depDay, arrMin),
     rollEndAt: R,
     parkUntil,
@@ -148,7 +149,9 @@ export function aiGroundMoves(
   day: number,
   min: number,
   keep: (f: AiFlight) => boolean,
-  info?: Map<string, AiGroundInfo>
+  info?: Map<string, AiGroundInfo>,
+  /** Flight-days that don't operate (they give way to yours, runwaySequence.ts). */
+  skip?: (f: AiFlight, depDay: number) => boolean
 ): GroundMove[] {
   const now = day * MIN_PER_DAY + min;
   const out: GroundMove[] = [];
@@ -157,9 +160,11 @@ export function aiGroundMoves(
     for (let dd = -1; dd <= 1; dd++) {
       const depDay = day + dd;
       if (!(f.daysMask & (1 << dayIndexOf(depDay)))) continue;
-      const m = aiDepartureMove(t, f, depDay, airport);
+      // Times first (cheap); the move (runway lookups) only for those on the ground now.
       // Long taxis may push back up to 10 minutes early
-      if (now < m.parkFrom! - 10 || now >= m.takeoffAt!) continue;
+      const G = depDay * MIN_PER_DAY + f.depUtcMin;
+      if (now < G - AI_PARK_BEFORE_MIN - 10 || now >= G + aiTaxiMin(f) || skip?.(f, depDay)) continue;
+      const m = aiDepartureMove(t, f, depDay, airport);
       out.push(m);
       info?.set(m.key, { flight: f, depDay, kind: 'dep' });
     }
@@ -169,9 +174,12 @@ export function aiGroundMoves(
     for (let dd = -2; dd <= 0; dd++) {
       const depDay = day + dd;
       if (!(f.daysMask & (1 << dayIndexOf(depDay)))) continue;
+      // Included before landing so its taxi in is planned ahead (it is drawn from the end of
+      // the landing roll); a long taxi-in can run past parkUntil, so it is kept a little longer
+      const taxi = aiTaxiMin(f);
+      const R = depDay * MIN_PER_DAY + f.depUtcMin + f.blockMin - taxi;
+      if (now < R - ARR_PLAN_AHEAD_MIN || now > R + taxi + AI_PARK_AFTER_MIN + 15 || skip?.(f, depDay)) continue;
       const m = aiArrivalMove(t, f, depDay, airport);
-      // A long taxi-in can run past parkUntil; keep it a little longer
-      if (now < m.rollEndAt! || now > m.parkUntil! + 15) continue;
       out.push(m);
       info?.set(m.key, { flight: f, depDay, kind: 'arr' });
     }
@@ -199,7 +207,9 @@ export function playerGroundMoves(
   airports: Set<string>,
   info?: Map<string, PlayerGroundInfo>,
   /** Include every movement around now, not only the ones on the ground right now (for routes). */
-  all = false
+  all = false,
+  /** Waits for the runway (runwaySequence.ts): a later takeoff, a later end of the landing roll. */
+  slotsFor?: (f: ScheduledFlight, depDay: number) => RunwaySlots
 ): Map<string, GroundMove[]> {
   const now = day * MIN_PER_DAY + min;
   interface Occ {
@@ -221,7 +231,8 @@ export function playerGroundMoves(
       const D = depDay * MIN_PER_DAY + f.depTimeMin;
       const end = D + f.blockTimeMin;
       if (end + 6 * 60 < now || D - 6 * 60 > now) continue;
-      occ.push({ f, depDay, D, T: D + taxi.out, R: end - taxi.in, end });
+      const s = slotsFor?.(f, depDay);
+      occ.push({ f, depDay, D, T: D + taxi.out + (s?.dep ?? 0), R: end - taxi.in + Math.min(s?.arr ?? 0, Math.max(0, taxi.in - 0.5)), end });
     }
   }
   const byAirport = new Map<string, GroundMove[]>();
@@ -240,7 +251,7 @@ export function playerGroundMoves(
     if (next) takenDep.add(next);
     const visit = next ? `pv:${o.f.tailNumber}:${iata}:${o.D}` : `pa:${o.f.id}:${o.depDay}`;
     const parkUntil = next ? next.D : o.end + turnaroundOf(o.f);
-    if (all || (now >= o.R && now <= Math.max(parkUntil, o.R + 30) + 10)) {
+    if (all || (now >= o.R - ARR_PLAN_AHEAD_MIN && now <= Math.max(parkUntil, o.R + 30) + 10)) {
       const proc = getFlightGeometryForDeparture(o.f, o.depDay);
       const last = proc.points[proc.points.length - 1];
       const key = `p:${o.f.id}:${o.depDay}:a`;

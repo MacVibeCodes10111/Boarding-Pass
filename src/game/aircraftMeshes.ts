@@ -7,24 +7,32 @@
 // high-wing turboprops, commuters…), with the real types' proportions.
 //
 // Units: half the aircraft's length is 1. x = right wing, y = nose, z = up;
-// the fuselage centreline is z = 0. Triangles only, with normals, packed as
-// [x, y, z, nx, ny, nz] per vertex (no index buffer).
+// the fuselage centreline is z = 0. Triangles only, with normals and the part
+// each belongs to (for its paint), packed as [x, y, z, nx, ny, nz, part] per
+// vertex (no index buffer).
 // ============================================================================
 import type { RadarIconGroup } from './types';
 
 type V3 = [number, number, number];
 
+/** Which part a triangle belongs to: the layer paints each differently. */
+export const PART = { body: 0, wing: 1, fin: 2, engine: 3, prop: 4 } as const;
+/** Floats per vertex. */
+export const MESH_STRIDE = 7;
+
 class MeshBuilder {
   readonly data: number[] = [];
   /** Centre of the part being built: flat faces get the normal that points away from it. */
   center: V3 | null = null;
+  part: number = PART.body;
   tri(a: V3, b: V3, c: V3, na?: V3, nb?: V3, nc?: V3) {
     let n = na ?? faceNormal(a, b, c);
     if (!na && this.center) {
       const g: V3 = [(a[0] + b[0] + c[0]) / 3 - this.center[0], (a[1] + b[1] + c[1]) / 3 - this.center[1], (a[2] + b[2] + c[2]) / 3 - this.center[2]];
       if (g[0] * n[0] + g[1] * n[1] + g[2] * n[2] < 0) n = [-n[0], -n[1], -n[2]];
     }
-    this.data.push(...a, ...n, ...b, ...(nb ?? n), ...c, ...(nc ?? n));
+    const p = this.part;
+    this.data.push(...a, ...n, p, ...b, ...(nb ?? n), p, ...c, ...(nc ?? n), p);
   }
   quad(a: V3, b: V3, c: V3, d: V3) {
     this.tri(a, b, c);
@@ -229,14 +237,18 @@ function build(spec: Spec): Float32Array {
     ],
     10
   );
+  m.part = PART.body;
   if (spec.hump) loft(m, [[0.82, r * 0.3, rz * 0.2, rz * 0.75], [0.7, r * 0.62, rz * 0.45, rz * 0.62], [0.42, r * 0.62, rz * 0.42, rz * 0.62], [0.28, r * 0.25, rz * 0.12, rz * 0.82]], 8);
   // Wings
+  m.part = PART.wing;
   surface(m, { rootX: r * 0.8, rootY: spec.wingY, z: spec.wingZ * (rz / r), span: spec.span - r * 0.8, rootChord: spec.rootChord, tipChord: spec.tipChord, sweepDeg: spec.sweep, dihedralDeg: spec.dihedral, thick: rz * 0.13 });
   // Tail: fin, then the tailplane at its foot or (T-tail) its top
   const finRoot = -0.62, finZ0 = rz * 0.55;
+  m.part = PART.fin;
   fin(m, { rootY: finRoot, z0: finZ0, height: spec.finH, rootChord: 0.28, tipChord: 0.14, sweepDeg: 35, thick: r * 0.1 });
   const stabZ = spec.tTail ? finZ0 + spec.finH * 0.95 : rz * 0.25;
   const stabY = spec.tTail ? finRoot - Math.tan((35 * Math.PI) / 180) * spec.finH * 0.95 + 0.02 : -0.72;
+  m.part = PART.wing;
   surface(m, { rootX: spec.tTail ? 0.005 : r * 0.5, rootY: stabY, z: stabZ, span: spec.stabSpan, rootChord: 0.15, tipChord: 0.07, sweepDeg: spec.tTail ? 25 : 30, dihedralDeg: spec.tTail ? 0 : 5, thick: rz * 0.06 });
   // Engines
   const sweepTan = Math.tan((spec.sweep * Math.PI) / 180);
@@ -249,10 +261,13 @@ function build(spec: Spec): Float32Array {
     const z = spec.props ? zWing : zWing - spec.engineR * 1.25;
     const front = spec.props ? yLe + spec.engineLen * 0.35 : yLe + spec.engineLen * 0.55;
     for (const s of [1, -1]) {
+      m.part = PART.engine;
       nacelle(m, [s * x, front, z], spec.engineLen, spec.engineR);
+      m.part = PART.prop;
       if (spec.props) propDisc(m, [s * x, front + 0.012, z], spec.engineR * 2.6);
     }
   }
+  m.part = PART.engine;
   if (spec.rearEngines)
     for (const s of [1, -1]) nacelle(m, [s * (r + spec.engineR * 1.3), -0.38, rz * 0.35], spec.engineLen, spec.engineR);
   if (spec.tailEngine) nacelle(m, [0, -0.5, finZ0 + spec.engineR * 0.9], spec.engineLen * 1.2, spec.engineR);
@@ -261,7 +276,7 @@ function build(spec: Spec): Float32Array {
 
 const cache = new Map<RadarIconGroup, Float32Array>();
 
-/** The shape for an icon group: interleaved [x, y, z, nx, ny, nz] per vertex, triangles. */
+/** The shape for an icon group: interleaved [x, y, z, nx, ny, nz, part] per vertex, triangles. */
 export function aircraftMesh(group: RadarIconGroup): Float32Array {
   let mesh = cache.get(group);
   if (!mesh) {
@@ -282,7 +297,7 @@ export function aircraftMeshBounds(group: RadarIconGroup): { minZ: number; maxZ:
     const d = aircraftMesh(group);
     let minZ = 0;
     let maxZ = 0;
-    for (let i = 2; i < d.length; i += 6) {
+    for (let i = 2; i < d.length; i += MESH_STRIDE) {
       minZ = Math.min(minZ, d[i]);
       maxZ = Math.max(maxZ, d[i]);
     }

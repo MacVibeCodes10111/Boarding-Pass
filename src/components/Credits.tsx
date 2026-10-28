@@ -40,8 +40,12 @@ export function CreditsModal({ onClose }: { onClose: () => void }) {
           <span style={{ fontSize: 12.5, color: C.muted }}>version {APP_VERSION}</span>
         </div>
         <div style={{ fontSize: 12.5, color: C.textDim, marginTop: 6, lineHeight: 1.5 }}>
-          A small airline manager game. © 2026 Ermek Baker-Niffka. The game's own code is free software under the MIT licence. The maps and data below
+          A small airline manager game. © 2026 Mac. The game's own code is free software under the MIT licence. The maps and data below
           belong to their makers and are used under their own licences.
+        </div>
+        <div style={{ fontSize: 12.5, color: C.textDim, marginTop: 6, lineHeight: 1.5 }}>
+          Designed and directed by Mac and developed with the help of AI: much of the code and text is written with Claude, an AI model made by Anthropic, then
+          reviewed and tested before each release.
         </div>
 
         <Section title="Maps">
@@ -80,6 +84,14 @@ export function CreditsModal({ onClose }: { onClose: () => void }) {
             Boarding Pass is a game. It is not affiliated with, endorsed or sponsored by any airline, aircraft maker or airport. Airline, aircraft and airport names
             are used only to identify them and belong to their owners. Schedules, passengers, weather and flight paths are simulated: not for navigation or real
             flight planning.
+          </div>
+        </Section>
+
+        <Section title="Privacy, terms and cookies">
+          <div style={{ fontSize: 12.5, lineHeight: 1.55, color: C.textDim }}>
+            No accounts, no ads, no tracking and no cookies: your airline is saved on your own device. Read the{' '}
+            {link('https://boardingpass.my/privacy.html', 'Privacy policy')}, {link('https://boardingpass.my/terms.html', 'Terms of use')} and{' '}
+            {link('https://boardingpass.my/cookies.html', 'Cookies and storage')}.
           </div>
         </Section>
 

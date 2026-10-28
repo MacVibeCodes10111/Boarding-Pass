@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../ui/icons';
 import { calcBlockTimeMin, calcDistanceNm } from '../game/geo';
-import { formatNavaidFreq, getActiveRunwayForAirport, getAirportRunways, getAirportWeather } from '../game/navdata';
+import { formatNavaidFreq, getActiveRunwayForAirport, getAirportRunways, getAirportWeather, runwayLanes } from '../game/navdata';
 import {
   buildDispatchLegs,
   calcAircraftScheduleUsage,
@@ -140,6 +140,12 @@ export function AirportDrawer({
 
   const wx = getAirportWeather(airport, simDay, simMin, dayOfMonth);
   const actRwy = getActiveRunwayForAirport(airport, simDay, simMin);
+  // Runways in use: landings, and takeoffs (busy airports use several of each)
+  const inUse = (purpose: 'arrival' | 'departure', n: number) =>
+    [...new Set(Array.from({ length: n }, (_, l) => getActiveRunwayForAirport(airport, simDay, simMin, purpose, l).ident))].join(', ');
+  const lanes = runwayLanes(airport);
+  const landingRwys = inUse('arrival', lanes.arr);
+  const takeoffRwys = inUse('departure', lanes.dep);
   const runways = getAirportRunways(airport);
 
   const originOptions = Array.from(new Set([...hubs, draft.originIata, ...schedule.map((s) => s.destination.iata_code)]));
@@ -266,7 +272,8 @@ export function AirportDrawer({
         >
           <span style={{ fontWeight: 650, color: wx.categoryColor }}>{wx.categoryBadge}</span>
           <span style={{ flex: 1 }} className="num">
-            {wx.conditionLabel}, {wx.tempC}°C. Wind {String(wx.windDirDeg).padStart(3, '0')}° {wx.windSpeedKts} kt{wx.gustKts ? ` gusting ${wx.gustKts}` : ''}. Landing {actRwy.ident}.
+            {wx.conditionLabel}, {wx.tempC}°C. Wind {String(wx.windDirDeg).padStart(3, '0')}° {wx.windSpeedKts} kt{wx.gustKts ? ` gusting ${wx.gustKts}` : ''}. Landing {landingRwys}
+            {takeoffRwys !== landingRwys ? `, taking off ${takeoffRwys}` : ''}.
           </span>
           <Icon name="chevron" size={14} style={{ transform: showWx ? 'rotate(90deg)' : 'none', transition: 'transform .12s' }} />
         </button>

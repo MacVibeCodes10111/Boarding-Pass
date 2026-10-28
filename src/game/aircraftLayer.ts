@@ -11,7 +11,7 @@
 // Needs WebGL2 (instanced drawing). Where it is missing the layer reports
 // `supported = false` and the map keeps the simple extruded shapes.
 // ============================================================================
-import { AIRCRAFT_GROUPS, aircraftMesh } from './aircraftMeshes';
+import { AIRCRAFT_GROUPS, MESH_STRIDE, aircraftMesh } from './aircraftMeshes';
 import type { RadarIconGroup } from './types';
 
 export interface Aircraft3d {
@@ -40,6 +40,7 @@ ${prelude}
 ${define}
 layout(location = 0) in vec3 a_pos;
 layout(location = 1) in vec3 a_normal;
+layout(location = 5) in float a_part;   // body, wing, fin, engine, propeller
 layout(location = 2) in vec4 a_place;   // mercator x, y, centre height (m), half length (m)
 layout(location = 3) in vec4 a_turn;    // heading, pitch (rad), mercator units per metre, vertical scale
 layout(location = 4) in vec4 a_color;   // rgb, unused
@@ -47,7 +48,8 @@ out vec3 v_normal;
 out vec3 v_color;
 void main() {
   vec3 p = a_pos;
-  vec3 n = a_normal;
+  // Squashed flatter when zoomed far out: the normals follow
+  vec3 n = normalize(vec3(a_normal.xy, a_normal.z / max(a_turn.w, 0.05)));
   p.z *= a_turn.w;
   // Nose up/down about the wing axis (x), then heading about the vertical (z)
   float cp = cos(a_turn.y), sp = sin(a_turn.y);
@@ -57,22 +59,39 @@ void main() {
   // Heading is clockwise from north: x (right wing) and y (nose) to east and north
   vec3 enu = vec3(p.x * ch + p.y * sh, -p.x * sh + p.y * ch, p.z) * a_place.w;
   v_normal = vec3(n.x * ch + n.y * sh, -n.x * sh + n.y * ch, n.z);
-  v_color = a_color.rgb;
+  // Paint: the body and fin in the aircraft's colour, wings grey with a hint of it, engines dark grey, propellers darker still
+  vec3 c = a_color.rgb;
+  float lum = dot(c, vec3(0.299, 0.587, 0.114));
+  vec3 wing = mix(c, vec3(0.6), 0.85);
+  vec3 engine = mix(vec3(0.3), c, 0.2);
+  vec3 prop = vec3(0.12);
+  int part = int(a_part + 0.5);
+  v_color = part == 1 ? wing : part == 3 ? engine : part == 4 ? prop : part == 2 ? c * (lum > 0.6 ? 0.82 : 1.0) : c;
   vec2 merc = a_place.xy + vec2(enu.x, -enu.y) * a_turn.z;
   gl_Position = projectTileFor3D(merc, a_place.z + enu.z);
 }`;
 
 const FRAGMENT = `#version 300 es
 precision mediump float;
+uniform vec3 u_eye;     // towards the camera (east, north, up)
 in vec3 v_normal;
 in vec3 v_color;
 out vec4 fragColor;
 void main() {
-  vec3 l = normalize(vec3(-0.35, 0.45, 0.82));
-  float d = max(dot(normalize(v_normal), l), 0.0);
-  // Ambient plus sunlight from above, a touch of sky light on top surfaces
-  float shade = 0.42 + 0.5 * d + 0.08 * max(normalize(v_normal).z, 0.0);
-  fragColor = vec4(v_color * shade, 1.0);
+  vec3 n = normalize(v_normal);
+  // Both sides of thin parts are drawn: light the side facing the camera
+  if (dot(n, u_eye) < 0.0) n = -n;
+  vec3 l = normalize(vec3(-0.45, 0.35, 0.72));   // sun from the north-west, fairly high
+  float d = max(dot(n, l), 0.0);
+  // Sky light from above, darker from below (bellies and wing undersides)
+  float sky = mix(0.2, 0.42, n.z * 0.5 + 0.5);
+  vec3 col = v_color * (sky + 0.56 * d);
+  // Glossy highlight and darker edges, so the shape reads even from straight above
+  vec3 h = normalize(l + u_eye);
+  col += vec3(0.32) * pow(max(dot(n, h), 0.0), 28.0);
+  float edge = 1.0 - abs(dot(n, u_eye));
+  col *= 1.0 - 0.38 * edge * edge;
+  fragColor = vec4(min(col, vec3(1.0)), 1.0);
 }`;
 
 interface GroupGl {
@@ -123,7 +142,7 @@ export function createAircraftLayer(id = 'aircraft-3d'): AircraftLayerHandle {
     gl.deleteShader(fs);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error('aircraft program: ' + gl.getProgramInfoLog(prog));
     const u: Record<string, WebGLUniformLocation | null> = {};
-    for (const name of ['u_projection_fallback_matrix', 'u_projection_matrix', 'u_projection_tile_mercator_coords', 'u_projection_clipping_plane', 'u_projection_transition'])
+    for (const name of ['u_projection_fallback_matrix', 'u_projection_matrix', 'u_projection_tile_mercator_coords', 'u_projection_clipping_plane', 'u_projection_transition', 'u_eye'])
       u[name] = gl.getUniformLocation(prog, name);
     p = { prog, u };
     programs.set(key, p);
@@ -141,9 +160,11 @@ export function createAircraftLayer(id = 'aircraft-3d'): AircraftLayerHandle {
     gl.bindVertexArray(vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, g.mesh);
     gl.enableVertexAttribArray(0);
-    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 24, 0);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, MESH_STRIDE * 4, 0);
     gl.enableVertexAttribArray(1);
-    gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 24, 12);
+    gl.vertexAttribPointer(1, 3, gl.FLOAT, false, MESH_STRIDE * 4, 12);
+    gl.enableVertexAttribArray(5);
+    gl.vertexAttribPointer(5, 1, gl.FLOAT, false, MESH_STRIDE * 4, 24);
     gl.bindBuffer(gl.ARRAY_BUFFER, inst.buf);
     for (let a = 0; a < 3; a++) {
       gl.enableVertexAttribArray(2 + a);
@@ -215,7 +236,7 @@ export function createAircraftLayer(id = 'aircraft-3d'): AircraftLayerHandle {
         const buf = gl2.createBuffer()!;
         gl2.bindBuffer(gl2.ARRAY_BUFFER, buf);
         gl2.bufferData(gl2.ARRAY_BUFFER, data, gl2.STATIC_DRAW);
-        groups.set(g, { mesh: buf, count: data.length / 6 });
+        groups.set(g, { mesh: buf, count: data.length / MESH_STRIDE });
       }
       gl2.bindBuffer(gl2.ARRAY_BUFFER, null);
       for (const which of ['player', 'ai'] as const) {
@@ -274,6 +295,10 @@ export function createAircraftLayer(id = 'aircraft-3d'): AircraftLayerHandle {
       gl.uniform4f(u.u_projection_tile_mercator_coords, pd.tileMercatorCoords[0], pd.tileMercatorCoords[1], pd.tileMercatorCoords[2], pd.tileMercatorCoords[3]);
       gl.uniform4f(u.u_projection_clipping_plane, pd.clippingPlane[0], pd.clippingPlane[1], pd.clippingPlane[2], pd.clippingPlane[3]);
       gl.uniform1f(u.u_projection_transition, pd.projectionTransition);
+      // Direction towards the camera, for the highlights and edges
+      const b = (map?.getBearing?.() ?? 0) * DEG;
+      const pt = (map?.getPitch?.() ?? 0) * DEG;
+      gl.uniform3f(u.u_eye, -Math.sin(b) * Math.sin(pt), -Math.cos(b) * Math.sin(pt), Math.cos(pt));
       gl.enable(gl.DEPTH_TEST);
       gl.depthFunc(gl.LEQUAL);
       gl.depthMask(true);

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Privacy: Boarding Pass</title>
-    <meta name="description" content="Boarding Pass has no accounts, no ads and no tracking." />
+    <meta name="description" content="Boarding Pass has no accounts, no ads, no analytics and no tracking. Your airline lives on your own device." />
     <meta name="theme-color" content="#0c1320" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -14,9 +14,6 @@
     <meta property="og:image" content="https://boardingpass.my/og-image.png" />
     <meta property="og:url" content="https://boardingpass.my/" />
     <meta name="twitter:card" content="summary_large_image" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=B612+Mono:wght@400;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
@@ -35,38 +32,83 @@
       <a class="btn btn-play btn-small" href="https://play.boardingpass.my" data-play>Play now</a>
     </header>
 
-    <main id="main" class="page">
-      <h1>Privacy</h1>
-      <p>Short version: Boarding Pass has no accounts, no ads and no tracking. Your airline lives on your own device.</p>
-      <h2>Your careers</h2>
-      <p>In the browser, the game saves your careers and settings in your browser's own storage on your device. They aren't sent to us. Clearing your browsing data deletes them, so use <strong>Menu → Export save file</strong> to keep a copy or move a career to another device. The desktop apps keep their saves on your computer. Your colour theme (Appearance) is kept the same way.</p>
-      <h2>Your boarding pass</h2>
-      <p>The airline name, code, hub and colours you choose in <strong>Print your boarding pass</strong> are kept in your browser on this site, so the page remembers them. They go nowhere else, except into the address of the game when you press <strong>Board now</strong> or copy the link, so the game can fill them in. <strong>Save as image</strong> makes the picture on your device.</p>
-      <h2>What other services see</h2>
-      <p>Like any website, the services the game and this site load from see your IP address and the request:</p>
+    <main id="main" class="page legal">
+      <h1>Privacy policy</h1>
+      <p class="updated">Last updated 28 October 2026.</p>
+      <p><strong>Short version:</strong> Boarding Pass has no accounts, no ads, no analytics, no tracking and no cookies. Your airline lives on your own device and is never sent to us. We don't sell or share anyone's personal information, and we have none to sell.</p>
+
+      <h2>What this covers</h2>
+      <p>This policy covers the website at boardingpass.my, the game in the browser at play.boardingpass.my (and the test version at test.boardingpass.my), and the Boarding Pass desktop apps for Mac and Windows. In it, “we” and “us” means the developer, Mac, who is responsible for them.</p>
+
+      <h2>What we collect</h2>
+      <p>Nothing. There are no accounts or sign-ins, and the game and this site send nothing about you or your games to us. We don't use analytics, advertising, tracking pixels, fingerprinting, session recording or any similar tools, and we don't buy or receive information about you from anyone else.</p>
+      <p>The only personal information that reaches anyone in the course of running the game is your IP address and ordinary request details, which every website you visit receives, as described under <a href="#services">Services that handle your requests</a>. If you message us on Discord or GitHub, we see what you send there, and use it only to reply and to improve the game.</p>
+
+      <h2>What stays on your device</h2>
+      <p>Everything the game remembers is kept in your browser's storage (in the browser) or in the app's own data folder (in the desktop apps), on your device only:</p>
       <ul>
-        <li><strong>Maps:</strong> CARTO (map tiles and labels) and EOX (satellite imagery), when the map is shown.</li>
-        <li><strong>GitHub:</strong> this site asks GitHub for the latest version and the list of changes. The desktop apps ask GitHub for updates when they start.</li>
-        <li><strong>Google Fonts:</strong> the typefaces on this site.</li>
-        <li><strong>Hosting:</strong> our web host keeps standard server logs.</li>
-        <li><strong>Discord and GitHub</strong>, if you follow a link to them, under their own privacy policies.</li>
+        <li><strong>Your careers:</strong> each saved airline (fleet, routes, schedule, finances), stored scrambled and signed so damage can be spotted.</li>
+        <li><strong>Settings:</strong> map and display settings, colour theme, cabin layouts you saved, how panels are arranged, and whether you've seen the welcome tour.</li>
+        <li><strong>Save files you export:</strong> written wherever you choose, on your device.</li>
+        <li><strong>On this website:</strong> the airline name, code, hub and colours you choose in <strong>Print your boarding pass</strong>, a count of the times you pressed <strong>Board now</strong> (shown on the page), and, for the length of your visit, the latest version number and list of changes fetched from GitHub.</li>
       </ul>
-      <h2>Cookies</h2>
-      <p>Neither the game nor this site sets cookies for tracking or advertising.</p>
-      <h2>Questions</h2>
-      <p>Ask on the <a href="https://discord.gg/zCk6hcFkzf">Discord</a> or open an issue on <a href="https://github.com/MacVibeCodes10111/Boarding-Pass/issues">GitHub</a>.</p>
+      <p>We can't see any of this. To delete it, clear this site's data in your browser (or play.boardingpass.my's, for careers in the browser), or remove the desktop app and its data. That deletes your careers too, so use <strong>Menu → Export save file</strong> first if you want to keep one. The <a href="/cookies.html">Cookies and storage</a> page lists every item.</p>
+
+      <h2>Your boarding pass link</h2>
+      <p>When you press <strong>Board now</strong> or copy the link, the airline name, code, hub and colours you chose are put into the game's web address, so the game can fill them in. Like any web address, it ends up in your browser history and in the web host's logs for play.boardingpass.my, and anyone you send the link to can read it. Please don't put personal details in an airline name.</p>
+
+      <h2 id="services">Services that handle your requests</h2>
+      <p>Like any website, the services that the game and this site load files from receive your IP address and the details of each request (the address asked for, the time, and what your browser says about itself). They handle it under their own privacy policies:</p>
+      <ul>
+        <li><strong>Hosting:</strong> boardingpass.my and play.boardingpass.my are hosted by Hostinger, whose servers keep standard access logs. We look at them only to fix problems or stop abuse. <a href="https://www.hostinger.com/legal/privacy-policy">Hostinger's privacy policy</a>.</li>
+        <li><strong>Maps:</strong> map tiles, labels and map styles come from <a href="https://carto.com">CARTO</a>, and satellite imagery from <a href="https://eox.at">EOX IT Services</a>, when the map is shown. Their privacy policies are on their websites.</li>
+        <li><strong>GitHub:</strong> this site asks GitHub for the latest version and the list of changes. The desktop apps ask GitHub for updates when they start, and are downloaded from GitHub. <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub's privacy statement</a>.</li>
+        <li><strong>Discord and GitHub</strong>, only if you follow a link to them, under their own policies (<a href="https://discord.com/privacy">Discord's privacy policy</a>).</li>
+      </ul>
+      <p>Everything else the game and this site use, including the map engine and the typefaces, is served by our own host. The game and this site send their requests to CARTO, EOX and GitHub without cookies, so those services can't use cookies to recognise you. They may process data in the United States, the European Union and other countries.</p>
+
+      <h2>Why this is lawful (EU and UK visitors)</h2>
+      <p>We don't process personal data about you ourselves, beyond reading the host's logs when something goes wrong and reading messages you send us. Our lawful basis for both is our legitimate interest in keeping the game and site working and safe, and in answering you (GDPR and UK GDPR, Article 6(1)(f)). Storage on your device is used only for features you ask for, as explained on the <a href="/cookies.html">Cookies and storage</a> page.</p>
+
+      <h2>Your rights</h2>
+      <p>Wherever you live, you can ask what personal information we hold about you, ask us to correct or delete it, or object to how we use it. Depending on where you live, you may have more rights. Those include the rights in the EU and UK GDPR, the California Consumer Privacy Act and other US state privacy laws, and Canada's PIPEDA. Because we hold nothing about you, the answer to most requests will be that there is nothing to give or delete, but we'll answer every request, usually within 30 days, and we'll never treat you differently for making one.</p>
+      <ul>
+        <li><strong>Sale and sharing:</strong> we don't sell personal information, don't share it for targeted advertising, and don't profile anyone. There is nothing to opt out of, and we treat Global Privacy Control and Do Not Track signals as a request not to be tracked, which we already honour.</li>
+        <li><strong>Sensitive information:</strong> we don't collect any.</li>
+        <li><strong>Complaints:</strong> if you are in the EU or UK, you can complain to your data protection authority.</li>
+      </ul>
+
+      <h2>Children</h2>
+      <p>Boarding Pass is suitable for all ages, and nobody needs to give us any personal information to play. We don't knowingly collect personal information from anyone, including children under 13 (as covered by the US Children's Online Privacy Protection Act) or under 16. If you think a child has sent us personal information, for example in a Discord message, tell us and we'll delete it. The Discord server is for people old enough to use Discord under its own terms.</p>
+
+      <h2>Security</h2>
+      <ul>
+        <li>The websites are served over encrypted connections (HTTPS).</li>
+        <li>The desktop apps only install updates signed with the developer's private key, and refuse anything else.</li>
+        <li>The game's code, map engine and typefaces come with the game or from our own host, not from third-party code sites, and the desktop apps only run code that comes with them.</li>
+        <li>Your saves never leave your device unless you export and send them somewhere yourself.</li>
+      </ul>
+      <p>No system is perfectly secure, but there is no store of player data to break into.</p>
+
+      <h2>Changes to this policy</h2>
+      <p>If the game ever starts handling information differently, we'll update this page and its date before the change, and say so in What's new. We won't start collecting personal information without asking you first.</p>
+
+      <h2>Contact</h2>
+      <p>Boarding Pass is made by one developer, Mac, with the help of AI (Claude, by Anthropic). Ask anything on the <a href="https://discord.gg/zCk6hcFkzf">Boarding Pass Discord</a> or in a <a href="https://github.com/MacVibeCodes10111/Boarding-Pass/issues">GitHub issue</a>. For anything private (a privacy request, for example), send the developer a direct message on that Discord server rather than posting in a public channel.</p>
 </main>
 
     <footer class="site-foot">
       <div class="foot-brand">
         <img src="/src/icon.png" alt="" width="28" height="28" />
-        <span>Boarding Pass is free and stays free. © 2026 Ermek Baker-Niffka, MIT licence.</span>
+        <span>Boarding Pass is free and stays free. © 2026 Mac, MIT licence.</span>
       </div>
       <nav aria-label="Footer">
         <a href="https://play.boardingpass.my" data-play>Play</a>
         <a href="/#download">Download</a>
         <a href="/credits.html">Credits and licences</a>
         <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+        <a href="/cookies.html">Cookies</a>
         <a href="https://discord.gg/zCk6hcFkzf" rel="noopener">Discord</a>
         <a href="https://github.com/MacVibeCodes10111/Boarding-Pass" rel="noopener">GitHub</a>
       </nav>

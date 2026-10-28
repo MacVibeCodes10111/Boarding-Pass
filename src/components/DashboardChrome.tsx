@@ -877,7 +877,7 @@ export function LayersMenu(props: {
               options={[
                 { value: 'dark', label: 'Dark' },
                 { value: 'light', label: 'Light' },
-                { value: 'satellite', label: 'Satellite', title: 'Satellite imagery (Esri World Imagery)' },
+                { value: 'satellite', label: 'Satellite', title: 'Satellite imagery (EOxCloudless by EOX)' },
               ]}
             />
             {props.globeAvailable ? (

@@ -221,47 +221,28 @@ export function resolvePlaneIconKey(model: AircraftModel | undefined, has: (key:
 }
 
 // ----------------------------------------------------------------------------
-// MapLibre loader (single shared promise so it is only injected once)
+// MapLibre loader (single shared promise so it is only loaded once)
 // ----------------------------------------------------------------------------
-// MapLibre 5 brings the globe view; 4.7.1 (the version used up to v2.19) is the fallback.
-const MAPLIBRE_VERSIONS = ['5.24.0', '4.7.1'];
+// MapLibre GL JS 5.24.0 ships with the game (npm package, pinned in package.json
+// and package-lock.json): nothing is fetched from a third-party code site, so the
+// map engine can't be swapped by anyone else and no outside service sees players
+// start the game. It is its own chunk, loaded when the map first opens.
 let maplibrePromise: Promise<any> | null = null;
-
-function injectMaplibre(version: string): Promise<any> {
-  const w = window as any;
-  return new Promise((resolve, reject) => {
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = `https://unpkg.com/maplibre-gl@${version}/dist/maplibre-gl.css`;
-    const script = document.createElement('script');
-    script.src = `https://unpkg.com/maplibre-gl@${version}/dist/maplibre-gl.js`;
-    script.onload = () => (w.maplibregl ? resolve(w.maplibregl) : reject(new Error('MapLibre did not start')));
-    script.onerror = () => {
-      link.remove();
-      script.remove();
-      reject(new Error('Could not load MapLibre GL (are you offline?)'));
-    };
-    document.head.appendChild(link);
-    document.head.appendChild(script);
-  });
-}
 
 export function loadMaplibre(): Promise<any> {
   const w = window as any;
   if (w.maplibregl) return Promise.resolve(w.maplibregl);
   if (maplibrePromise) return maplibrePromise;
-  maplibrePromise = (async () => {
-    let last: unknown = null;
-    for (const v of MAPLIBRE_VERSIONS) {
-      try {
-        return await injectMaplibre(v);
-      } catch (e) {
-        last = e;
-      }
-    }
-    maplibrePromise = null;
-    throw last instanceof Error ? last : new Error('Could not load MapLibre GL (are you offline?)');
-  })();
+  maplibrePromise = Promise.all([import('maplibre-gl'), import('maplibre-gl/dist/maplibre-gl.css')])
+    .then(([mod]) => {
+      const ml = (mod as any).default ?? mod;
+      w.maplibregl = ml;
+      return ml;
+    })
+    .catch((e) => {
+      maplibrePromise = null;
+      throw e instanceof Error ? e : new Error('Could not start the map (MapLibre GL)');
+    });
   return maplibrePromise;
 }
 

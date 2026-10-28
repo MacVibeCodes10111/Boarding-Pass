@@ -12,6 +12,7 @@
 //
 //   Everything here works in a flat local frame in metres around the airport.
 // ============================================================================
+import { LINEUP_MIN, VACATE_MIN } from './runwayUse';
 import type { LonLat } from './geo';
 import { filletPath } from './navdata';
 
@@ -203,6 +204,27 @@ export class TaxiNetwork {
   readonly trajs = new Map<string, TaxiTrajectory>();
   readonly bookings = new Map<number, number[]>();
   prunedAt = -Infinity;
+  private junctionGrid: Map<number, XY[]> | null = null;
+
+  /** True if a taxiway junction (three or more ways) is within `r` metres of `p`. */
+  nearJunction(p: XY, r: number): boolean {
+    if (!this.junctionGrid) {
+      const g = new Map<number, XY[]>();
+      for (let i = 0; i < this.adj.length; i++) {
+        if ((this.adj[i]?.length ?? 0) < 3) continue;
+        const q = this.node(i);
+        const key = cellKey(Math.floor(q[0] / JUNCTION_CELL_M), Math.floor(q[1] / JUNCTION_CELL_M));
+        (g.get(key) ?? g.set(key, []).get(key)!).push(q);
+      }
+      this.junctionGrid = g;
+    }
+    const n = Math.ceil(r / JUNCTION_CELL_M);
+    const cx = Math.floor(p[0] / JUNCTION_CELL_M);
+    const cy = Math.floor(p[1] / JUNCTION_CELL_M);
+    for (let x = cx - n; x <= cx + n; x++)
+      for (let y = cy - n; y <= cy + n; y++) for (const q of this.junctionGrid.get(cellKey(x, y)) ?? []) if (dist(p, q) <= r) return true;
+    return false;
+  }
 
   /** Forgets plans and bookings that are over. */
   pruneTaxi(now: number) {
@@ -1085,9 +1107,11 @@ export function buildTaxiNetwork(
 // ----------------------------------------------------------------------------
 // Aircraft on the ground
 // ----------------------------------------------------------------------------
-/** Minutes: pushback, and the line-up from the hold-short line to the threshold. */
+/** Minutes: pushback (the line-up from the hold-short line to the threshold is LINEUP_MIN, runwayUse.ts). */
 export const PUSH_MIN = 2;
-export const LINEUP_MIN = 0.6;
+/** Arrivals' taxi to the gate is planned this long before they land (moves must include them from then). */
+export const ARR_PLAN_AHEAD_MIN = 30;
+export { LINEUP_MIN };
 /** Taxi speed, metres per minute (15 kt). */
 const V_TAXI = 463;
 
@@ -1226,8 +1250,12 @@ export function groundPoses(net: TaxiNetwork, moves: GroundMove[], now: number, 
   // so it never meets anyone, whether ahead, crossing or coming the other way.
   // Departures are planned 25 minutes before takeoff, in takeoff order, and
   // reach the hold-short line 20–60 s before their line-up; arrivals are
-  // planned as they land and fit around them. A plan never changes once made,
-  // so every redraw and zoom level shows the same aircraft in the same place.
+  // planned 30 minutes before they land (their landing time is fixed by then),
+  // so most departures are planned after them and keep clear of their way off
+  // the runway (an arrival can't wait on it). Waiting aircraft hold short of
+  // junctions, keeping them clear for crossing traffic. A plan never changes
+  // once made, so every redraw and zoom level shows the same aircraft in the
+  // same place.
   const PLAN_AHEAD_MIN = 25;
   const pathOf = (p: Plan) => {
     const { m, route, spot, stand } = p;
@@ -1239,7 +1267,7 @@ export function groundPoses(net: TaxiNetwork, moves: GroundMove[], now: number, 
     if (p.gate < 0) return { pts: route.pts, cum: route.cum, lead: 0 };
     return { pts: [...route.pts, spot.c], cum: [...route.cum, route.len + dist(stand.j, spot.c)], lead: 0 };
   };
-  const trigger = (p: Plan) => (p.m.kind === 'dep' ? p.m.takeoffAt! - PLAN_AHEAD_MIN : p.m.rollEndAt!);
+  const trigger = (p: Plan) => (p.m.kind === 'dep' ? p.m.takeoffAt! - PLAN_AHEAD_MIN : p.m.rollEndAt! - ARR_PLAN_AHEAD_MIN);
   const toPlan = plans.filter((p) => !net.trajs.has(p.m.key) && now >= trigger(p)).sort((x, y) => trigger(x) - trigger(y) || (x.m.key < y.m.key ? -1 : 1));
   // Planning is the costly part: a few milliseconds per redraw, the rest next time (in the same order)
   const clockMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -1273,7 +1301,9 @@ export function groundPoses(net: TaxiNetwork, moves: GroundMove[], now: number, 
         : state === 'lineup'
         ? `Lining up on runway ${ident}`
         : state === 'vacate'
-        ? `Vacating runway ${ident}`
+        ? waiting
+          ? `Clear of runway ${ident}, holding for traffic`
+          : `Vacating runway ${ident}`
         : waiting
         ? `Holding position for traffic, then ${m.kind === 'dep' ? `runway ${ident}` : gateRef ? `gate ${gateRef}` : 'the gate'}`
         : m.kind === 'dep'
@@ -1339,7 +1369,8 @@ export function groundPoses(net: TaxiNetwork, moves: GroundMove[], now: number, 
       } else if (speed < 0.5) holding.push({ p, pos: o.p, brg: o.brg, along: ra, waiting: ra < p.holdAt - 0.5 });
       else emit(p, 'taxi', o.p, o.brg, speed, ra, false);
     } else {
-      if (!tr) continue;
+      // Still landing (drawn by the flight model), or not planned yet
+      if (!tr || now < m.rollEndAt!) continue;
       const { a, speed } = trajAt(tr, now);
       if (a >= tr.len - 0.5) {
         if (p.gate < 0 || now > (m.parkUntil ?? 0)) continue;
@@ -1352,7 +1383,7 @@ export function groundPoses(net: TaxiNetwork, moves: GroundMove[], now: number, 
         continue;
       }
       const o = pointOn(p.route, a);
-      emit(p, a < p.route.mark ? 'vacate' : 'taxi', o.p, o.brg, speed, a, speed < 0.5 && a > p.route.mark);
+      emit(p, a < p.route.mark ? 'vacate' : 'taxi', o.p, o.brg, speed, a, speed < 0.5);
     }
   }
   // Holding aircraft: in the queue for the runway, numbered in takeoff order
@@ -1383,8 +1414,21 @@ export interface TaxiTrajectory {
 }
 
 const CELL_M = 15;
-const STEP_M = 12;
+const JUNCTION_CELL_M = 100;
+const STEP_M = 18;
 const PAD_MIN = 0.03;
+/**
+ * Room kept clear behind the tail (metres), so a following aircraft stays a
+ * good gap behind (nothing is kept ahead of the nose, so an aircraft holding
+ * short of a junction leaves it clear); and the half-width kept clear as a
+ * share of half the length (wingspans are about the length).
+ */
+const GAP_M = 20;
+const SPAN_SHARE = 0.9;
+/** Fastest turn-off from the runway (m/min, about 30 kt on a high-speed exit). */
+const V_EXIT_MAX = 950;
+/** Spacing of the points that map an aircraft's outline onto the grid (under a cell's size). */
+const FOOT_STEP_M = 11;
 // Small integer keys (airports are well under 50 km across) keep the map fast
 const cellKey = (cx: number, cy: number) => (cx + 5_000) * 10_000 + (cy + 5_000);
 
@@ -1427,21 +1471,52 @@ function planTaxi(net: TaxiNetwork, m: GroundMove, path: { pts: XY[]; cum: numbe
   const holdIdx = dep ? uniq.findIndex((d) => d >= holdA - 0.01) : -1;
   const vPush = Math.max(5, lead / PUSH_MIN);
   const vLine = dep ? Math.max(60, (len - holdA) / LINEUP_MIN) : V_TAXI;
+  // Arrivals turn off quickly: past the hold-short line within VACATE_MIN (runwayUse.ts)
+  const vExit = dep ? V_TAXI : Math.min(V_EXIT_MAX, Math.max(V_TAXI, holdAt / VACATE_MIN));
   // A departure held up on the way lines up quicker to make its slot
   let lineSpeed = vLine;
-  const speedFrom = (k: number) => (dep && uniq[k] < lead - 0.01 ? vPush : dep && uniq[k] >= holdA - 0.01 ? lineSpeed : V_TAXI);
+  const speedFrom = (k: number) =>
+    dep && uniq[k] < lead - 0.01 ? vPush : dep && uniq[k] >= holdA - 0.01 ? lineSpeed : !dep && uniq[k] < holdAt - 0.01 ? vExit : V_TAXI;
   const travel = (k: number) => (uniq[k + 1] - uniq[k]) / speedFrom(k);
-  // Cells each waypoint covers (about the aircraft's size)
-  const r = m.halfLen * 0.6 + 5;
+  // Cells each waypoint covers: the aircraft's outline along its heading, with a
+  // gap kept clear behind it (so the next one stays well back), wings either side
+  const along = m.halfLen + GAP_M;
+  // Only the nose itself ahead: a gap ahead would reach into the junction an aircraft is holding short of
+  const nose = m.halfLen + 3;
+  const side = m.halfLen * SPAN_SHARE + 2;
   const cells: number[][] = uniq.map((d) => {
-    const q = pointOn(path, d).p;
-    const out: number[] = [];
-    for (let cx = Math.floor((q[0] - r) / CELL_M); cx <= Math.floor((q[0] + r) / CELL_M); cx++)
-      for (let cy = Math.floor((q[1] - r) / CELL_M); cy <= Math.floor((q[1] + r) / CELL_M); cy++) out.push(cellKey(cx, cy));
-    return out;
+    const o = pointOn(path, d);
+    const q = o.p;
+    const ux = Math.sin(o.brg * D2R);
+    const uy = Math.cos(o.brg * D2R);
+    const set = new Set<number>();
+    for (let s = -along; s <= nose + 0.01; s += FOOT_STEP_M) {
+      const cx0 = q[0] + ux * s;
+      const cy0 = q[1] + uy * s;
+      // Across the heading: the wings
+      for (let w = -side; w <= side + 0.01; w += FOOT_STEP_M) {
+        const x = cx0 + uy * w;
+        const y = cy0 - ux * w;
+        set.add(cellKey(Math.floor(x / CELL_M), Math.floor(y / CELL_M)));
+      }
+    }
+    return [...set];
   });
-  // The start (gate, end of the landing roll) is a free place to wait; so is the runway after the hold line
-  const unchecked = (k: number) => k === 0 || (dep && k > holdIdx);
+  // The start (gate, end of the landing roll) is a free place to wait; so is the runway after the hold line.
+  // Arrivals never stop on the runway itself: they turn off first, whatever is ahead (they may wait on
+  // the exit once clear of the runway, short of the taxiway it joins)
+  const S = net.toXY([m.rwy.lon, m.rwy.lat]);
+  const ru = unitFromHdg(m.rwy.hdg);
+  const clearLat = 30 + m.halfLen * SPAN_SHARE;
+  const onRunway = uniq.map((d) => {
+    if (dep || d >= holdAt - 0.01) return false;
+    const q = pointOn(path, d).p;
+    return Math.abs(ru[0] * (q[1] - S[1]) - ru[1] * (q[0] - S[0])) < clearLat;
+  });
+  const onRunwayIn = (k: number) => k >= 0 && onRunway[k];
+  const unchecked = (k: number) => k === 0 || (dep && k > holdIdx) || onRunwayIn(k);
+  // Keep junctions clear: waiting aircraft hold short of them (not at the hold-short line itself, the place to wait)
+  const blocksJunction = uniq.map((d, k) => k !== holdIdx && k > 0 && net.nearJunction(pointOn(path, d).p, m.halfLen + 8));
   const busy = (k: number) => cells[k].flatMap((c) => net.bookings.get(c) ?? []);
   const isFree = (k: number, t0: number, t1: number) => {
     for (const c of cells[k]) {
@@ -1481,12 +1556,12 @@ function planTaxi(net: TaxiNetwork, m: GroundMove, path: { pts: XY[]; cum: numbe
   while (k < N - 1 && guard++ < 3000) {
     const tr = travel(k);
     let tl = Math.max(arrive[k], minLeave[k]);
-    if (!unchecked(k + 1)) {
+    if (!unchecked(k + 1) && !onRunwayIn(k)) {
       const trNext = k + 2 < N ? travel(k + 1) : tr;
       if (!isFree(k + 1, tl + tr, tl + tr + trNext)) tl = earliestFree(k + 1, tl + tr, trNext) - tr;
     }
     // Waiting here: the spot must stay free meanwhile, or wait further back
-    if (!unchecked(k) && tl > arrive[k] + 1e-6 && !isFree(k, arrive[k], tl + tr)) {
+    if (!unchecked(k) && ((blocksJunction[k] && tl > arrive[k] + 0.05) || (tl > arrive[k] + 1e-6 && !isFree(k, arrive[k], tl + tr))) && !onRunwayIn(k - 1)) {
       minLeave[k - 1] = Math.max(minLeave[k - 1], leave[k - 1] + Math.max(0.02, tl - arrive[k]));
       k--;
       continue;
@@ -1522,14 +1597,25 @@ function planTaxi(net: TaxiNetwork, m: GroundMove, path: { pts: XY[]; cum: numbe
   }
   const { arrive, leave } = best;
   lineSpeed = best.line;
-  // Book the space it uses (not the stand it starts from)
+  // Book the space it uses (not the stand it starts from). Neighbouring waypoints
+  // share most cells, back to back in time: those join into one interval per cell,
+  // which keeps the lists short (and checking them quick)
+  const mine = new Map<number, number>();
   for (let i = dep && lead > 0 ? 1 : 0; i < N; i++) {
     const t0 = arrive[i];
     const t1 = (i < N - 1 ? leave[i] + travel(i) : arrive[i] + (dep ? 0.1 : 0.3));
     for (const c of cells[i]) {
       const list = net.bookings.get(c);
-      if (list) list.push(t0, t1);
-      else net.bookings.set(c, [t0, t1]);
+      const at = mine.get(c);
+      if (list && at !== undefined && t0 <= list[at + 1] + 1e-9) {
+        if (t1 > list[at + 1]) list[at + 1] = t1;
+      } else if (list) {
+        mine.set(c, list.length);
+        list.push(t0, t1);
+      } else {
+        mine.set(c, 0);
+        net.bookings.set(c, [t0, t1]);
+      }
     }
   }
   const t: number[] = [];

@@ -4,6 +4,11 @@
    loud thing on the page. Archivo for everything, B612 Mono (Airbus's cockpit
    display face) only on the departures board.
    ========================================================================== */
+/* The typefaces are served from this site (npm packages, built into dist/), not
+   from Google Fonts, so visitors' browsers contact no one else for them. */
+@import '@fontsource-variable/archivo/wdth.css';
+@import '@fontsource/b612-mono/400.css';
+@import '@fontsource/b612-mono/700.css';
 :root {
   --night: #0c1320;
   --navy: #131c2e;
@@ -17,7 +22,7 @@
   --dim: #b4bfd0;
   --muted: #8d99ae;
   --green: #3ecf8e;
-  --sans: 'Archivo', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --sans: 'Archivo Variable', 'Archivo', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono: 'B612 Mono', ui-monospace, monospace;
   --gutter: clamp(16px, 4vw, 40px);
   --max: 1180px;
@@ -269,6 +274,24 @@ h3 { margin: 0 0 6px; font-size: 19px; font-weight: 700; font-stretch: 105%; }
 .page h2 { font-size: clamp(24px, 3vw, 30px); margin: 40px 0 8px; }
 .page p, .page li { color: var(--dim); }
 .page strong { color: var(--text); }
+.legal .updated { color: var(--muted); font-size: 15px; margin-top: -4px; }
+.legal h2 { scroll-margin-top: 90px; }
+.legal ul { padding-left: 1.2em; }
+.legal li { margin: 6px 0; }
+.legal code { font-family: var(--mono); font-size: 0.82em; color: var(--text); overflow-wrap: anywhere; }
+.legal .table-wrap { overflow-x: auto; margin: 14px 0; border: 1px solid var(--line); border-radius: 10px; }
+.legal table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.legal th, .legal td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); color: var(--dim); }
+.legal th { color: var(--text); font-weight: 600; background: var(--navy); }
+.legal tr:last-child td { border-bottom: 0; }
+@media (max-width: 640px) {
+  .legal thead { display: none; }
+  .legal tr { display: block; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .legal tr:last-child { border-bottom: 0; }
+  .legal td { display: block; border: 0; padding: 2px 0; }
+  .legal td:first-child { margin-bottom: 4px; }
+  .legal td[data-label]::before { content: attr(data-label) ': '; color: var(--muted); }
+}
 
 /* -------------------------------------------------------------- smaller screens */
 @media (max-width: 960px) {
