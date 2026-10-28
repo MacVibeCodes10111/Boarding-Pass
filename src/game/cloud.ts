@@ -187,10 +187,33 @@ export async function signInWithUsername(username: string, password: string, cre
   const c = await client();
   const email = `${u}@${USERNAME_DOMAIN}`;
   if (create) {
-    const { data, error } = await c.auth.signUp({ email, password, options: { data: { username: u } } });
-    if (error) throw new Error(friendlyAuthError(error.message));
-    if (!data.session) throw new Error('Accounts can’t be created right now. Try Google or Discord, or try again later.');
-    return describeUser(data.session.user);
+    // Username accounts are made by the game's create-account function (it
+    // checks the name and limits how many accounts one address can make);
+    // the open sign-up endpoint refuses password accounts.
+    let res: Response;
+    try {
+      res = await fetch(`${SUPABASE_URL}/functions/v1/create-account`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: SUPABASE_KEY },
+        body: JSON.stringify({ username: u, password }),
+      });
+    } catch {
+      throw new Error('Can’t reach the cloud. Check your connection.');
+    }
+    if (!res.ok) {
+      const code = ((await res.json().catch(() => ({}))) as { error?: string }).error;
+      throw new Error(
+        code === 'taken'
+          ? 'That username is taken. Pick another.'
+          : code === 'rate_limited'
+            ? 'Too many new accounts from your connection. Try again in an hour.'
+            : code === 'bad_username'
+              ? `Usernames are ${USERNAME_RULE}.`
+              : code === 'bad_password' || code === 'weak_password'
+                ? `Pick a password of ${PASSWORD_MIN} to 72 characters that isn’t easy to guess.`
+                : 'Accounts can’t be created right now. Try again later.',
+      );
+    }
   }
   const { data, error } = await c.auth.signInWithPassword({ email, password });
   if (error || !data.session) throw new Error(friendlyAuthError(error?.message));
@@ -205,6 +228,8 @@ function friendlyAuthError(msg?: string): string {
   if (m.includes('weak') || m.includes('password')) return 'Pick a longer or less common password.';
   if (m.includes('provider is not enabled') || m.includes('unsupported provider')) return 'That sign-in option isn’t switched on yet.';
   if (m.includes('fetch') || m.includes('network')) return 'Can’t reach the cloud. Check your connection.';
+  if (m.includes('too many syncs')) return 'You’ve synced a lot today, so syncing is paused for a while. Your careers are safe on this device.';
+  if (m.includes('database error') || m.includes('not allowed') || m.includes('not available')) return 'That isn’t possible with Boarding Pass accounts.';
   return msg || 'Something went wrong. Try again.';
 }
 
@@ -299,7 +324,7 @@ async function signedInClient(): Promise<SupabaseClient | null> {
 }
 
 /** Uploads one career if it changed since it was last synced. */
-async function pushOne(c: SupabaseClient, s: SaveGameState): Promise<'saved' | 'same' | 'older' | 'full' | 'server_full' | 'too_big' | 'skip'> {
+async function pushOne(c: SupabaseClient, s: SaveGameState): Promise<'saved' | 'same' | 'older' | 'full' | 'server_full' | 'too_big' | 'rate_limited' | 'skip'> {
   const rev = saveRev(s);
   if (!(rev > 0) || rev <= (readSynced()[s.saveId] ?? 0)) return 'skip';
   const data = protectSave(serializeSave(s));
@@ -387,6 +412,10 @@ async function doSync(openSaveId: string | null): Promise<SyncReport> {
       else if (r === 'server_full') report.problem = 'The cloud is full right now. Your careers are safe on this device; try again later.';
       else if (r === 'too_big') report.problem = `${s.airlineName} is too big to sync. Use Export save file to move it.`;
       else if (r === 'older' && s.saveId !== openSaveId) report.waiting.push(s.airlineName);
+      else if (r === 'rate_limited') {
+        report.problem = 'You’ve synced a lot this hour, so uploads are paused for a while. Your careers are safe on this device.';
+        break;
+      }
     }
   } catch (e) {
     report.problem = friendlyAuthError(e instanceof Error ? e.message : String((e as { message?: string })?.message ?? e));

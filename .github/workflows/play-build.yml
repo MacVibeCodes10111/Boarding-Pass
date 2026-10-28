@@ -62,6 +62,12 @@ jobs:
           AddType application/manifest+json .webmanifest
           AddType application/javascript .js .mjs
           <IfModule mod_headers.c>
+            # Security (v2.50): no framing by other sites, no type guessing
+            Header always set Content-Security-Policy "frame-ancestors 'none'"
+            Header always set X-Frame-Options "DENY"
+            Header always set X-Content-Type-Options "nosniff"
+            Header always set Referrer-Policy "strict-origin-when-cross-origin"
+            Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
             <FilesMatch "^(index\.html|manifest\.webmanifest)$">
               Header set Cache-Control "no-cache"
             </FilesMatch>

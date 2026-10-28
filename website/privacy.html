@@ -49,7 +49,7 @@
         <li><strong>Your account:</strong> a random account number, and either the username you chose (your password is stored only as a secure hash, and we can't see it) or, if you sign in with Google or Discord, the email address, name and profile picture link they send us. Discord also sends your Discord user name. We use these only to sign you in and to show you who you're signed in as. We never email you.</li>
         <li><strong>Your careers on their way between devices:</strong> a copy of a career you saved (the same scrambled and signed save the game keeps on your device), its airline name and when it was saved.</li>
         <li><strong>Your devices:</strong> a random number for each device you sign in on, its type (for example “Mac app” or “iPhone browser”) and when it last synced, so we know which devices still need a career.</li>
-        <li><strong>Sign-in records:</strong> when you signed in, and your IP address in our service provider's security logs.</li>
+        <li><strong>Sign-in records:</strong> when you signed in, and your IP address in our service provider's security logs. When you create a username account, a scrambled (hashed) form of your IP address is kept for one day, only to stop anyone creating accounts in bulk.</li>
       </ul>
       <p>Before you sign in, the game asks when you were born. It keeps only whether you're 13 or over, on your device, and never sends your birthday anywhere.</p>
 
@@ -58,7 +58,7 @@
         <li>A career copy is deleted as soon as all your other devices used in the last 30 days have it. A copy no other device has picked up is deleted after 90 days.</li>
         <li>A device that hasn't synced for 180 days is forgotten. Signing out on a device forgets it at once.</li>
         <li>Your account and everything with it are deleted when you delete it (<strong>Cloud saves → Delete account</strong>, in the game), or automatically after 12 months without use.</li>
-        <li>Our service provider's logs are kept only for a short time, set by the provider.</li>
+        <li>Our service provider's logs are kept only for a short time, set by the provider. Counts of how much each account has synced are kept for two days, to enforce fair-use limits.</li>
       </ul>
 
       <h2>What stays on your device</h2>
@@ -112,6 +112,8 @@
       <ul>
         <li>The websites and the cloud service are reached only over encrypted connections (HTTPS).</li>
         <li>Accounts and cloud copies are stored encrypted by our provider. Passwords are stored only as secure hashes. The game can reach only your own account's data, and only through a few fixed actions (upload, download, delete).</li>
+        <li>Accounts never use email: there are no sign-in links, password-reset or address-change emails, which also means nobody can create an account in your email address's name.</li>
+        <li>Syncing and account creation have fair-use limits, and the browser game only runs its own code and only talks to the services listed above.</li>
         <li>Cloud copies of careers are scrambled and signed like the saves on your device, but they are not end-to-end encrypted, so don't put personal details in airline names.</li>
         <li>The desktop apps only install updates signed with the developer's private key, and only run code that comes with them.</li>
         <li>If a breach ever affected your account, we would tell you and the authorities as the law requires.</li>
