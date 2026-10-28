@@ -507,11 +507,33 @@ export function Stepper({
 }
 
 export function Field({ label, hint, children, style }: { label: string; hint?: string; children: React.ReactNode; style?: React.CSSProperties }) {
+  // Accessibility: a single input/select is tied to its label; anything else is a labelled group
+  const id = React.useId();
+  const hintEl = hint && (
+    <div id={`${id}-hint`} style={{ fontSize: 11.5, color: C.faint, marginTop: 4 }}>
+      {hint}
+    </div>
+  );
+  const only = React.isValidElement(children) && typeof children.type === 'string' && ['input', 'select', 'textarea'].includes(children.type) ? (children as React.ReactElement<{ id?: string; 'aria-describedby'?: string }>) : null;
+  if (only) {
+    const cid = only.props.id ?? id;
+    return (
+      <div style={style}>
+        <label htmlFor={cid} style={{ ...labelStyle }}>
+          {label}
+        </label>
+        {React.cloneElement(only, { id: cid, 'aria-describedby': only.props['aria-describedby'] ?? (hint ? `${id}-hint` : undefined) })}
+        {hintEl}
+      </div>
+    );
+  }
   return (
-    <div style={style}>
-      <label style={{ ...labelStyle }}>{label}</label>
+    <div style={style} role="group" aria-labelledby={`${id}-label`}>
+      <div id={`${id}-label`} style={{ ...labelStyle }}>
+        {label}
+      </div>
       {children}
-      {hint && <div style={{ fontSize: 11.5, color: C.faint, marginTop: 4 }}>{hint}</div>}
+      {hintEl}
     </div>
   );
 }
@@ -564,6 +586,7 @@ export function ModalShell({
   maxWidth = 860,
   zIndex = 200,
   closeButton = true,
+  label,
 }: {
   children: React.ReactNode;
   onClose?: () => void;
@@ -571,8 +594,47 @@ export function ModalShell({
   zIndex?: number;
   /** A close tile in the top corner (default); off for windows that draw their own. */
   closeButton?: boolean;
+  /** The window's name for screen readers (defaults to its first heading). */
+  label?: string;
 }) {
   const backdrop = useRef<HTMLDivElement | null>(null);
+  const dialog = useRef<HTMLDivElement | null>(null);
+  // Accessibility: focus moves into the window when it opens, Tab stays inside
+  // it, and focus goes back to where it was when it closes.
+  useEffect(() => {
+    const before = document.activeElement as HTMLElement | null;
+    const el = dialog.current;
+    if (el && !el.contains(document.activeElement)) el.focus({ preventScroll: true });
+    if (el && !label && !el.getAttribute('aria-labelledby')) {
+      const h = el.querySelector('h1, h2, h3');
+      if (h) {
+        h.id ||= `bp-dlg-${Math.random().toString(36).slice(2, 8)}`;
+        el.setAttribute('aria-labelledby', h.id);
+      }
+    }
+    const onTab = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || !el) return;
+      const shells = document.querySelectorAll('.bp-modal-backdrop');
+      if (backdrop.current && shells[shells.length - 1] !== backdrop.current) return;
+      const items = [...el.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter((n) => n.offsetParent !== null);
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && (document.activeElement === first || document.activeElement === el)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener('keydown', onTab);
+    return () => {
+      window.removeEventListener('keydown', onTab);
+      if (before && document.contains(before)) before.focus({ preventScroll: true });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     if (!onClose) return;
     // The window takes Escape for itself: the panel or planner under it stays open
@@ -610,8 +672,13 @@ export function ModalShell({
       }}
     >
       <div
+        ref={dialog}
         role="dialog"
+        aria-modal="true"
+        aria-label={label}
+        tabIndex={-1}
         style={{
+          outline: 'none',
           ...glass('f2'),
           borderRadius: 16,
           width: '100%',

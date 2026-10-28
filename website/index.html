@@ -49,11 +49,11 @@
               <a class="btn btn-play" href="https://play.boardingpass.my" data-play>Play in your browser</a>
               <a class="btn btn-ghost" href="#download" data-os-download>Download the app</a>
             </div>
-            <p class="fineprint">Free, no account, no ads. Works on phones, tablets and computers. Your careers save in your browser.</p>
+            <p class="fineprint">Free, no ads, no account needed. Works on phones, tablets and computers. Your careers save in your browser, and an optional account carries them between devices.</p>
           </div>
 
-          <a class="ticket" href="https://play.boardingpass.my" data-play data-ticket aria-label="Board now: play Boarding Pass in your browser">
-            <span class="ticket-main">
+          <a class="ticket" href="https://play.boardingpass.my" data-play data-ticket>
+            <span class="ticket-main" aria-hidden="true">
               <span class="ticket-livery" aria-hidden="true"></span>
               <span class="ticket-airline">
                 <span class="ticket-logo" data-t-logo><img src="/src/icon.png" alt="" width="30" height="30" /></span>
@@ -73,9 +73,9 @@
               </span>
             </span>
             <span class="ticket-stub">
-              <small>Gate</small>
-              <span class="gate">play.<wbr />boardingpass.my</span>
-              <span class="stub-cta">Board now</span>
+              <small aria-hidden="true">Gate</small>
+              <span class="gate" aria-hidden="true">play.<wbr />boardingpass.my</span>
+              <span class="stub-cta">Board now</span><span class="sr-only">: play Boarding Pass in your browser</span>
               <svg class="barcode" data-t-barcode viewBox="0 0 140 40" preserveAspectRatio="none" aria-hidden="true"></svg>
             </span>
           </a>
@@ -155,8 +155,8 @@
           </form>
           <div class="kiosk-out">
             <div class="kiosk-slot" aria-hidden="true"></div>
-            <a class="ticket ticket-print" href="https://play.boardingpass.my" data-play data-ticket aria-label="Board now with your airline: play in your browser">
-              <span class="ticket-main">
+            <a class="ticket ticket-print" href="https://play.boardingpass.my" data-play data-ticket>
+              <span class="ticket-main" aria-hidden="true">
                 <span class="ticket-livery" aria-hidden="true"></span>
                 <span class="ticket-airline">
                   <span class="ticket-logo" data-t-logo><img src="/src/icon.png" alt="" width="30" height="30" /></span>
@@ -176,9 +176,9 @@
                 </span>
               </span>
               <span class="ticket-stub">
-                <small>Gate</small>
-                <span class="gate">play.<wbr />boardingpass.my</span>
-                <span class="stub-cta">Board now</span>
+                <small aria-hidden="true">Gate</small>
+                <span class="gate" aria-hidden="true">play.<wbr />boardingpass.my</span>
+                <span class="stub-cta">Board now</span><span class="sr-only">: play Boarding Pass in your browser</span>
                 <svg class="barcode" data-t-barcode viewBox="0 0 140 40" preserveAspectRatio="none" aria-hidden="true"></svg>
               </span>
             </a>
@@ -296,6 +296,7 @@
         <a href="/privacy.html">Privacy</a>
         <a href="/terms.html">Terms</a>
         <a href="/cookies.html">Cookies</a>
+        <a href="/accessibility.html">Accessibility</a>
         <a href="https://discord.gg/zCk6hcFkzf" rel="noopener">Discord</a>
         <a href="https://github.com/MacVibeCodes10111/Boarding-Pass" rel="noopener">GitHub</a>
       </nav>

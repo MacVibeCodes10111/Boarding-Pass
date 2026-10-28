@@ -23,6 +23,7 @@ export default defineConfig({
         privacy: resolve(root, 'privacy.html'),
         terms: resolve(root, 'terms.html'),
         cookies: resolve(root, 'cookies.html'),
+        accessibility: resolve(root, 'accessibility.html'),
       },
     },
   },

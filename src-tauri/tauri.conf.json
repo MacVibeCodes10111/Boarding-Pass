@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Boarding Pass",
-  "version": "2.48.0",
+  "version": "2.49.0",
   "identifier": "com.ebncr.airline-simulator",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -27,7 +27,7 @@
         "style-src": "'self' 'unsafe-inline'",
         "img-src": "'self' data: blob: https://*.cartocdn.com https://basemaps.cartocdn.com https://tiles.maps.eox.at",
         "font-src": "'self' data:",
-        "connect-src": "'self' ipc: http://ipc.localhost https://*.cartocdn.com https://basemaps.cartocdn.com https://tiles.maps.eox.at",
+        "connect-src": "'self' ipc: http://ipc.localhost https://*.cartocdn.com https://basemaps.cartocdn.com https://tiles.maps.eox.at https://dlgkdknfxhmtkhpegufq.supabase.co",
         "worker-src": "'self' blob:",
         "child-src": "'self' blob:",
         "object-src": "'none'",
@@ -68,6 +68,13 @@
       ],
       "windows": {
         "installMode": "passive"
+      }
+    },
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "boardingpass"
+        ]
       }
     }
   }

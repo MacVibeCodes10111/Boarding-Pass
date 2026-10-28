@@ -263,6 +263,9 @@ export interface SaveGameState {
   // --- v2.10+ ---
   /** IATA code of the real airline this one replaces; it's left off the map. */
   replacesAiAirline?: string | null;
+  // --- v2.49+ ---
+  /** Revision for cloud sync: bigger is newer, always above the previous save's. */
+  rev?: number;
 }
 
 /** Minimal leg description used by the conflict checker. */

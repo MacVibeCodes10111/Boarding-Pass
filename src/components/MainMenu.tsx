@@ -14,6 +14,7 @@ export function MainMenu(props: {
   onClose: () => void;
   onSave: () => void;
   onExport: () => void;
+  onCloud: () => void;
   onTour: () => void;
   onLeave: () => void;
 }) {
@@ -57,6 +58,7 @@ export function MainMenu(props: {
               setSaved(true);
             })}
             {row('download', 'Export save file', 'A protected copy to keep or move to another computer', props.onExport)}
+            {row('swap', 'Cloud saves', 'Sign in to play your careers on all your devices', props.onCloud)}
             {row('help', 'Welcome tour', 'How to play, in a minute', () => {
               props.onClose();
               props.onTour();

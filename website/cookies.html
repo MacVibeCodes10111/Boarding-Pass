@@ -35,13 +35,13 @@
     <main id="main" class="page legal">
       <h1>Cookies and storage</h1>
       <p class="updated">Last updated 28 October 2026.</p>
-      <p><strong>Short version:</strong> neither the game nor this website sets any cookies. There are no analytics, advertising or tracking cookies, pixels or fingerprinting. The game keeps your careers and settings in your browser's storage on your device, only so it works, and that never leaves your device.</p>
+      <p><strong>Short version:</strong> neither the game nor this website sets any cookies. There are no analytics, advertising or tracking cookies, pixels or fingerprinting. The game keeps your careers and settings in your browser's storage on your device, only so it works. Nothing in it leaves your device, except your careers if you sign in to cloud saves.</p>
 
       <h2>Cookies</h2>
-      <p>We don't set cookies on boardingpass.my, play.boardingpass.my or in the desktop apps. The map, update and version requests the game and site make to other services (CARTO, EOX and GitHub) are sent without cookies, so those services can't use them to recognise you. Our web host, Hostinger, may use strictly necessary technical cookies to protect its servers against attacks and keep them running; they are not used by us, or for tracking or advertising.</p>
+      <p>We don't set cookies on boardingpass.my, play.boardingpass.my or in the desktop apps. The map, update and version requests the game and site make to other services (CARTO, EOX and GitHub) are sent without cookies, so those services can't use them to recognise you. Our web host, Hostinger, may use strictly necessary technical cookies to protect its servers against attacks and keep them running; they are not used by us, or for tracking or advertising. If you choose to sign in with Google or Discord, their own sign-in pages use their own cookies, under their policies.</p>
 
       <h2>Storage on your device</h2>
-      <p>Instead of cookies, the game and this site use your browser's local storage (and, for the version list, session storage). In the desktop apps the same items live in the app's own data folder. Nothing in them is sent to us or anyone else. This is everything we store:</p>
+      <p>Instead of cookies, the game and this site use your browser's local storage (and, for the version list, session storage). In the desktop apps the same items live in the app's own data folder. Nothing in them is sent to us or anyone else, except that cloud saves (only if you sign in) send your careers and your sign-in session to our cloud service. This is everything we store:</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Item</th><th>Where</th><th>What it's for</th><th>How long</th></tr></thead>
@@ -56,6 +56,10 @@
             <tr><td><code>bp_fleet_view_v1</code></td><td data-label="Where">Game</td><td>How the fleet list is shown</td><td data-label="Kept">Until you clear it</td></tr>
             <tr><td><code>bp_schedule_collapsed_v1</code></td><td data-label="Where">Game</td><td>Which schedule groups are folded</td><td data-label="Kept">Until you clear it</td></tr>
             <tr><td><code>bp_pc_tour_off_v1</code></td><td data-label="Where">Game</td><td>You have seen or skipped the welcome tour</td><td data-label="Kept">Until you clear it</td></tr>
+            <tr><td><code>bp_cloud_age_v1</code></td><td data-label="Where">Game</td><td>Whether the age check found you 13 or over (not your birthday), so it's asked once</td><td data-label="Kept">Until you clear it</td></tr>
+            <tr><td><code>bp_cloud_session_v1</code></td><td data-label="Where">Game, if you sign in</td><td>Keeps you signed in to cloud saves (while signing in with Google or Discord, also <code>bp_cloud_session_v1-code-verifier</code>, a one-time check)</td><td data-label="Kept">Until you sign out</td></tr>
+            <tr><td><code>bp_cloud_device_v1</code></td><td data-label="Where">Game, if you sign in</td><td>A random number for this device, so the cloud knows which devices still need a career</td><td data-label="Kept">Until you clear it</td></tr>
+            <tr><td><code>bp_cloud_synced_v1, bp_cloud_last_sync_v1</code></td><td data-label="Where">Game, if you sign in</td><td>Which careers this device has synced, and when it last synced</td><td data-label="Kept">Until you sign out or clear it</td></tr>
             <tr><td><code>bp-web-pass</code></td><td data-label="Where">This site</td><td>The airline name, code, hub and colours in Print your boarding pass</td><td data-label="Kept">Until you clear it</td></tr>
             <tr><td><code>bp-web-takeoffs</code></td><td data-label="Where">This site</td><td>How many times you pressed Board now (shown on the page)</td><td data-label="Kept">Until you clear it</td></tr>
             <tr><td><code>bp-rel, bp-readme</code></td><td data-label="Where">This site</td><td>The latest version and list of changes from GitHub, so they load once per visit</td><td data-label="Kept">Until you close the tab</td></tr>
@@ -65,7 +69,7 @@
       <p>Older versions of the game used the same names starting with <code>tas_</code>; the game moves them over once.</p>
 
       <h2>Why there is no cookie banner</h2>
-      <p>The EU ePrivacy Directive and the UK's PECR require consent before storing information on your device, except where it is strictly necessary for a service you asked for. Everything above is only there to remember your own games and choices, so it falls under that exception, and there is nothing to consent to. If we ever add anything that isn't strictly necessary, we'll ask first.</p>
+      <p>The EU ePrivacy Directive and the UK's PECR require consent before storing information on your device, except where it is strictly necessary for a service you asked for. Everything above is only there to remember your own games and choices, or to keep you signed in when you chose to sign in, so it falls under that exception, and there is nothing to consent to. If we ever add anything that isn't strictly necessary, we'll ask first.</p>
 
       <h2>Removing it</h2>
       <p>Clear this site's data (or play.boardingpass.my's) in your browser's settings, or remove the desktop app and its data. Clearing deletes your careers, so use <strong>Menu → Export save file</strong> first to keep them. You can also block site data in your browser; the game then still runs, but can't keep your careers between visits.</p>
@@ -89,6 +93,7 @@
         <a href="/privacy.html">Privacy</a>
         <a href="/terms.html">Terms</a>
         <a href="/cookies.html">Cookies</a>
+        <a href="/accessibility.html">Accessibility</a>
         <a href="https://discord.gg/zCk6hcFkzf" rel="noopener">Discord</a>
         <a href="https://github.com/MacVibeCodes10111/Boarding-Pass" rel="noopener">GitHub</a>
       </nav>

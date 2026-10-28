@@ -8,7 +8,7 @@
 use std::sync::Mutex;
 
 use tauri::ipc::Channel;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 /// The update found by the last check, kept until it is installed.
@@ -58,7 +58,21 @@ async fn install_update(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+    // Cloud sign-in (v2.49): Google and Discord open in the system browser and
+    // come back as boardingpass://auth?code=… . If the game is already running,
+    // the link goes to it (single instance) and the game finishes the sign-in.
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.set_focus();
+            }
+        }));
+    }
+    builder
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(PendingUpdate::default())

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Accessibility · Boarding Pass</title>
+    <meta name="description" content="How Boarding Pass works with keyboards, screen readers and other accessibility settings, and how to report a problem." />
+    <meta name="theme-color" content="#0c1320" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Boarding Pass" />
+    <meta property="og:description" content="A free airline manager game. Build an airline and watch it fly the world." />
+    <meta property="og:image" content="https://boardingpass.my/og-image.png" />
+    <meta property="og:url" content="https://boardingpass.my/accessibility.html" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to the page</a>
+    <header class="site-head">
+      <a class="brand" href="/" aria-label="Boarding Pass home">
+        <img src="/src/icon.png" alt="" width="34" height="34" />
+        <span>Boarding Pass</span>
+      </a>
+      <nav aria-label="Site">
+        <a href="/#features">The game</a>
+        <a href="/#download">Download</a>
+        <a href="/#whats-new">What's new</a>
+        <a href="/#community">Community</a>
+      </nav>
+      <a class="btn btn-play btn-small" href="https://play.boardingpass.my" data-play>Play now</a>
+    </header>
+
+    <main id="main" class="page legal">
+      <h1>Accessibility</h1>
+      <p class="updated">Last updated 28 October 2026.</p>
+      <p>We want everyone to be able to play Boarding Pass and use this website. We aim to meet the <a href="https://www.w3.org/TR/WCAG22/">Web Content Accessibility Guidelines (WCAG) 2.2</a> at level AA on boardingpass.my, and to follow them as far as we can in the game.</p>
+
+      <h2>What we do</h2>
+      <ul>
+        <li>The website and the game's windows can be used with a keyboard. Windows take the keyboard focus when they open, keep it inside while open, close with Escape and hand it back when they close.</li>
+        <li>Buttons, fields and windows have names that screen readers announce, and messages are announced as they appear.</li>
+        <li>We check text and controls against WCAG colour-contrast levels in the default theme, and the website follows your light or dark setting.</li>
+        <li>Animations stop when your device asks for reduced motion.</li>
+        <li>You can zoom the website and the game's windows, and they work on small screens and in portrait.</li>
+        <li>The game has no time limits you can't control: it can be paused at any time.</li>
+        <li>We check pages and windows with automated accessibility tests (axe-core) when we change them.</li>
+      </ul>
+
+      <h2>Known limits</h2>
+      <ul>
+        <li><strong>The live map</strong> is a picture drawn by the graphics card, so a screen reader can't read the aircraft and airports on it. Everything you need to run your airline (fleet, schedule, routes, finances and airport details) is also in the panels, which screen readers can read.</li>
+        <li><strong>Moving and tilting the map</strong> needs a mouse, trackpad or touch screen, although the zoom buttons work with a keyboard.</li>
+        <li><strong>Signing in with Google or Discord</strong> uses their pages, whose accessibility is up to them. Signing in with a username works entirely in the game.</li>
+      </ul>
+
+      <h2>Tell us about a problem</h2>
+      <p>If something in Boarding Pass is hard to use with your device, assistive technology or settings, tell us on the <a href="https://discord.gg/zCk6hcFkzf">Boarding Pass Discord</a> (a direct message to the developer is fine) or in a <a href="https://github.com/MacVibeCodes10111/Boarding-Pass/issues">GitHub issue</a>. Say what you were trying to do and what you use, and we'll try to fix it in the next version.</p>
+
+      <h2>About this statement</h2>
+      <p>Boarding Pass is a free game made by one developer, Mac, with the help of AI (Claude, by Anthropic). This statement is based on our own testing, including automated checks, and was last reviewed on the date above.</p>
+</main>
+
+    <footer class="site-foot">
+      <div class="foot-brand">
+        <img src="/src/icon.png" alt="" width="28" height="28" />
+        <span>Boarding Pass is free and stays free. © 2026 Mac, MIT licence.</span>
+      </div>
+      <nav aria-label="Footer">
+        <a href="https://play.boardingpass.my" data-play>Play</a>
+        <a href="/#download">Download</a>
+        <a href="/credits.html">Credits and licences</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+        <a href="/cookies.html">Cookies</a>
+        <a href="/accessibility.html">Accessibility</a>
+        <a href="https://discord.gg/zCk6hcFkzf" rel="noopener">Discord</a>
+        <a href="https://github.com/MacVibeCodes10111/Boarding-Pass" rel="noopener">GitHub</a>
+      </nav>
+      <p class="foot-small">
+        Maps © CARTO, © OpenStreetMap contributors. Satellite imagery EOxCloudless by EOX IT Services GmbH. Airport data from OurAirports, routes from airline-route-data, population from GeoNames. Not
+        affiliated with any airline, aircraft maker or airport.
+      </p>
+    </footer>
+    
+  </body>
+</html>

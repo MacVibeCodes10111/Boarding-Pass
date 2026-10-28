@@ -30,6 +30,7 @@ export interface HomeScreenProps {
   onResume: (save: SaveGameState) => void;
   onDeleteSave: (saveId: string) => void;
   onImportFile: (file: File) => void;
+  onCloud: () => void;
 }
 
 export function HomeScreen(props: HomeScreenProps) {
@@ -199,8 +200,13 @@ export function HomeScreen(props: HomeScreenProps) {
 
         {/* Saved careers */}
         <div style={{ ...glass('e0'), borderRadius: 16, padding: 22, marginTop: phone ? 0 : 82, alignSelf: 'start' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
             <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>Continue</h2>
+            <span style={{ flex: 1 }} />
+            <Button size="sm" variant="ghost" onClick={props.onCloud}>
+              <Icon name="swap" size={14} />
+              Cloud saves
+            </Button>
             <Button size="sm" variant="ghost" onClick={() => importRef.current?.click()}>
               <Icon name="upload" size={14} />
               Import save file

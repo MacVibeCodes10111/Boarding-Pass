@@ -111,6 +111,8 @@ import type {
 } from './game/types';
 import { APP_VERSION } from './version';
 import { MainMenu } from './components/MainMenu';
+import { CloudHost, openCloud } from './components/CloudPanel';
+import { cloudDeleteSave, nextRev } from './game/cloud';
 import { RouteFromBar } from './components/RouteFromBar';
 import { WelcomeTour, tourWantedForNewCareer } from './components/WelcomeTour';
 import { C, PanelTabsContext, applyThemeToDocument, useThemeVersion } from './ui/kit';
@@ -745,7 +747,9 @@ export default function App() {
 
   /** Writes the current career into its slot. Returns false if storage failed. */
   const persistCareer = (isAutosave: boolean): boolean => {
-    const next = upsertSaveSlot(readSaveSlots(), currentSaveState(isAutosave));
+    const slots = readSaveSlots();
+    const prev = slots.find((s) => s.saveId === activeSaveId);
+    const next = upsertSaveSlot(slots, { ...currentSaveState(isAutosave), rev: nextRev(prev) });
     if (!writeSaveSlots(next)) return false;
     setSavedGames(next);
     return true;
@@ -918,6 +922,9 @@ export default function App() {
         const next = readSaveSlots().filter((s) => s.saveId !== saveId);
         setSavedGames(next);
         writeSaveSlots(next);
+        cloudDeleteSave(saveId).catch(() => {
+          /* offline: the cloud copy expires on its own */
+        });
       },
     });
   };
@@ -1481,7 +1488,9 @@ export default function App() {
   if (screen === 'home') {
     return (
       <>
+        <CloudHost openSaveId={null} onSlotsChanged={() => setSavedGames(readSaveSlots())} toast={flashToast} />
         <HomeScreen
+          onCloud={openCloud}
           airlineName={airlineName}
           airlineIata={airlineIata}
           airlineCallsign={airlineCallsign}
@@ -1622,8 +1631,13 @@ export default function App() {
         onMenu={() => setMenuOpen(true)}
         version={APP_VERSION}
       />
+      <CloudHost openSaveId={activeSaveId} onSlotsChanged={() => setSavedGames(readSaveSlots())} toast={flashToast} />
       {menuOpen && (
         <MainMenu
+          onCloud={() => {
+            setMenuOpen(false);
+            openCloud();
+          }}
           airlineName={airlineName}
           version={APP_VERSION}
           onClose={() => setMenuOpen(false)}

@@ -106,7 +106,8 @@ jobs:
             "plugins": {
               "updater": {
                 "endpoints": ["https://github.com/${{ github.repository }}/releases/download/dev/latest.json"]
-              }
+              },
+              "deep-link": { "desktop": { "schemes": ["boardingpass-dev"] } }
             }
           }
           EOF
