@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { calcAircraftScheduleUsage, getAircraftCircuitStatus } from '../game/scheduling';
 import { DAY_NAMES_SHORT, MIN_PER_DAY, daysOrAll, formatClockShort, formatDurationHm, shiftDays, snapToFiveMin } from '../game/time';
 import type { PlayerAircraft, ScheduledFlight, WeekDays } from '../game/types';
 import { C } from '../ui/kit';
 import { Icon } from '../ui/icons';
-import { airportLocalClock, legLocalText } from '../game/localTime';
+import { airportLocalClock } from '../game/localTime';
 
 export interface ScheduleTimelineProps {
   aircraft: PlayerAircraft;
@@ -148,8 +148,6 @@ export function ScheduleTimeline({
   const outLabel = `${originIata}→${destIata}`;
   // Local times at each end (v2.55)
   const depLocal = airportLocalClock(selectedDepMin, originIata);
-  const outLocal = legLocalText(selectedDepMin, outArrMin, originIata, destIata);
-  const retLocal = legLocalText(retDepMin, retArrMin, destIata, originIata);
   const retLabel = `${destIata}→${originIata}`;
 
   return (
@@ -163,17 +161,12 @@ export function ScheduleTimeline({
         userSelect: 'none',
       }}
     >
-      {/* Header, with the detailed view in the corner */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+      {/* Header: title and how booked the aircraft is, the detailed view in the corner (v2.56: tidier) */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 10 }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>
-            Departure time{' '}
-            <span className="num" style={{ fontSize: 12, color: C.muted, fontWeight: 500 }}>
-              {aircraft.tailNumber} is {usage.usedPct}% booked ({usage.avgDailyHours} h a day)
-            </span>
-          </div>
-          <div style={{ fontSize: 11.5, color: C.faint, marginTop: 2 }}>
-            {othersCompact ? 'Drag across the week or type a time. Its other flights are the grey bars.' : 'Drag across the week or type a time. Click a grey flight to edit it.'}
+          <div style={{ fontSize: 14, fontWeight: 650 }}>Departure time</div>
+          <div className="num" style={{ fontSize: 12, color: C.muted, marginTop: 1 }}>
+            {aircraft.tailNumber}: {usage.usedPct}% booked, {usage.avgDailyHours} h a day
           </div>
         </div>
         {onDetailedView && (
@@ -187,10 +180,10 @@ export function ScheduleTimeline({
               display: 'inline-flex',
               alignItems: 'center',
               gap: 6,
-              padding: '7px 11px',
+              padding: '6px 10px',
               borderRadius: 9,
               cursor: 'pointer',
-              fontSize: 13,
+              fontSize: 12.5,
               fontWeight: 600,
               color: C.text,
               background: C.raised,
@@ -199,45 +192,65 @@ export function ScheduleTimeline({
               whiteSpace: 'nowrap',
             }}
           >
-            <Icon name="schedule" size={15} color={C.accent} />
+            <Icon name="schedule" size={14} color={C.accent} />
             Detailed view
           </button>
         )}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', marginBottom: 10 }}>
+
+      {/* Time picker, with the local departure time underneath */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginBottom: 12 }}>
         <StepButton label="−1h" onClick={() => onChangeDepMin(snapToFiveMin(selectedDepMin - 60))} />
         <StepButton label="−5m" onClick={() => onChangeDepMin(snapToFiveMin(selectedDepMin - 5))} />
-        <div style={{ display: 'flex', alignItems: 'center', background: C.bg, border: `1px solid ${C.brand}88`, borderRadius: 6, padding: '3px 8px' }}>
-          <TimePart value={hh} max={23} onCommit={(h) => onChangeDepMin(snapToFiveMin(h * 60 + mm))} />
-          <span style={{ color: C.brand, fontWeight: 700 }}>:</span>
-          <TimePart value={mm} max={59} step={5} onCommit={(m) => onChangeDepMin(snapToFiveMin(hh * 60 + m))} />
-          <span style={{ fontSize: 11, color: C.faint, marginLeft: 4 }}>UTC</span>
+        <div style={{ display: 'grid', justifyItems: 'center', gap: 3 }}>
+          <div style={{ display: 'flex', alignItems: 'center', background: C.bg, border: `1px solid ${C.brand}88`, borderRadius: 6, padding: '3px 8px' }}>
+            <TimePart value={hh} max={23} onCommit={(h) => onChangeDepMin(snapToFiveMin(h * 60 + mm))} />
+            <span style={{ color: C.brand, fontWeight: 700 }}>:</span>
+            <TimePart value={mm} max={59} step={5} onCommit={(m) => onChangeDepMin(snapToFiveMin(hh * 60 + m))} />
+            <span style={{ fontSize: 11, color: C.faint, marginLeft: 4 }}>UTC</span>
+          </div>
+          {depLocal && (
+            <span className="num" style={{ fontSize: 11, color: C.muted }} title={`Local time at ${originIata}`}>
+              {depLocal} local at {originIata}
+            </span>
+          )}
         </div>
-        {depLocal && (
-          <span className="num" style={{ fontSize: 12, color: C.textDim, padding: '0 4px' }} title={`Local time at ${originIata}`}>
-            = {depLocal} at {originIata}
-          </span>
-        )}
         <StepButton label="+5m" onClick={() => onChangeDepMin(snapToFiveMin(selectedDepMin + 5))} />
         <StepButton label="+1h" onClick={() => onChangeDepMin(snapToFiveMin(selectedDepMin + 60))} />
       </div>
 
-      {/* Times for the new flight(s) */}
+      {/* The new flight(s) as a small table: route, UTC, local */}
       {candidateBlockMin > 0 && (
-        <div className="num" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 16px', fontSize: 12, color: C.textDim, marginBottom: 10 }}>
-          <span>
-            <b style={{ color: C.brand, fontWeight: 600 }}>{outLabel}</b> {formatClockShort(selectedDepMin)}–{formatClockShort(outArrMin)} UTC
-            {outLocal && <span style={{ color: C.muted }}> ({outLocal})</span>}
-          </span>
-          {autoRoundtrip && (
-            <span>
-              <b style={{ color: C.brand, fontWeight: 600 }}>{retLabel}</b> {formatClockShort(retDepMin)}–{formatClockShort(retArrMin)} UTC
-              {retLocal && <span style={{ color: C.muted }}> ({retLocal})</span>}
-            </span>
-          )}
-          <span style={{ color: C.muted }}>
-            {formatDurationHm(candidateBlockMin)} each way, {turnMin} min turnaround, free again at {formatClockShort(readyMin)}
-          </span>
+        <div style={{ marginBottom: 12 }}>
+          <div
+            className="num"
+            style={{ display: 'grid', gridTemplateColumns: 'auto auto 1fr', columnGap: 14, rowGap: 3, fontSize: 12.5, alignItems: 'baseline' }}
+          >
+            <span />
+            <span style={{ fontSize: 10.5, color: C.faint, textTransform: 'uppercase', letterSpacing: '.05em' }}>UTC</span>
+            <span style={{ fontSize: 10.5, color: C.faint, textTransform: 'uppercase', letterSpacing: '.05em' }}>Local</span>
+            {[
+              { label: outLabel, dep: selectedDepMin, arr: outArrMin, from: originIata, to: destIata },
+              ...(autoRoundtrip ? [{ label: retLabel, dep: retDepMin, arr: retArrMin, from: destIata, to: originIata }] : []),
+            ].map((l) => {
+              const d = airportLocalClock(l.dep, l.from);
+              const a = airportLocalClock(l.arr, l.to);
+              return (
+                <Fragment key={l.label}>
+                  <b style={{ color: C.brand, fontWeight: 650 }}>{l.label}</b>
+                  <span style={{ color: C.text }}>
+                    {formatClockShort(l.dep)}–{formatClockShort(l.arr)}
+                  </span>
+                  <span style={{ color: C.textDim }} title={`Departs ${d ?? '?'} at ${l.from}, arrives ${a ?? '?'} at ${l.to}, local times`}>
+                    {d || a ? `${d ?? '–'}–${a ?? '–'}` : '–'}
+                  </span>
+                </Fragment>
+              );
+            })}
+          </div>
+          <div className="num" style={{ fontSize: 11.5, color: C.muted, marginTop: 6 }}>
+            {formatDurationHm(candidateBlockMin)} each way · {turnMin} min turnaround · free again {formatClockShort(readyMin)} UTC
+          </div>
         </div>
       )}
 
@@ -356,6 +369,9 @@ export function ScheduleTimeline({
             </div>
           </div>
         ))}
+      </div>
+      <div style={{ fontSize: 11, color: C.faint, marginTop: 8 }}>
+        {othersCompact ? 'Drag across the week or type a time. Grey bars are its other flights.' : 'Drag across the week or type a time. Click a grey flight to edit it.'}
       </div>
     </div>
   );
