@@ -20,13 +20,47 @@ const REG_PATTERNS: Record<string, string> = {
   AE: 'A6-@@@', QA: 'A7-@@@', SA: 'HZ-@@@', BH: 'A9C-@@', OM: 'A4O-@@', KW: '9K-@@@', JO: 'JY-@@@', IL: '4X-@@@', IR: 'EP-@@@',
   EG: 'SU-@@@', MA: 'CN-@@@', DZ: '7T-@@@', TN: 'TS-@@@', ZA: 'ZS-@@@', KE: '5Y-@@@', ET: 'ET-@@@', NG: '5N-@@@', GH: '9G-@@@',
   AU: 'VH-@@@', NZ: 'ZK-@@@', FJ: 'DQ-@@@', PG: 'P2-@@@',
+  // v2.57: every other country in the game (they used to get US "N" registrations)
+  // Caribbean and the Americas
+  AW: 'P4-@@@', CW: 'PJ-@@@', SX: 'PJ-@@@', BQ: 'PJ-@@@', BS: 'C6-@@@', JM: '6Y-@@@', TT: '9Y-@@@', BB: '8P-@@@', DO: 'HI####',
+  CU: 'CU-T####', HT: 'HH-@@@', KY: 'VP-C@@', BM: 'VP-B@@', VG: 'VP-L@@', AI: 'VP-A@@', MS: 'VP-M@@', TC: 'VQ-T@@', AG: 'V2-@@@',
+  KN: 'V4-@@@', LC: 'J6-@@@', VC: 'J8-@@@', GD: 'J3-@@@', DM: 'J7-@@@', VE: 'YV####', EC: 'HC-@@@', BO: 'CP-####', PY: 'ZP-@@@',
+  UY: 'CX-@@@', SR: 'PZ-@@@', GY: '8R-@@@', CR: 'TI-@@@', NI: 'YN-@@@', HN: 'HR-@@@', SV: 'YS-@@@', GT: 'TG-@@@', BZ: 'V3-@@@',
+  FK: 'VP-F@@',
+  // Europe
+  HR: '9A-@@@', EE: 'ES-@@@', LT: 'LY-@@@', LV: 'YL-@@@', BG: 'LZ-@@@', BY: 'EW-#####', SK: 'OM-@@@', GE: '4L-@@@', BA: 'E7-@@@',
+  RS: 'YU-@@@', CY: '5B-@@@', MD: 'ER-@@@', SI: 'S5-@@@', MK: 'Z3-@@@', ME: '4O-@@@', AL: 'ZA-@@@', LU: 'LX-@@@', MT: '9H-@@@',
+  MC: '3A-@@@', XK: 'Z6-@@@', AM: 'EK-#####', AZ: '4K-AZ##', GG: '2-@@@@', JE: 'ZJ-@@@', IM: 'M-@@@@', GI: 'VP-G@@',
+  // Asia
+  MM: 'XY-@@@', KZ: 'UP-@####', UZ: 'UK-#####', MV: '8Q-@@@', MN: 'JU-####', LA: 'RDPL-#####', KH: 'XU-###', AF: 'YA-@@@',
+  TM: 'EZ-@###', KG: 'EX-#####', TJ: 'EY-#####', BT: 'A5-@@@', KP: 'P-###', TL: '4W-@@@', BN: 'V8-@@@', IQ: 'YI-@@@',
+  SY: 'YK-@@@', YE: '7O-@@@', LB: 'OD-@@@',
+  // Oceania
+  SB: 'H4-@@@', KI: 'T3-@@@', VU: 'YJ-@@@', TO: 'A3-@@@', FM: 'V6-@@@', MH: 'V7-####', WS: '5W-@@@', CK: 'E5-@@@', PW: 'T8A-##',
+  NR: 'C2-@@@', TV: 'T2-@@@',
+  // Africa
+  TZ: '5H-@@@', CD: '9S-@@@', AO: 'D2-@@@', MG: '5R-@@@', MZ: 'C9-@@@', LY: '5A-@@@', NA: 'V5-@@@', ZM: '9J-@@@', SO: '6O-@@@',
+  SD: 'ST-@@@', UG: '5X-@@@', CV: 'D4-@@@', CI: 'TU-@@@', TD: 'TT-@@@', CM: 'TJ-@@@', GA: 'TR-@@@', BW: 'A2-@@@', ML: 'TZ-@@@',
+  GQ: '3C-@@@', ZW: 'Z-@@@', CG: 'TN-@@@', NE: '5U-@@@', MR: '5T-@@@', SN: '6V-@@@', SS: 'Z8-@@@', KM: 'D6-@@@', SH: 'VQ-H@@',
+  BI: '9U-@@@', MW: '7Q-@@@', BF: 'XT-@@@', RW: '9XR-@@', LR: 'A8-@@@', MU: '3B-@@@', ST: 'S9-@@@', SC: 'S7-@@@', ER: 'E3-@@@',
+  CF: 'TL-@@@', GM: 'C5-@@@', GN: '3X-@@@', BJ: 'TY-@@@', SL: '9L-@@@', DJ: 'J2-@@@', TG: '5V-@@@', LS: '7P-@@@', GW: 'J5-@@@',
+  SZ: '3DC-@@',
 };
+
+/** Places that use another country's register (territories, dependencies). */
+const REG_COUNTRY_ALIAS: Record<string, string> = {
+  PR: 'US', VI: 'US', GU: 'US', AS: 'US', MP: 'US', UM: 'US',
+  GF: 'FO_FR', GP: 'FO_FR', MQ: 'FO_FR', RE: 'FO_FR', YT: 'FO_FR', BL: 'FO_FR', MF: 'FO_FR', PM: 'FO_FR', WF: 'FO_FR', NC: 'FO_FR', PF: 'FO_FR',
+  GL: 'DK', FO: 'DK', AX: 'FI', SJ: 'NO', CC: 'AU', CX: 'AU', NF: 'AU', NU: 'NZ', EH: 'MA',
+};
+/** French overseas departments and territories register as F-O… */
+REG_PATTERNS.FO_FR = 'F-O@@@';
 
 const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // no I or O (they look like 1 and 0)
 
 /** The n-th registration for an airline based in `country`. */
 function registrationAt(country: string, airlineIata: string, n: number): string {
-  const pattern = REG_PATTERNS[country] ?? REG_PATTERNS.US;
+  const pattern = REG_PATTERNS[REG_COUNTRY_ALIAS[country] ?? country] ?? REG_PATTERNS.US;
   const code = (airlineIata.toUpperCase().replace(/[^A-Z]/g, '') || 'XX').padEnd(2, 'X');
   if (pattern === 'NDDDAA') return `N${401 + n}${code.slice(0, 2)}`;
   const letterSlots = [...pattern].filter((c) => c === '@').length;

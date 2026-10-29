@@ -13,7 +13,7 @@
 // ============================================================================
 import { AI_ARR_ROLL_MIN, AI_DEP_ROLL_MIN, bookInterval, earliestFit, runwayOccupancy, type RunwayInterval } from './runwayUse';
 import { aiCruiseAltitudeFt } from './altitude';
-import { AI_AIRLINES, airlineNameCore, type AiAirlineDef, type AiRegion } from './aiAirlines';
+import { AI_AIRLINES, KNOWN_CALLSIGNS, airlineNameCore, type AiAirlineDef, type AiRegion } from './aiAirlines';
 import { AI_TYPES, GENERIC_FLEETS } from './aiFleets';
 import { splitCsvLine } from './csv';
 import { marketDemand, type NetworkData } from './demand';
@@ -480,10 +480,25 @@ function regionAt(lat: number, lon: number): AiRegion {
   return 'AS';
 }
 
-/** Radio callsign for an airline without one listed: its name, without "Airlines". */
-function callsignFromName(name: string) {
-  const core = airlineNameCore(name).toUpperCase();
-  return (core || name.toUpperCase()).slice(0, 20);
+/**
+ * Radio callsign for an airline without one listed: its real one when known
+ * (KNOWN_CALLSIGNS), otherwise its name without "Airlines" and company words,
+ * cut at a whole word (v2.57; it used to cut mid-word, "CORSAIR INTERNATIONA").
+ */
+function callsignFromName(name: string, code = '') {
+  if (KNOWN_CALLSIGNS[code]) return KNOWN_CALLSIGNS[code];
+  const words = (airlineNameCore(name) || name.toLowerCase())
+    .replace(/\b(international|limited|services|service|s a|jsc|llc|pjsc|ojsc|de aviacion|de aviacao)\b/g, ' ')
+    .toUpperCase()
+    .split(/\s+/)
+    .filter(Boolean);
+  let out = '';
+  for (const w of words) {
+    const next = out ? `${out} ${w}` : w;
+    if (next.length > 20) break;
+    out = next;
+  }
+  return out || name.toUpperCase().slice(0, 20);
 }
 
 /** Most departures an airline puts on one route in a day, by distance. */
@@ -569,7 +584,8 @@ export function generateNetworkTraffic(opts: GenerateNetworkOptions): AiTraffic 
   const fleetOf: { code: string; seats: number; rangeNm: number }[][] = [];
   for (const [ci, routes] of byCarrier) {
     const c = net.carriers[ci];
-    if (!c?.code) continue;
+    // Trains and coaches sold with flight numbers (e.g. "9G Rail") aren't aircraft (v2.57)
+    if (!c?.code || /\b(rail|bahn|train|bus|coach)\b/i.test(c.name)) continue;
     let def = curated.get(c.code);
     if (!def) {
       // Region where it flies most from; fleet from how far it flies
@@ -580,7 +596,7 @@ export function generateNetworkTraffic(opts: GenerateNetworkOptions): AiTraffic 
       const medianKm = km[Math.floor(km.length / 2)];
       const longest = km[km.length - 1];
       const fleet = medianKm < 450 && longest < 1500 ? GENERIC_FLEETS.regional : longest > 6000 ? GENERIC_FLEETS.network : GENERIC_FLEETS.mainline;
-      def = { code: c.code, name: c.name, callsign: callsignFromName(c.name), region: home ? regionAt(home.lat, home.lon) : 'EU', fleet };
+      def = { code: c.code, name: c.name, callsign: callsignFromName(c.name, c.code), region: home ? regionAt(home.lat, home.lon) : 'EU', fleet };
     }
     airlineOf.set(ci, airlines.length);
     airlines.push(def);
