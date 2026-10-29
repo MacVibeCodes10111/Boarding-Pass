@@ -16,10 +16,14 @@ import {
   finishDesktopSignIn,
   finishWebSignIn,
   inDesktopApp,
+  MAX_CLOUD_CAREERS,
   autoDownload,
+  cloudPicks,
+  cloudStatus,
   downloadCareer,
+  onCloudChange,
+  setCloudPick,
   cloudDeleteSave,
-  isSynced,
   lastSyncMs,
   mightBeSignedIn,
   setAutoDownload,
@@ -392,6 +396,8 @@ function SignedIn(props: {
   const cloud = props.overview?.saves ?? [];
   const devices = props.overview?.devices ?? [];
   const localIds = new Set(local.map((l) => l.saveId));
+  useCloudVersion();
+  const pickCount = cloudPicks()?.size ?? props.overview?.picks?.length ?? 0;
   const changed = () => {
     props.onSlotsChanged();
     setLocal(readSaveSlots());
@@ -486,30 +492,29 @@ function SignedIn(props: {
       </section>
 
       <section aria-labelledby="bp-cloud-here">
-        {sectionTitle('bp-cloud-here', 'On this device')}
+        {sectionTitle('bp-cloud-here', `On this device (${pickCount} of ${MAX_CLOUD_CAREERS} kept in the cloud)`)}
         {local.length === 0 ? (
           <p style={{ fontSize: 12.5, color: C.muted, margin: 0 }}>No careers saved on this device yet.</p>
         ) : (
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 6 }}>
             {local.map((l) => {
-              const synced = isSynced(l);
+              const st = cloudStatus(l);
+              const on = st === 'cloud' || st === 'pending';
               return (
                 <li key={l.saveId} style={row}>
-                  <Icon name={synced ? 'check' : 'upload'} size={16} color={synced ? C.green : C.muted} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.airlineName}</div>
-                    <div style={{ fontSize: 12, color: C.muted }}>{synced ? 'Synced' : 'Changes not uploaded yet'}</div>
+                    <SaveLocation save={l} />
                   </div>
-                  {!synced && (
+                  {st === 'pending' && (
                     <Button
                       size="sm"
                       disabled={props.busy}
-                      aria-label={`Upload ${l.airlineName}`}
+                      aria-label={`Upload ${l.airlineName} now`}
                       onClick={() =>
                         props.act(`Uploading ${l.airlineName}…`, async () => {
                           await uploadCareer(l.saveId);
                           setLocal(readSaveSlots());
-                          announceChange();
                         })
                       }
                     >
@@ -517,11 +522,29 @@ function SignedIn(props: {
                       Upload
                     </Button>
                   )}
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      aria-checked={on}
+                      checked={on}
+                      disabled={props.busy || (!on && pickCount >= MAX_CLOUD_CAREERS)}
+                      onChange={(e) => {
+                        const want = e.target.checked;
+                        void props.act(want ? `Putting ${l.airlineName} in the cloud…` : `Taking ${l.airlineName} out of the cloud…`, () => setCloudPick(l, want));
+                      }}
+                      style={{ width: 18, height: 18 }}
+                    />
+                    Keep in the cloud
+                  </label>
                 </li>
               );
             })}
           </ul>
         )}
+        <p style={{ fontSize: 12, color: C.muted, margin: '8px 0 0' }}>
+          Up to {MAX_CLOUD_CAREERS} careers can be kept in the cloud. To swap, turn one off, then turn another on. Turning one off removes only the cloud copy: it stays on this device.
+        </p>
       </section>
 
       {devices.length > 0 && (
@@ -632,5 +655,30 @@ export function CloudCareersOnHome(props: { onDownloaded: () => void; toast: (m:
         </div>
       ))}
     </div>
+  );
+}
+
+/** Re-renders when the cloud picks or sync state change. */
+function useCloudVersion() {
+  const [, setV] = useState(0);
+  useEffect(() => onCloudChange(() => setV((v) => v + 1)), []);
+}
+
+/** Where a save lives: this device, and the cloud when it's kept there (v2.52). */
+export function SaveLocation({ save }: { save: SaveGameState }) {
+  useCloudVersion();
+  const st = cloudStatus(save);
+  const chip = (text: string, color: string, title: string) => (
+    <span title={title} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 600, color, whiteSpace: 'nowrap' }}>
+      {text}
+    </span>
+  );
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      {chip('● This device', C.textDim, 'Saved on this device')}
+      {st === 'cloud' && chip('● Cloud, up to date', C.green, 'Kept in the cloud, with the latest save')}
+      {st === 'pending' && chip('● Cloud, uploading soon', C.amber, 'Kept in the cloud; the latest changes upload at the next sync')}
+      {st === 'local' && chip('○ Not in the cloud', C.muted, 'Only on this device. Turn on “Keep in the cloud” in Cloud saves.')}
+    </span>
   );
 }

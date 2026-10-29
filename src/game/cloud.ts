@@ -276,6 +276,7 @@ export async function signOut(): Promise<void> {
   }
   await c.auth.signOut({ scope: 'local' });
   store.remove(SYNCED_KEY);
+  setPicks(null);
 }
 
 /** Deletes the account and every cloud copy. Careers on devices stay. */
@@ -285,6 +286,7 @@ export async function deleteAccount(): Promise<void> {
   if (error) throw new Error(friendlyAuthError(error.message));
   await c.auth.signOut({ scope: 'local' });
   store.remove(SYNCED_KEY);
+  setPicks(null);
 }
 
 // ---------------------------------------------------------------------------
@@ -331,7 +333,65 @@ export const setAutoDownload = (on: boolean) => store.set(AUTO_KEY, on ? 'on' : 
 /** Whether this device's copy of a career has been uploaded (or came from the cloud) since it last changed. */
 export const isSynced = (s: SaveGameState) => saveRev(s) <= (readSynced()[s.saveId] ?? 0);
 
-type PushResult = 'saved' | 'same' | 'older' | 'full' | 'server_full' | 'too_big' | 'rate_limited' | 'skip';
+type PushResult = 'saved' | 'same' | 'older' | 'full' | 'server_full' | 'too_big' | 'rate_limited' | 'not_picked' | 'skip';
+
+// ---------------------------------------------------------------------------
+// Which careers live in the cloud (v2.52): the player picks up to 4 per
+// account; the list is kept on the server so every device agrees. A career
+// this device hasn't seen before is picked automatically while there's room.
+// ---------------------------------------------------------------------------
+export const MAX_CLOUD_CAREERS = 4;
+let picks: Set<string> | null = null; // null until the first overview
+const listeners = new Set<() => void>();
+export const cloudPicks = () => picks;
+export function onCloudChange(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+const notify = () => listeners.forEach((f) => f());
+function setPicks(list: string[] | null) {
+  picks = list ? new Set(list) : null;
+  notify();
+}
+
+/** Where a career on this device lives: only here, or here and in the cloud (up to date or not yet). */
+export function cloudStatus(s: SaveGameState): 'local' | 'cloud' | 'pending' | 'unknown' {
+  if (!mightBeSignedIn() || picks === null) return 'unknown';
+  if (!picks.has(s.saveId)) return 'local';
+  return isSynced(s) ? 'cloud' : 'pending';
+}
+
+/** Puts a career in the cloud (and uploads it now) or takes it out (the copy on devices stays). */
+export async function setCloudPick(s: SaveGameState, on: boolean): Promise<void> {
+  const c = await signedInClient();
+  if (!c) throw new Error('Sign in to use cloud saves.');
+  const { data, error } = await c.rpc('cloud_pick', { p_channel: CHANNEL, p_save_id: s.saveId, p_airline: s.airlineName ?? '', p_on: on });
+  if (error) throw new Error(friendlyAuthError(error.message));
+  if (data === 'full') throw new Error(`${MAX_CLOUD_CAREERS} careers are in the cloud already. Turn one off first.`);
+  markSeen(s.saveId);
+  const next = new Set(picks ?? []);
+  if (on) next.add(s.saveId);
+  else next.delete(s.saveId);
+  setPicks([...next]);
+  if (on) {
+    const r = await pushOne(c, s, true);
+    if (r === 'too_big') throw new Error('This career is too big to sync. Use Export save file to move it.');
+    if (r === 'rate_limited') throw new Error('You’ve synced a lot this hour. It will upload later.');
+  } else {
+    const m = readSynced();
+    m[s.saveId] = 0;
+    store.set(SYNCED_KEY, JSON.stringify(m));
+  }
+  notify();
+}
+
+function markSeen(id: string) {
+  const m = readSynced();
+  if (!(id in m)) {
+    m[id] = 0;
+    store.set(SYNCED_KEY, JSON.stringify(m));
+  }
+}
 
 /** Uploads one career if it changed since it was last synced (or always, with `force`). */
 async function pushOne(c: SupabaseClient, s: SaveGameState, force = false): Promise<PushResult> {
@@ -350,7 +410,8 @@ async function pushOne(c: SupabaseClient, s: SaveGameState, force = false): Prom
   });
   if (error) throw error;
   if (res === 'saved' || res === 'same') markSynced(s.saveId, rev);
-  return res as 'saved';
+  notify();
+  return res as PushResult;
 }
 
 type CloudRow = { save_id: string; rev: number; airline: string; data: string };
@@ -423,8 +484,8 @@ export async function uploadCareer(saveId: string): Promise<void> {
   throw new Error(
     r === 'older'
       ? 'The cloud has a newer copy of this career from another device. Download it instead.'
-      : r === 'full'
-        ? 'The cloud keeps up to 10 careers per account. Remove one you no longer play.'
+      : r === 'full' || r === 'not_picked'
+        ? `Turn on “Keep in the cloud” for this career first (up to ${MAX_CLOUD_CAREERS}).`
         : r === 'too_big'
           ? 'This career is too big to sync. Use Export save file to move it.'
           : r === 'rate_limited'
@@ -468,11 +529,25 @@ async function doSync(openSaveId: string | null): Promise<SyncReport> {
       }
     }
 
-    // 2. Upload what changed here
+    // 2. Which careers are in the cloud; pick new ones while there's room
+    const ov = await cloudOverview();
+    const picked = new Set(picks ?? []);
+    const seen = readSynced();
     for (const s of readSaveSlots()) {
+      if (s.saveId in seen) continue;
+      markSeen(s.saveId);
+      if (picked.size >= (ov?.maxPicks ?? MAX_CLOUD_CAREERS)) continue;
+      const { data } = await c.rpc('cloud_pick', { p_channel: CHANNEL, p_save_id: s.saveId, p_airline: s.airlineName ?? '', p_on: true });
+      if (data === 'ok') picked.add(s.saveId);
+    }
+    setPicks([...picked]);
+
+    // 3. Upload what changed here (careers in the cloud only)
+    for (const s of readSaveSlots()) {
+      if (!picked.has(s.saveId)) continue;
       const r = await pushOne(c, s);
       if (r === 'saved') report.sent++;
-      else if (r === 'full') report.problem = 'The cloud keeps up to 10 careers per account. Delete one you no longer play to sync the rest.';
+      else if (r === 'full') report.problem = `The cloud keeps ${MAX_CLOUD_CAREERS} careers per account. Turn one off in Cloud saves to sync another.`;
       else if (r === 'server_full') report.problem = 'The cloud is full right now. Your careers are safe on this device; try again later.';
       else if (r === 'too_big') report.problem = `${s.airlineName} is too big to sync. Use Export save file to move it.`;
       else if (r === 'older' && s.saveId !== openSaveId) report.waiting.push(s.airlineName);
@@ -503,6 +578,8 @@ export async function cloudDeleteSave(saveId: string): Promise<void> {
 
 export type CloudOverview = {
   saves: { saveId: string; airline: string; rev: number; updatedAt: string; fromThisDevice: boolean; fromName: string; bytes: number; waitingHere: boolean }[];
+  picks: { saveId: string; airline: string }[];
+  maxPicks: number;
   devices: { name: string; lastSeen: string; thisDevice: boolean }[];
 };
 export async function cloudOverview(): Promise<CloudOverview | null> {
@@ -510,7 +587,9 @@ export async function cloudOverview(): Promise<CloudOverview | null> {
   if (!c) return null;
   const { data, error } = await c.rpc('cloud_overview', { p_device: deviceId(), p_channel: CHANNEL });
   if (error) throw new Error(friendlyAuthError(error.message));
-  return data as CloudOverview;
+  const o = data as CloudOverview;
+  setPicks((o.picks ?? []).map((p) => p.saveId));
+  return o;
 }
 
 /** The next revision for a career being saved: always above the last one, even if this device's clock is behind. */

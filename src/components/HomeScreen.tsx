@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { getAirportMaxAircraftTier } from '../game/tiers';
 import type { Airport, GameMode, SaveGameState } from '../game/types';
-import { CloudCareersOnHome } from './CloudPanel';
+import { CloudCareersOnHome, SaveLocation } from './CloudPanel';
 import { Icon } from '../ui/icons';
 import { Button, C, Field, SearchInput, Segmented, inputStyle, glass } from '../ui/kit';
 import { useLayout } from '../ui/layout';
@@ -261,6 +261,7 @@ export function HomeScreen(props: HomeScreenProps) {
                     <div style={{ fontSize: 11.5, color: C.faint }}>
                       {sv.isAutosave ? 'Autosaved' : 'Saved'} {sv.savedAt}
                     </div>
+                    <SaveLocation save={sv} />
                   </div>
                   <Button variant="primary" onClick={() => props.onResume(sv)}>
                     Continue
