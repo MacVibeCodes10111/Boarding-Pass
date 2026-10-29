@@ -21,6 +21,18 @@ The downloads aren't code-signed, so the first time you open the game, macOS or 
 
 ## What's new
 
+Version 2.60:
+
+- **A simpler Buy screen.** Pick a maker, open a family and tap an aircraft. Its page shows the key numbers, the registration, how many and Buy or Lease, with the cabin and full specifications folded away. Families run smallest to largest.
+- **A simpler route planner.** A route card with demand, then a flights table: out, turnaround and back, each with UTC and local times. The Schedule button stays at the bottom; the week view and fares fold away, and booked flights fill the week view's rows.
+- **Choose an aircraft.** Tap the aircraft in the planner for a page of your fleet: planes already at the route's airports first, then the most free time. Sort by time left, seats or type, or search.
+- **Your flights are on the Schedule page.** An airport's window links to them with **Open in Schedule**, filtered to that airport.
+- **64 more aircraft, 162 in all.** Small planes like the Cessna 402C, Tecnam P2012, BN-2 Islander, Grand Caravan EX, Beech 1900D and L-410; regional types like the Saab 340 and 2000, BAe 146 and Avro RJ, Fokker 70 and 100, ATR 72-500, Dash 8 Q200 and Q300, CRJ-550 and E195; the 777-200 and -300, 737 MAX 8-200, 747-400D and A350-1000ULR; and freighters from the Cessna SkyCourier to the 777-300ERSF.
+- **Aircraft names as people say them:** A320 instead of A320-200ceo, 737-800 instead of 737-800 NG, Dash 8 Q400, CRJ-200. Small aircraft fill to their real seat counts (9, 19, 29), so the Twin Otter seats 19.
+- **Local times.** Scheduling shows local time at both airports as well as UTC, and the clock shows UTC and your computer's time.
+- **Correct airline callsigns and registrations.** Real callsigns for more airlines, and every country's own registration format.
+- **Fixes for phones and smaller screens**, and the "While you were away" summary only appears when something happened.
+
 Version 2.54:
 
 - **Cloud saves (optional).** Sign in with Google, Discord or a username and password to play your careers on all your devices: computers, phones and the browser game. Open **Cloud saves** on the home screen or in the Menu. Accounts are for players 13 and over, and you can delete yours at any time.
