@@ -209,7 +209,9 @@ export function playerGroundMoves(
   /** Include every movement around now, not only the ones on the ground right now (for routes). */
   all = false,
   /** Waits for the runway (runwaySequence.ts): a later takeoff, a later end of the landing roll. */
-  slotsFor?: (f: ScheduledFlight, depDay: number) => RunwaySlots
+  slotsFor?: (f: ScheduledFlight, depDay: number) => RunwaySlots,
+  /** Freighters park on cargo stands. */
+  cargoOf?: (f: ScheduledFlight) => boolean
 ): Map<string, GroundMove[]> {
   const now = day * MIN_PER_DAY + min;
   interface Occ {
@@ -260,6 +262,7 @@ export function playerGroundMoves(
         visit,
         pref: `tail:${o.f.tailNumber}`,
         halfLen: lengthOf(o.f) / 2,
+        cargo: cargoOf?.(o.f),
         kind: 'arr',
         rwy: { ident: proc.arrRwy.ident, lon: last[0], lat: last[1], hdg: proc.arrRwy.headingDegT },
         flowRwy: depRunway(o.f.destination, o.depDay, o.f.depTimeMin + o.f.blockTimeMin - playerTaxiMin(o.f.blockTimeMin).in),
@@ -284,6 +287,7 @@ export function playerGroundMoves(
       visit,
       pref: `tail:${d.f.tailNumber}`,
       halfLen: lengthOf(d.f) / 2,
+      cargo: cargoOf?.(d.f),
       kind: 'dep',
       rwy: { ident: proc.depRwy.ident, lon: proc.points[0][0], lat: proc.points[0][1], hdg: proc.depRwy.headingDegT },
       // After an arrival the aircraft is already parked (drawn by the arrival)

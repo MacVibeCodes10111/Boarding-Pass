@@ -14,6 +14,7 @@
 // ============================================================================
 import { LINEUP_MIN, VACATE_MIN } from './runwayUse';
 import type { LonLat } from './geo';
+import { cargoAreasFor, inRing } from './cargoAprons';
 import { filletPath } from './navdata';
 
 type XY = [number, number];
@@ -199,6 +200,8 @@ export class TaxiNetwork {
   stands: Stand[] = [];
   /** True when the stands are real gates from the map (not dead-end taxilanes). */
   realGates = false;
+  /** Per stand: 0 any aircraft, 1 cargo stand (freighters first), 2 remote stand (freighters where no cargo areas are mapped). Null until known. */
+  private standUse: number[] | null = null;
   private routes = new Map<string, TaxiRoute | null>();
   /** Planned taxis per movement, and the space–time they book (grid cell → [from, to, from, to…] minutes). */
   readonly trajs = new Map<string, TaxiTrajectory>();
@@ -638,6 +641,27 @@ export class TaxiNetwork {
     return this.findGate(m, m.visitStart, now, m.visit.startsWith('p') && now >= needFrom);
   }
 
+  /** Which stands are for cargo (worked out once the cargo data has loaded). */
+  private cargoStandUse(): number[] | null {
+    if (this.standUse) return this.standUse;
+    const areas = cargoAreasFor(this.iata);
+    if (areas === undefined || this.stands.length === 0) return null;
+    const ll = this.stands.map((s) => this.toLL(s.g));
+    let use: number[] = ll.map((p) =>
+      areas && (areas.a.some((ring) => inRing(p, ring)) || (areas.p ?? []).some((q) => Math.hypot((q[0] - p[0]) * Math.cos((p[1] * Math.PI) / 180), q[1] - p[1]) * 111_320 < 60)) ? 1 : 0
+    );
+    if (!use.includes(1) && this.stands.length >= 6) {
+      // No cargo areas mapped: the stands farthest from the middle of the others are the remote ones
+      const cx = this.stands.reduce((a, s) => a + s.g[0], 0) / this.stands.length;
+      const cy = this.stands.reduce((a, s) => a + s.g[1], 0) / this.stands.length;
+      const d = this.stands.map((s) => Math.hypot(s.g[0] - cx, s.g[1] - cy));
+      const cut = [...d].sort((a, b) => a - b)[Math.floor(d.length * 0.7)];
+      use = d.map((x) => (x >= cut ? 2 : 0));
+    }
+    this.standUse = use;
+    return use;
+  }
+
   private findGate(m: GateRequest, start: number, now: number, mayClear: boolean): number {
     const n = this.stands.length;
     const end = m.visitEnd;
@@ -656,10 +680,16 @@ export class TaxiNetwork {
       this.failedAt.delete(m.visit);
       return idx;
     };
-    for (let k = 0; k < n; k++) {
-      const idx = at(k);
-      if (free(idx) && this.stands[idx].clash.every(free)) return take(idx);
-    }
+    // Freighters park on cargo stands (or remote ones), passenger aircraft
+    // keep off cargo stands; either uses any stand when its own are full
+    const use = this.cargoStandUse();
+    const order = !use ? [-1] : m.cargo ? [1, 2, 0] : [0, 2, 1];
+    for (const want of order)
+      for (let k = 0; k < n; k++) {
+        const idx = at(k);
+        if (want >= 0 && use![idx] !== want) continue;
+        if (free(idx) && this.stands[idx].clash.every(free)) return take(idx);
+      }
 
     if (mayClear) {
       // Every gate taken: the stand whose occupants can all be cleared right now, cheapest first
@@ -714,7 +744,7 @@ export class TaxiNetwork {
 }
 
 /** What a gate request needs to know about the movement. */
-export type GateRequest = Pick<GroundMove, 'key' | 'visit' | 'pref' | 'visitStart' | 'visitEnd' | 'kind' | 'parkFrom' | 'pushAt' | 'rollEndAt' | 'parkUntil'>;
+export type GateRequest = Pick<GroundMove, 'key' | 'visit' | 'pref' | 'visitStart' | 'visitEnd' | 'kind' | 'parkFrom' | 'pushAt' | 'rollEndAt' | 'parkUntil' | 'cargo'>;
 
 interface GateUse {
   s: number;
@@ -1126,6 +1156,8 @@ export interface GroundMove {
   pref: string;
   /** Half the aircraft's length, metres (how far it parks from the gate). */
   halfLen: number;
+  /** A freighter: parks on a cargo stand when there is one. */
+  cargo?: boolean;
   kind: 'dep' | 'arr';
   /** Departure threshold, or the end of the landing roll. */
   rwy: RunwayPoint;

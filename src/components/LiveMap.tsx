@@ -52,6 +52,7 @@ import { dayIndexOf, daysOrAll, formatClockShort, formatDurationHm, MIN_PER_DAY 
 import type { Airport, PlayerAircraft, RadarIconGroup, ScheduledFlight } from '../game/types';
 import { C, MAP_C, useThemeVersion } from '../ui/kit';
 import { currentLayout, isTouchFirst } from '../ui/layout';
+import { loadCargoAprons } from '../game/cargoAprons';
 
 const EMPTY_FC = { type: 'FeatureCollection', features: [] as any[] };
 
@@ -1213,6 +1214,10 @@ export function LiveMap(props: LiveMapProps) {
     popup?.remove();
   };
 
+  // Cargo aprons for parking freighters (loaded once, in the background)
+  useEffect(() => {
+    loadCargoAprons();
+  }, []);
   // Opening an airport for planning closes any aircraft info that was showing
   const planeInfoEnabled = props.planeInfoEnabled;
   useEffect(() => {
@@ -2141,7 +2146,8 @@ export function LiveMap(props: LiveMapProps) {
         new Set([fl.origin.iata_code, fl.destination.iata_code]),
         undefined,
         true,
-        (f, dd) => runwaySeq(st).slots(f, dd)
+        (f, dd) => runwaySeq(st).slots(f, dd),
+        (f) => Boolean(infoById.map.get(f.id)?.model?.is_cargo)
       );
       return {
         dep: all.get(fl.origin.iata_code)?.find((m) => m.key === `p:${fl.id}:${depDay}:d`),
@@ -2188,7 +2194,8 @@ export function LiveMap(props: LiveMapProps) {
           new Set(nets.map((n) => n.iata)),
           pinfo,
           false,
-          (f, dd) => runwaySeq(st).slots(f, dd)
+          (f, dd) => runwaySeq(st).slots(f, dd),
+          (f) => Boolean(infoById.map.get(f.id)?.model?.is_cargo)
         );
         const aiOn = traffic && st.aiDensity !== 'off';
         if (aiOn && aiIndex?.traffic !== traffic) {
