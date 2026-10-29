@@ -17,32 +17,42 @@ const net = JSON.parse(readFileSync(resolve(root, 'public/data/network.json'), '
 const airports = net.airports.map((a) => ({ iata: a[0], lat: a[5], lon: a[6] }));
 
 const WORDS = 'cargo|freight|fret|carga|fracht|frakt|vracht|merci|kargo|frete|carico|cargas|грузов|货|貨|화물|貨物';
-const QUERY = `[out:json][timeout:900];
-(
-  way["aeroway"="apron"]["apron"~"cargo|freight",i];
-  way["aeroway"="apron"]["usage"~"cargo|freight",i];
-  way["aeroway"="apron"]["name"~"${WORDS}",i];
-  relation["aeroway"="apron"]["apron"~"cargo|freight",i];
-  relation["aeroway"="apron"]["name"~"${WORDS}",i];
-  node["aeroway"~"parking_position|gate"]["name"~"${WORDS}",i];
-  node["aeroway"~"parking_position|gate"]["usage"~"cargo|freight",i];
-);
-out geom;`;
-
-const MIRRORS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
-let data = null;
-for (const url of MIRRORS) {
-  try {
-    const res = await fetch(url, { method: 'POST', body: new URLSearchParams({ data: QUERY }), headers: { 'User-Agent': 'BoardingPass-data-build (boardingpass.my)' } });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    data = await res.json();
-    console.log(`Overpass: ${url}, ${data.elements.length} features`);
-    break;
-  } catch (e) {
-    console.log(`Overpass ${url} failed: ${e.message}`);
-  }
+import { appendFileSync } from 'node:fs';
+const LOG = resolve(root, 'public/data/cargo-aprons.log');
+writeFileSync(LOG, '');
+const log = (s) => {
+  console.log(s);
+  appendFileSync(LOG, s + '\n');
+};
+// Three smaller queries (busy servers turn away one big one)
+const QUERIES = {
+  'apron ways': `[out:json][timeout:600];(way["aeroway"="apron"]["apron"~"cargo|freight",i];way["aeroway"="apron"]["usage"~"cargo|freight",i];way["aeroway"="apron"]["name"~"${WORDS}",i];);out geom;`,
+  'apron relations': `[out:json][timeout:600];(relation["aeroway"="apron"]["apron"~"cargo|freight",i];relation["aeroway"="apron"]["name"~"${WORDS}",i];);out geom;`,
+  'cargo stands': `[out:json][timeout:600];(node["aeroway"="parking_position"]["name"~"${WORDS}",i];node["aeroway"="parking_position"]["usage"~"cargo|freight",i];);out;`,
+};
+const MIRRORS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+const data = { elements: [] };
+for (const [what, q] of Object.entries(QUERIES)) {
+  let ok = false;
+  for (let attempt = 0; attempt < 2 && !ok; attempt++)
+    for (const url of MIRRORS) {
+      try {
+        const res = await fetch(url, { method: 'POST', body: new URLSearchParams({ data: q }), headers: { 'User-Agent': 'BoardingPass-data-build (boardingpass.my)', Accept: 'application/json' }, signal: AbortSignal.timeout(660_000) });
+        const text = await res.text();
+        if (!res.ok) throw new Error(`HTTP ${res.status} ${text.slice(0, 200).replace(/\s+/g, ' ')}`);
+        const j = JSON.parse(text);
+        if (j.remark) log(`  remark: ${j.remark}`);
+        data.elements.push(...j.elements);
+        log(`${what}: ${j.elements.length} from ${url}`);
+        ok = true;
+        break;
+      } catch (e) {
+        log(`${what}: ${url} failed: ${e.message}`);
+      }
+    }
+  if (!ok) log(`${what}: GAVE UP`);
 }
-if (!data) process.exit(1);
+if (!data.elements.length) process.exit(1);
 
 const r5 = (x) => Math.round(x * 1e5) / 1e5;
 const km = (a, b) => {
@@ -96,4 +106,4 @@ for (const k of Object.keys(out)) if (!out[k].p.length) delete out[k].p;
 const file = resolve(root, 'public/data/cargo-aprons.json');
 writeFileSync(file, JSON.stringify({ v: 1, built: new Date().toISOString().slice(0, 10), source: '© OpenStreetMap contributors (ODbL)', airports: out }));
 const n = Object.keys(out).length;
-console.log(`cargo-aprons.json: ${n} airports, ${Object.values(out).reduce((s, x) => s + x.a.length, 0)} aprons, ${Object.values(out).reduce((s, x) => s + (x.p?.length ?? 0), 0)} stands, ${(JSON.stringify(out).length / 1024).toFixed(0)} kB`);
+log(`cargo-aprons.json: ${n} airports, ${Object.values(out).reduce((s, x) => s + x.a.length, 0)} aprons, ${Object.values(out).reduce((s, x) => s + (x.p?.length ?? 0), 0)} stands, ${(JSON.stringify(out).length / 1024).toFixed(0)} kB`);
