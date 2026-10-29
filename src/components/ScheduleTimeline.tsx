@@ -28,6 +28,8 @@ export interface ScheduleTimelineProps {
   othersCompact?: boolean;
   /** Shows a "Detailed view" button (opens the aircraft's schedule). */
   onDetailedView?: () => void;
+  /** Just the week chart: the time controls and flight times live elsewhere (route planner, v2.58). */
+  chartOnly?: boolean;
 }
 
 interface Piece {
@@ -90,6 +92,7 @@ export function ScheduleTimeline({
   destIata = '???',
   othersCompact = false,
   onDetailedView,
+  chartOnly = false,
 }: ScheduleTimelineProps) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   // Track width, so labels only go on blocks wide enough to read
@@ -156,11 +159,13 @@ export function ScheduleTimeline({
         background: C.bg,
         border: `1px solid ${C.line}`,
         borderRadius: 8,
-        padding: 12,
-        marginBottom: 12,
+        padding: chartOnly ? '8px 8px 10px' : 12,
+        marginBottom: chartOnly ? 0 : 12,
         userSelect: 'none',
       }}
     >
+      {!chartOnly && (
+      <>
       {/* Header: title and how booked the aircraft is, the detailed view in the corner (v2.56: tidier) */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 10 }}>
         <div style={{ minWidth: 0 }}>
@@ -254,6 +259,9 @@ export function ScheduleTimeline({
         </div>
       )}
 
+      </>
+      )}
+
       {/* Hour scale */}
       <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr', alignItems: 'center', marginBottom: 4 }}>
         <div />
@@ -286,7 +294,7 @@ export function ScheduleTimeline({
         style={{ position: 'relative', cursor: 'ew-resize', display: 'flex', flexDirection: 'column', gap: 4, touchAction: 'none' }}
       >
         {DAY_NAMES_SHORT.map((dayName, dIdx) => (
-          <div key={dayName} style={{ display: 'grid', gridTemplateColumns: '42px 1fr', alignItems: 'center', height: othersCompact ? 26 : 22 }}>
+          <div key={dayName} style={{ display: 'grid', gridTemplateColumns: '42px 1fr', alignItems: 'center', height: othersCompact || chartOnly ? 26 : 22 }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: candidateDays[dIdx] ? C.textSoft : C.faint }}>{dayName}</div>
             <div style={{ position: 'relative', height: '100%', background: C.panel, border: `1px solid ${C.line}`, borderRadius: 4, overflow: 'hidden' }}>
               {[3, 6, 9, 12, 15, 18, 21].map((h) => (
@@ -428,5 +436,33 @@ function TimePart({ value, max, step, onCommit }: { value: number; max: number; 
       }}
       style={{ width: 24, background: 'transparent', color: C.text, border: 'none', textAlign: 'center', fontWeight: 650, fontSize: 14, padding: 0, outline: 'none' }}
     />
+  );
+}
+
+/** A UTC time of day as HH:MM with 5-minute steps (route planner, v2.58). */
+export function ClockInput({ value, onChange, label }: { value: number; onChange: (min: number) => void; label: string }) {
+  const hh = Math.floor(value / 60);
+  const mm = value % 60;
+  const step = (d: number) => onChange(snapToFiveMin(value + d));
+  const btn = (text: string, d: number, aria: string) => (
+    <button
+      type="button"
+      aria-label={aria}
+      onClick={() => step(d)}
+      style={{ width: 26, height: 30, borderRadius: 6, border: `1px solid ${C.border}`, background: C.raised, color: C.textSoft, cursor: 'pointer', fontSize: 14, padding: 0, flex: 'none' }}
+    >
+      {text}
+    </button>
+  );
+  return (
+    <span role="group" aria-label={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+      {btn('−', -5, `${label}, 5 minutes earlier`)}
+      <span style={{ display: 'inline-flex', alignItems: 'center', background: C.bg, border: `1px solid ${C.brand}88`, borderRadius: 6, padding: '3px 6px', height: 30, boxSizing: 'border-box' }}>
+        <TimePart value={hh} max={23} onCommit={(h) => onChange(snapToFiveMin(h * 60 + mm))} />
+        <span style={{ color: C.brand, fontWeight: 700 }}>:</span>
+        <TimePart value={mm} max={59} step={5} onCommit={(m) => onChange(snapToFiveMin(hh * 60 + m))} />
+      </span>
+      {btn('+', 5, `${label}, 5 minutes later`)}
+    </span>
   );
 }

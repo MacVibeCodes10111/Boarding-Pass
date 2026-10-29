@@ -217,6 +217,10 @@ export default function App() {
   const [screen, setScreen] = useState<'home' | 'dashboard'>('home');
   // The map is always on screen; everything else opens as a panel over it.
   const [panel, setPanel] = useState<PanelId | null>(null);
+  const [scheduleSearch, setScheduleSearch] = useState('');
+  useEffect(() => {
+    if (panel !== 'schedule') setScheduleSearch('');
+  }, [panel]);
   // Last tab used in each toolbar group (My Airline, Buy)
   const [groupTab, setGroupTab] = useState<{ airline: PanelId; buy: PanelId }>({ airline: 'stats', buy: 'buy' });
   useEffect(() => {
@@ -1734,6 +1738,12 @@ export default function App() {
           bulkTails={bulkTails}
           onBulkPlan={applyBulkPlan}
           onEndBulk={() => setBulkTails(null)}
+          iconForModel={iconForModel}
+          onShowFlightsHere={(iata) => {
+            setScheduleSearch(iata);
+            setInspectedAirport(null);
+            setPanel('schedule');
+          }}
           onClose={() => setInspectedAirport(null)}
         />
       )}
@@ -1794,7 +1804,11 @@ export default function App() {
           econById={econById}
           onEdit={openSchedule}
           onDelete={deleteFlightWithPair}
-          onClose={closePanel}
+          initialSearch={scheduleSearch}
+          onClose={() => {
+            setScheduleSearch('');
+            closePanel();
+          }}
         />
       )}
       {panel === 'bank' && (

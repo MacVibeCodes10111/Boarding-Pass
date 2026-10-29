@@ -10,6 +10,7 @@ import {
   aircraftAwayOnDays,
   getAircraftCircuitStatus,
   nextFreeFlightNumber,
+  returnFlightNumber,
   planCloseLoop,
   planPingPong,
   planRouteDispatch,
@@ -17,14 +18,16 @@ import {
   type RoutingMode,
 } from '../game/scheduling';
 import { airportRestrictionFor, calcHubPurchasePriceUsd, calcHubSaleRefundUsd, getAirportMaxAircraftTier } from '../game/tiers';
-import { formatClockShort, formatMoneyM } from '../game/time';
-import type { Airport, Fares, PlayerAircraft, ScheduledFlight, WeekDays } from '../game/types';
-import { Button, C, DayPicker, Field, Pill, SectionTitle, Segmented, Stepper, inputStyle, glass } from '../ui/kit';
+import { formatClockShort, formatDurationHm, formatMoneyM } from '../game/time';
+import type { AircraftModel, Airport, Fares, PlayerAircraft, ScheduledFlight, WeekDays } from '../game/types';
+import { Button, C, DayPicker, Pill, Segmented, Stepper, inputStyle, glass } from '../ui/kit';
 import { ErrorBanner, FaresEditor } from './AircraftScheduleModal';
 import { RouteDemandBar } from './RouteDemandBar';
 import { getRouteDemandAndFares } from '../game/economics';
 import { planBulkDispatch, type BulkScheduleResult } from '../game/fleetOps';
-import { ScheduleTimeline } from './ScheduleTimeline';
+import { ClockInput, ScheduleTimeline } from './ScheduleTimeline';
+import { airportLocalClock } from '../game/localTime';
+import { AircraftPicker, cabinText, freeHours, type PickerRow } from './AircraftPicker';
 
 /** Everything the player is currently composing in the route builder. */
 export interface RouteDraft {
@@ -61,6 +64,9 @@ export interface AirportDrawerProps {
   bulkTails?: string[] | null;
   onBulkPlan?: (r: BulkScheduleResult) => void;
   onEndBulk?: () => void;
+  /** Opens the Schedule page showing this airport's flights (v2.58). */
+  onShowFlightsHere?: (iata: string) => void;
+  iconForModel?: (m: AircraftModel) => string;
   onClose: () => void;
 }
 
@@ -85,11 +91,16 @@ export function AirportDrawer({
   bulkTails,
   onBulkPlan,
   onEndBulk,
+  onShowFlightsHere,
+  iconForModel,
   onClose,
 }: AirportDrawerProps) {
   const bulk = useMemo(() => (bulkTails ? fleet.filter((a) => bulkTails.includes(a.tailNumber)) : []), [bulkTails, fleet]);
   const [spacing, setSpacing] = useState(60);
-  const [acSearch, setAcSearch] = useState('');
+  const [picking, setPicking] = useState(false);
+  useEffect(() => {
+    setPicking(false);
+  }, [airport.iata_code]);
   const [showWx, setShowWx] = useState(false);
   const isHub = hubs.includes(airport.iata_code);
   const tierInfo = getAirportMaxAircraftTier(airport.max_runway_length_ft);
@@ -153,8 +164,6 @@ export function AirportDrawer({
   const loopArgs = aircraft ? { aircraft, schedule, hubs, airlineIata, airportByIata } : null;
   const dispatchDisabled = !dispatchRequest || Boolean(liveConflict);
 
-  const lastOf = (ac: PlayerAircraft) => getAircraftCircuitStatus(ac, schedule).currentEndIata;
-
   // Aircraft ranked for this route (from the departure airport you chose):
   // ones that can fly it, are parked there at departure time and still have
   // time in their day come first, least used at the top.
@@ -183,7 +192,11 @@ export function AirportDrawer({
             ? 'no time left'
             : null;
         const location = where ?? ac.hubIata;
-        return { ac, usage, from: hasFlights ? location : `${ac.hubIata} (free)`, reason, atOrigin };
+        const ends = [draft.originIata, airport.iata_code];
+        const attached =
+          ends.includes(ac.hubIata) ||
+          flightsForTail(schedule, ac.tailNumber).some((f) => ends.includes(f.origin.iata_code) || ends.includes(f.destination.iata_code));
+        return { ac, usage, from: hasFlights ? location : `${ac.hubIata} (free)`, reason, atOrigin, attached } as PickerRow;
       })
       .sort(
         (a, b) =>
@@ -207,10 +220,22 @@ export function AirportDrawer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [airport.iata_code, draft.originIata, schedule.length, fleet.length]);
 
-  const filteredFleet = ranked.filter(({ ac }) => {
-    const q = acSearch.trim().toLowerCase();
-    return !q || ac.tailNumber === draft.tailNumber || ac.tailNumber.toLowerCase().includes(q) || ac.model.name.toLowerCase().includes(q);
-  });
+  // Times for the flights table
+  const legTimes = useMemo(() => {
+    const turnMin = aircraft?.model.turnaround_min ?? 45;
+    const outArr = (draft.depMin + blockMin) % 1440;
+    const retAbs = Math.ceil((draft.depMin + blockMin + turnMin) / 5) * 5;
+    const retDep = retAbs % 1440;
+    return { turnMin, outArr, retDep, retArr: (retDep + blockMin) % 1440 };
+  }, [aircraft, draft.depMin, blockMin]);
+  const returnNumber = useMemo(
+    () => returnFlightNumber(schedule, airlineIata, draft.flightNumber.trim().toUpperCase() || suggestedNumber, distanceNm || undefined),
+    [schedule, airlineIata, draft.flightNumber, suggestedNumber, distanceNm]
+  );
+  const card: React.CSSProperties = { padding: 12, borderRadius: 12, border: `1px solid ${C.line}`, background: C.bg };
+  const summaryStyle: React.CSSProperties = { cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, fontWeight: 650, listStyle: 'none' };
+
+  const pickedRow = ranked.find((r) => r.ac.tailNumber === draft.tailNumber);
 
   return (
     <aside
@@ -316,113 +341,195 @@ export function AirportDrawer({
         </div>
       </div>
 
-      {/* Route planner */}
-      <div style={{ padding: '14px 18px 18px' }}>
-        <div style={{ fontSize: 15, fontWeight: 650, marginBottom: 12 }}>
-          {routeValid ? `New route to ${airport.iata_code}` : `Plan a route from ${airport.iata_code}`}
-          {routeValid && distanceNm > 0 && (
-            <span className="num" style={{ fontSize: 12.5, color: C.muted, fontWeight: 500 }}>
-              {' '}
-              {distanceNm.toLocaleString()} nm
-            </span>
-          )}
-        </div>
-
-        {fleet.length === 0 ? (
-          <div style={{ fontSize: 12.5, color: C.muted, padding: '12px', border: `1px dashed ${C.border}`, borderRadius: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ flex: 1 }}>You need an aircraft before you can schedule flights.</span>
+      {/* Route planner (reworked v2.58): route card, a flights table, the aircraft, extras folded, the button pinned */}
+      <div style={{ padding: '14px 16px 0' }}>
+        {picking && bulk.length === 0 && fleet.length > 0 ? (
+          <div style={{ paddingBottom: 16 }}>
+            <AircraftPicker
+              rows={ranked}
+              selected={draft.tailNumber}
+              originIata={draft.originIata}
+              routeLabel={`${draft.originIata} ${draft.mode === 'roundtrip' ? '⇄' : '→'} ${airport.iata_code}${routeValid ? `, ${formatDurationHm(blockMin)} each way` : ''}`}
+              iconForModel={iconForModel}
+              onPick={(tail) => {
+                onPickAircraft(tail);
+                setPicking(false);
+              }}
+              onBack={() => setPicking(false)}
+            />
+          </div>
+        ) : fleet.length === 0 ? (
+          <div style={{ fontSize: 13, color: C.muted, padding: 12, border: `1px dashed ${C.border}`, borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+            <span style={{ flex: 1 }}>Buy an aircraft to start flying routes.</span>
             <Button size="sm" variant="primary" onClick={onBuyAircraft}>
               Buy aircraft
             </Button>
           </div>
         ) : (
           <>
-            {bulk.length > 0 ? (
-              <div className="bp-bulk-box" style={{ border: `1px solid ${C.brand}66`, background: `${C.brand}10`, borderRadius: 10, padding: '10px 12px', marginBottom: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ flex: 1, fontSize: 13, fontWeight: 650 }}>Scheduling {bulk.length} aircraft together</div>
-                  <Button size="sm" variant="ghost" onClick={onEndBulk}>
-                    Back to one
-                  </Button>
-                </div>
-                <div className="num" style={{ fontSize: 12, color: C.muted, margin: '2px 0 8px' }}>
-                  {bulk.map((a) => a.tailNumber).join(', ')}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: C.textDim, flexWrap: 'wrap' }}>
-                  Each one departs
-                  <Stepper value={spacing} min={0} max={720} step={5} onChange={setSpacing} />
-                  min after the one before
+            {/* Route card */}
+            <section aria-label="Route" style={{ ...card, marginBottom: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1fr)', alignItems: 'end', gap: 8 }}>
+                <label style={{ minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 11, color: C.muted, marginBottom: 3 }}>From</span>
+                  <select value={draft.originIata} onChange={(e) => updateDraft({ originIata: e.target.value })} style={{ ...inputStyle, fontWeight: 700, fontSize: 15, padding: '6px 8px' }}>
+                    {originOptions.map((code) => {
+                      const ap = airportByIata.get(code);
+                      return ap ? (
+                        <option key={code} value={code}>
+                          {code} {ap.municipality}
+                          {hubs.includes(code) ? ' (hub)' : ''}
+                        </option>
+                      ) : null;
+                    })}
+                  </select>
+                </label>
+                <span aria-hidden="true" style={{ color: C.muted, fontSize: 18, paddingBottom: 6 }}>
+                  {draft.mode === 'roundtrip' ? '⇄' : '→'}
+                </span>
+                <div style={{ minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 11, color: C.muted, marginBottom: 3 }}>To</span>
+                  <div style={{ fontWeight: 700, fontSize: 15, padding: '6px 2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {airport.iata_code} <span style={{ fontWeight: 500, color: C.textDim }}>{airport.municipality}</span>
+                  </div>
                 </div>
               </div>
-            ) : (
-            <Field label="Aircraft" hint="Least used first. Aircraft that can't fly this route are listed last." style={{ marginBottom: 10 }}>
-              {fleet.length > 5 && (
-                <input
-                  placeholder="Search tail number or aircraft type"
-                  value={acSearch}
-                  onChange={(e) => setAcSearch(e.target.value)}
-                  style={{ ...inputStyle, marginBottom: 6 }}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
+                <Segmented<RoutingMode>
+                  size="sm"
+                  value={draft.mode}
+                  onChange={(mode) => updateDraft({ mode })}
+                  options={[
+                    { value: 'roundtrip', label: 'Round trip', title: 'Fly out and straight back' },
+                    { value: 'chain', label: 'One way', title: 'Fly one leg and continue from the destination next' },
+                  ]}
                 />
+                {routeValid && (
+                  <span className="num" style={{ fontSize: 12.5, color: C.muted }}>
+                    {distanceNm.toLocaleString()} nm · {formatDurationHm(blockMin)} each way
+                  </span>
+                )}
+              </div>
+              {draft.mode === 'chain' && <div style={{ fontSize: 11.5, color: C.faint, marginTop: 6 }}>Continue from {airport.iata_code} next: +15% passengers on A→B→C chains.</div>}
+              {origin && routeValid && (
+                <div style={{ marginTop: 10 }}>
+                  <RouteDemandBar origin={origin} destination={airport} distanceNm={distanceNm} playerHubs={hubs} allSchedule={schedule} fleet={fleet} compact />
+                </div>
               )}
-              <select value={draft.tailNumber} onChange={(e) => onPickAircraft(e.target.value)} style={{ ...inputStyle, fontWeight: 600 }}>
-                {filteredFleet.map(({ ac, usage, from, reason, atOrigin }) => (
-                  <option key={ac.tailNumber} value={ac.tailNumber}>
-                    {ac.tailNumber}, {ac.model.name}, at {from}, {usage.usedPct}% used{reason ? ` (${reason})` : !atOrigin ? ` (not at ${draft.originIata})` : ''}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            )}
+              {!routeValid && <div style={{ fontSize: 12.5, color: C.muted, marginTop: 8 }}>Pick where to fly from, or tap another airport on the map.</div>}
+            </section>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px', gap: 10, marginBottom: 10 }}>
-              <Field label="From" hint={aircraft && acFlights.length > 0 ? `${aircraft.tailNumber} is at ${lastOf(aircraft)} at the end of its day` : undefined}>
-                <select value={draft.originIata} onChange={(e) => updateDraft({ originIata: e.target.value })} style={{ ...inputStyle }}>
-                  {originOptions.map((code) => {
-                    const ap = airportByIata.get(code);
-                    return ap ? (
-                      <option key={code} value={code}>
-                        {code} {ap.municipality}
-                        {hubs.includes(code) ? ' (hub)' : ''}
-                      </option>
-                    ) : null;
-                  })}
-                </select>
-              </Field>
-              <Field label="Flight number">
-                <input
-                  value={draft.flightNumber}
-                  placeholder={suggestedNumber}
-                  aria-label={`Flight number, ${suggestedNumber} if left empty`}
-                  onChange={(e) => updateDraft({ flightNumber: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })}
-                  style={{ ...inputStyle, fontWeight: 600, color: C.brand }}
+            {/* Flights table */}
+            {routeValid && (
+              <section aria-label="Flights" style={{ ...card, marginBottom: 10, padding: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderBottom: `1px solid ${C.line}`, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 650, flex: 1 }}>Flights</span>
+                  <div style={{ flex: '0 1 252px', minWidth: 196 }}>
+                    <DayPicker days={draft.days} onChange={(days) => updateDraft({ days })} />
+                  </div>
+                </div>
+                <LegRow
+                  number={
+                    <input
+                      value={draft.flightNumber}
+                      placeholder={suggestedNumber}
+                      aria-label={`Flight number, ${suggestedNumber} if left empty`}
+                      onChange={(e) => updateDraft({ flightNumber: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })}
+                      style={{ ...inputStyle, width: 82, padding: '4px 6px', fontWeight: 700, color: C.brand }}
+                    />
+                  }
+                  from={draft.originIata}
+                  to={airport.iata_code}
+                  dep={<ClockInput value={draft.depMin} onChange={(depMin) => updateDraft({ depMin })} label="Departure time" />}
+                  depMin={draft.depMin}
+                  arrMin={legTimes.outArr}
+                  blockMin={blockMin}
                 />
-              </Field>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-              <Segmented<RoutingMode>
-                value={draft.mode}
-                onChange={(mode) => updateDraft({ mode })}
-                options={[
-                  { value: 'roundtrip', label: 'Round trip', title: 'Fly out and straight back' },
-                  { value: 'chain', label: 'One way', title: 'Fly one leg and continue from the destination next' },
-                ]}
-              />
-              <span style={{ fontSize: 12, color: C.muted }}>
-                {draft.mode === 'roundtrip' ? `${draft.originIata} → ${airport.iata_code} → ${draft.originIata}` : `Continue from ${airport.iata_code} next (+15% passengers on A→B→C chains)`}
-              </span>
-            </div>
-
-            {origin && routeValid && (
-              <RouteDemandBar origin={origin} destination={airport} distanceNm={distanceNm} playerHubs={hubs} allSchedule={schedule} fleet={fleet} compact />
+                {draft.mode === 'roundtrip' && (
+                  <>
+                    <div className="num" style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '6px 12px', fontSize: 12, color: C.muted, background: C.bg }}>
+                      <span>Turnaround at {airport.iata_code}</span>
+                      <span>{legTimes.turnMin} min</span>
+                    </div>
+                    <LegRow
+                      number={
+                        <span className="num" style={{ display: 'inline-block', width: 82, padding: '4px 6px', fontWeight: 700, color: C.brand }}>
+                          {returnNumber}
+                        </span>
+                      }
+                      from={airport.iata_code}
+                      to={draft.originIata}
+                      dep={<span className="num" style={{ fontWeight: 700, fontSize: 15 }}>{formatClockShort(legTimes.retDep)}</span>}
+                      depMin={legTimes.retDep}
+                      arrMin={legTimes.retArr}
+                      blockMin={blockMin}
+                    />
+                  </>
+                )}
+                <div style={{ fontSize: 11, color: C.faint, padding: '6px 12px 10px' }}>Times are UTC, local time underneath.</div>
+              </section>
             )}
 
-            <Field label="Days" style={{ marginBottom: 12 }}>
-              <DayPicker days={draft.days} onChange={(days) => updateDraft({ days })} />
-            </Field>
+            {/* Aircraft */}
+            <section aria-label="Aircraft" style={{ ...card, marginBottom: 10 }}>
+              {bulk.length > 0 ? (
+                <div className="bp-bulk-box">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ flex: 1, fontSize: 13.5, fontWeight: 650 }}>{bulk.length} aircraft together</div>
+                    <Button size="sm" variant="ghost" onClick={onEndBulk}>
+                      Back to one
+                    </Button>
+                  </div>
+                  <div className="num" style={{ fontSize: 12, color: C.muted, margin: '2px 0 8px' }}>
+                    {bulk.map((a) => a.tailNumber).join(', ')}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: C.textDim, flexWrap: 'wrap' }}>
+                    Each departs
+                    <Stepper value={spacing} min={0} max={720} step={5} onChange={setSpacing} />
+                    min after the one before
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <span style={{ fontSize: 13.5, fontWeight: 650, flex: 1 }}>Aircraft</span>
+                    {aircraft && (
+                      <button type="button" onClick={() => onOpenSchedule(aircraft.tailNumber, null)} style={{ background: 'none', border: 'none', color: C.accent, cursor: 'pointer', fontSize: 12.5, fontWeight: 600, padding: 0 }}>
+                        Its week
+                      </button>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="bp-row"
+                    aria-label={`Aircraft: ${aircraft ? `${aircraft.tailNumber}, ${aircraft.model.name}` : 'none'}. Change`}
+                    onClick={(e) => {
+                      setPicking(true);
+                      (e.currentTarget.closest('aside') as HTMLElement | null)?.scrollTo({ top: 0 });
+                    }}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, border: `1px solid ${C.border}`, background: C.panel, color: C.text, cursor: 'pointer', textAlign: 'left' }}
+                  >
+                    {aircraft && iconForModel && <img src={iconForModel(aircraft.model)} alt="" style={{ width: 24, height: 24, flex: 'none' }} />}
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'block', fontWeight: 650, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {aircraft ? `${aircraft.tailNumber} · ${aircraft.model.name}` : 'Choose an aircraft'}
+                      </span>
+                      {aircraft && pickedRow && (
+                        <span className="num" style={{ display: 'block', fontSize: 12, color: C.muted, marginTop: 2 }}>
+                          {cabinText(aircraft)} · {100 - pickedRow.usage.usedPct}% free ({freeHours(pickedRow)} h a week) · at {pickedRow.from.replace(' (free)', '')}
+                        </span>
+                      )}
+                    </span>
+                    <span style={{ fontSize: 12.5, color: C.accent, fontWeight: 600, whiteSpace: 'nowrap' }}>Change</span>
+                    <Icon name="chevron" size={14} color={C.accent} />
+                  </button>
+                  {pickedRow?.reason && <div style={{ fontSize: 12, color: C.amber, marginTop: 6 }}>This one can’t fly the route: {pickedRow.reason}.</div>}
+                </>
+              )}
+            </section>
 
             {aircraft && circuit && !circuit.isClosedLoop && loopArgs && (
-              <div style={{ padding: '10px 12px', borderRadius: 8, border: `1px solid ${C.amber}55`, background: `${C.amber}12`, marginBottom: 12 }}>
+              <div style={{ padding: '10px 12px', borderRadius: 10, border: `1px solid ${C.amber}55`, background: `${C.amber}12`, marginBottom: 10 }}>
                 <div style={{ fontSize: 12.5, color: C.amber, fontWeight: 600 }}>
                   {aircraft.tailNumber} ends its day at {circuit.currentEndIata}, not where it started ({circuit.startIata}).
                 </div>
@@ -438,24 +545,6 @@ export function AirportDrawer({
               </div>
             )}
 
-            {aircraft && (
-              <ScheduleTimeline
-                aircraft={aircraft}
-                existingFlights={acFlights}
-                selectedDepMin={draft.depMin}
-                onChangeDepMin={(depMin) => updateDraft({ depMin })}
-                candidateBlockMin={blockMin}
-                candidateDays={draft.days}
-                autoRoundtrip={draft.mode === 'roundtrip'}
-                onSelectExistingFlight={(fl) => onOpenSchedule(fl.tailNumber, fl.id)}
-                conflictMessage={liveConflict}
-                originIata={draft.originIata}
-                destIata={airport.iata_code}
-                othersCompact
-                onDetailedView={() => onOpenSchedule(aircraft.tailNumber, null)}
-              />
-            )}
-
             {liveConflict && <ErrorBanner message={liveConflict} />}
             {!liveConflict && liveWarning && (
               <div style={{ display: 'flex', gap: 6, fontSize: 12.5, color: C.amber, marginBottom: 10 }}>
@@ -464,89 +553,126 @@ export function AirportDrawer({
               </div>
             )}
 
-            <details style={{ marginBottom: 14 }}>
-              <summary style={{ cursor: 'pointer', fontSize: 13, color: C.textSoft, padding: '4px 0' }}>
-                Fares{' '}
-                <span className="num" style={{ color: C.muted, fontSize: 12 }}>
-                  {aircraft?.model.is_cargo ? `$${draft.fares.cargoPerTon}/t` : `economy $${draft.fares.econ}, business $${draft.fares.bus}`}
-                </span>
-              </summary>
-              <div style={{ paddingTop: 8 }}>
-                <FaresEditor fares={draft.fares} onChange={(fares) => updateDraft({ fares })} cargoOnly={Boolean(aircraft?.model.is_cargo)} refFares={refFares ?? undefined} />
-                <div style={{ fontSize: 11.5, color: C.faint, marginTop: 6 }}>Set to the market rate for this route. Higher fares sell fewer seats, and at three times the market rate nobody buys.</div>
-              </div>
-            </details>
-
-            {bulk.length > 0 ? (
-              <Button
-                variant="primary"
-                size="lg"
-                block
-                disabled={!dispatchRequest}
-                onClick={() => {
-                  if (!dispatchRequest || !onBulkPlan) return;
-                  const { aircraft: _first, ...base } = dispatchRequest;
-                  onBulkPlan(planBulkDispatch(base, bulk, spacing));
-                }}
-              >
-                Schedule {bulk.length} aircraft {draft.originIata}
-                {draft.mode === 'roundtrip' ? '–' : ' → '}
-                {airport.iata_code}
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
-                size="lg"
-                block
-                disabled={dispatchDisabled}
-                onClick={() => dispatchRequest && onPlanResult(planRouteDispatch(dispatchRequest))}
-              >
-                {draft.mode === 'roundtrip' ? `Schedule round trip ${draft.originIata}–${airport.iata_code}` : `Schedule ${draft.originIata} → ${airport.iata_code}`}
-              </Button>
+            {/* Extras, folded */}
+            {aircraft && routeValid && (
+              <details style={{ ...card, marginBottom: 10 }}>
+                <summary style={summaryStyle}>
+                  <span style={{ flex: 1 }}>Week view</span>
+                  <span className="num" style={{ fontSize: 12, color: liveConflict ? C.red : C.muted }}>
+                    {liveConflict ? 'clashes' : `${aircraft.tailNumber} ${calcAircraftScheduleUsage(aircraft, schedule).usedPct}% booked`}
+                  </span>
+                </summary>
+                <div style={{ marginTop: 10 }}>
+                  <ScheduleTimeline
+                    aircraft={aircraft}
+                    existingFlights={acFlights}
+                    selectedDepMin={draft.depMin}
+                    onChangeDepMin={(depMin) => updateDraft({ depMin })}
+                    candidateBlockMin={blockMin}
+                    candidateDays={draft.days}
+                    autoRoundtrip={draft.mode === 'roundtrip'}
+                    onSelectExistingFlight={(fl) => onOpenSchedule(fl.tailNumber, fl.id)}
+                    conflictMessage={liveConflict}
+                    originIata={draft.originIata}
+                    destIata={airport.iata_code}
+                    chartOnly
+                  />
+                </div>
+              </details>
+            )}
+            {routeValid && (
+              <details style={{ ...card, marginBottom: 10 }}>
+                <summary style={summaryStyle}>
+                  <span style={{ flex: 1 }}>Fares</span>
+                  <span className="num" style={{ fontSize: 12, color: C.muted }}>
+                    {aircraft?.model.is_cargo ? `$${draft.fares.cargoPerTon}/t` : `economy $${draft.fares.econ}, business $${draft.fares.bus}`}
+                  </span>
+                </summary>
+                <div style={{ paddingTop: 10 }}>
+                  <FaresEditor fares={draft.fares} onChange={(fares) => updateDraft({ fares })} cargoOnly={Boolean(aircraft?.model.is_cargo)} refFares={refFares ?? undefined} />
+                  <div style={{ fontSize: 11.5, color: C.faint, marginTop: 6 }}>Set to the market rate. Higher fares sell fewer seats; at three times the market rate nobody buys.</div>
+                </div>
+              </details>
             )}
           </>
         )}
 
-        {attachedRoutes.length > 0 && (
-          <div style={{ marginTop: 20 }}>
-            <SectionTitle>Your flights here ({attachedRoutes.length})</SectionTitle>
-            <div style={{ border: `1px solid ${C.line}`, borderRadius: 8, overflow: 'hidden' }}>
-              {attachedRoutes.map((fl, i) => (
-                <button
-                  key={fl.id}
-                  type="button"
-                  className="bp-row"
-                  onClick={() => onOpenSchedule(fl.tailNumber, fl.id)}
-                  style={{
-                    width: '100%',
-                    display: 'flex',
-                    gap: 10,
-                    alignItems: 'center',
-                    padding: '7px 10px',
-                    textAlign: 'left',
-                    border: 'none',
-                    borderTop: i ? `1px solid ${C.line}` : 'none',
-                    background: 'transparent',
-                    color: C.text,
-                    cursor: 'pointer',
-                    fontSize: 12.5,
-                  }}
-                >
-                  <span className="num" style={{ color: C.brand, width: 64 }}>
-                    {fl.flightNumber}
-                  </span>
-                  <span style={{ flex: 1 }}>
-                    {fl.origin.iata_code} → {fl.destination.iata_code}
-                  </span>
-                  <span className="num" style={{ color: C.muted }}>
-                    {formatClockShort(fl.depTimeMin)} {fl.tailNumber}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
+        {!picking && attachedRoutes.length > 0 && onShowFlightsHere && (
+          <button
+            type="button"
+            onClick={() => onShowFlightsHere(airport.iata_code)}
+            style={{ ...card, width: '100%', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', color: C.text, textAlign: 'left', marginBottom: 12 }}
+          >
+            <Icon name="schedule" size={16} color={C.accent} />
+            <span style={{ flex: 1, fontSize: 13 }}>
+              {attachedRoutes.length} flight{attachedRoutes.length > 1 ? 's' : ''} at {airport.iata_code}
+            </span>
+            <span style={{ fontSize: 12.5, color: C.accent, fontWeight: 600 }}>Open in Schedule</span>
+          </button>
         )}
       </div>
+
+      {/* The button stays in reach at the bottom */}
+      {fleet.length > 0 && !(picking && bulk.length === 0) && (
+        <div style={{ position: 'sticky', bottom: 0, padding: '10px 16px calc(12px + env(safe-area-inset-bottom, 0px))', background: `linear-gradient(to top, ${C.panel} 80%, ${C.panel}00)`, zIndex: 30 }}>
+          {bulk.length > 0 ? (
+            <Button
+              variant="primary"
+              size="lg"
+              block
+              disabled={!dispatchRequest}
+              onClick={() => {
+                if (!dispatchRequest || !onBulkPlan) return;
+                const { aircraft: _first, ...base } = dispatchRequest;
+                onBulkPlan(planBulkDispatch(base, bulk, spacing));
+              }}
+            >
+              Schedule {bulk.length} aircraft {draft.originIata}
+              {draft.mode === 'roundtrip' ? '–' : ' → '}
+              {airport.iata_code}
+            </Button>
+          ) : (
+            <Button variant="primary" size="lg" block disabled={dispatchDisabled} onClick={() => dispatchRequest && onPlanResult(planRouteDispatch(dispatchRequest))}>
+              {routeValid ? (draft.mode === 'roundtrip' ? `Schedule ${draft.originIata} ⇄ ${airport.iata_code}` : `Schedule ${draft.originIata} → ${airport.iata_code}`) : 'Pick where to fly from'}
+            </Button>
+          )}
+        </div>
+      )}
     </aside>
+  );
+}
+
+/** One flight in the planner's table: number, route and time in the air, then departure and arrival. */
+function LegRow(props: { number: React.ReactNode; from: string; to: string; dep: React.ReactNode; depMin: number; arrMin: number; blockMin: number }) {
+  const depLocal = airportLocalClock(props.depMin, props.from);
+  const arrLocal = airportLocalClock(props.arrMin, props.to);
+  const label: React.CSSProperties = { display: 'block', fontSize: 11, color: C.muted, marginBottom: 3 };
+  const small: React.CSSProperties = { display: 'block', fontSize: 11, color: C.muted, marginTop: 3 };
+  return (
+    <div className="bp-leg" style={{ padding: '10px 12px', borderTop: `1px solid ${C.line}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        {props.number}
+        <span style={{ fontWeight: 650, fontSize: 13.5, whiteSpace: 'nowrap', flex: 1 }}>
+          {props.from} → {props.to}
+        </span>
+        <span className="num" style={{ fontSize: 12, color: C.muted }}>
+          {formatDurationHm(props.blockMin)}
+        </span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(150px, auto) 1fr', gap: 16, alignItems: 'start' }}>
+        <div>
+          <span style={label}>Departs {props.from}</span>
+          <div style={{ minHeight: 30, display: 'flex', alignItems: 'center' }}>{props.dep}</div>
+          {depLocal && <span className="num" style={small}>{depLocal} local</span>}
+        </div>
+        <div>
+          <span style={label}>Arrives {props.to}</span>
+          <div className="num" style={{ minHeight: 30, display: 'flex', alignItems: 'center', fontWeight: 700, fontSize: 15, color: C.textSoft }}>
+            {formatClockShort(props.arrMin)}
+          </div>
+          {arrLocal && <span className="num" style={small}>{arrLocal} local</span>}
+        </div>
+      </div>
+    </div>
   );
 }

@@ -17,6 +17,8 @@ export interface ScheduleTabProps {
   onEdit: (tailNumber: string, flightId: string) => void;
   onDelete: (flightId: string) => void;
   onClose: () => void;
+  /** Starts the search filled in (an airport code from the map, v2.58). */
+  initialSearch?: string;
 }
 
 interface Rotation {
@@ -37,8 +39,8 @@ interface Group {
 }
 
 /** System schedule grouped by the owned hub each rotation starts from. */
-export function SchedulePanel({ schedule, fleet, hubs, primaryHub, airportByIata, econById, onEdit, onDelete, onClose }: ScheduleTabProps) {
-  const [search, setSearch] = useState('');
+export function SchedulePanel({ schedule, fleet, hubs, primaryHub, airportByIata, econById, onEdit, onDelete, onClose, initialSearch }: ScheduleTabProps) {
+  const [search, setSearch] = useState(initialSearch ?? '');
   const [tailFilter, setTailFilter] = useState('');
   const [groupBy, setGroupBy] = useState<GroupBy>('hub');
   // Collapsed groups (hubs or aircraft), remembered on this device
@@ -251,10 +253,10 @@ export function SchedulePanel({ schedule, fleet, hubs, primaryHub, airportByIata
                     return (
                       <div
                         key={outbound.id}
-                        className="bp-row"
+                        className="bp-row bp-sched-row"
                         style={{
                           display: 'grid',
-                          gridTemplateColumns: '1fr auto auto',
+                          gridTemplateColumns: 'minmax(0, 1fr) auto auto',
                           alignItems: 'center',
                           gap: 14,
                           padding: '10px 12px',

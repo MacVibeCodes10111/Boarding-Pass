@@ -191,6 +191,10 @@ export const globalCss = () => `
   /* Grids inside panels and dialogs: stat rows become two columns, marked layouts stack */
   html[data-layout=phone] :is(.bp-panel-body, [role=dialog]) [style*="grid-template-columns: repeat("] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   html[data-layout=phone] .bp-stack { grid-template-columns: minmax(0, 1fr) !important; }
+  html[data-layout=phone] .bp-sched-row { grid-template-columns: minmax(0, 1fr) auto !important; gap: 6px 10px !important; align-items: start !important; }
+  html[data-layout=phone] .bp-sched-row > :first-child { grid-row: span 2; }
+  html[data-layout=phone] .bp-sched-row > :nth-child(3) { grid-column: 2; }
+  html[data-layout=phone] :is(.bp-panel-body, [role=dialog]) .bp-model-grid { grid-template-columns: minmax(0, 1fr) !important; }
   html[data-layout=phone] .bp-wrap { display: flex !important; flex-wrap: wrap; row-gap: 6px !important; }
   html[data-layout=phone] .bp-wrap > * { min-width: 0; }
   html[data-layout=phone] .bp-modal-backdrop { padding: 10px 8px calc(10px + env(safe-area-inset-bottom, 0px)) !important; align-items: stretch !important; }
@@ -203,9 +207,6 @@ export const globalCss = () => `
   .bp-sheet-popup.bp-sheet-side { left: auto !important; right: 12px !important; width: min(380px, calc(100vw - 24px)); bottom: calc(var(--bp-bottom-h) + 10px) !important; }
   .bp-sheet-popup .maplibregl-popup-tip { display: none !important; }
   .bp-sheet-popup .maplibregl-popup-content { width: 100%; max-height: 46dvh; overflow-y: auto; overscroll-behavior: contain; }
-  html[data-layout=phone] .bp-buy { height: auto !important; }
-  html[data-layout=phone] .bp-buy-catalogue { max-height: 52dvh; }
-  html[data-layout=phone] .bp-buy-details { overflow: visible !important; }
   html[data-layout=phone] .bp-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   html[data-layout=phone] .bp-tiles > :first-child { grid-column: 1 / -1; }
   html[data-layout=phone] .bp-fleet-row { grid-template-columns: 22px 24px minmax(0, 1fr) auto !important; row-gap: 6px !important; column-gap: 10px !important; }
