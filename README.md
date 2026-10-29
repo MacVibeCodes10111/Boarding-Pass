@@ -21,6 +21,18 @@ The downloads aren't code-signed, so the first time you open the game, macOS or 
 
 ## What's new
 
+Version 2.54:
+
+- **Cloud saves (optional).** Sign in with Google, Discord or a username and password to play your careers on all your devices: computers, phones and the browser game. Open **Cloud saves** on the home screen or in the Menu. Accounts are for players 13 and over, and you can delete yours at any time.
+- **Pick what goes to the cloud.** Keep up to 4 careers in the cloud with a switch on each one; turn one off and another on to swap. Each save shows whether it is on this device only or in the cloud too, and careers waiting in the cloud appear on the home screen with a Download button.
+- **Newest save wins.** Each career keeps its newest copy, and a cloud copy is deleted once your other devices have it.
+- **Scheduling fix.** An aircraft's position now follows the days its flights actually fly, so a round trip on some days no longer stops you scheduling it from home on the others.
+- **Registrations count up properly.** New aircraft follow your first aircraft's registration (N418JT, N419JT…) and never reuse old numbers. A registration you type starts a bulk buy and the rest count on from it.
+- **Re-register several aircraft at once.** In Fleet, tick them, press Re-register and type the first new registration.
+- **Change your airline name and callsign** in the Menu.
+- **Easier to use with a keyboard and screen readers.** Windows hold the keyboard focus and every field has a name. There is a new Accessibility page on boardingpass.my.
+- **Safer.** The browser game only runs its own code, the map credits are built from fixed text, the desktop apps' secure connections and the release builds are hardened, and the Privacy, Terms and Cookies pages cover accounts.
+
 Version 2.48:
 
 - **One aircraft on a runway at a time.** A departure has the runway from lining up until it lifts off, an arrival from short final until it has turned off. Your flights wait their turn: a departure holds at the hold-short line, an arrival is held on the approach for a minute or two. Other airlines' schedules are sequenced the same way.
