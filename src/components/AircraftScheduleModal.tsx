@@ -8,6 +8,7 @@ import { Button, C, DayPicker, ModalShell, NumberField, inputStyle, labelStyle }
 import { Icon } from '../ui/icons';
 import { RouteDemandBar } from './RouteDemandBar';
 import { ScheduleTimeline } from './ScheduleTimeline';
+import { legLocalText } from '../game/localTime';
 
 export interface AircraftScheduleModalProps {
   aircraft: PlayerAircraft;
@@ -165,6 +166,11 @@ export function AircraftScheduleModal({
                   <div className="num" style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>
                     {formatClockShort(fl.depTimeMin)}–{formatClockShort(fl.arrTimeMin)} UTC ({formatDurationHm(fl.blockTimeMin)})
                   </div>
+                  {legLocalText(fl.depTimeMin, fl.arrTimeMin, fl.origin.iata_code, fl.destination.iata_code) && (
+                    <div className="num" style={{ fontSize: 11.5, color: C.faint }}>
+                      {legLocalText(fl.depTimeMin, fl.arrTimeMin, fl.origin.iata_code, fl.destination.iata_code)}
+                    </div>
+                  )}
                 </button>
               );
             })}

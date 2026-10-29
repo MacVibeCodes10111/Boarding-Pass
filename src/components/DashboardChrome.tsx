@@ -22,6 +22,7 @@ import type { GameMode } from '../game/types';
 import { Icon, type IconName } from '../ui/icons';
 import { Button, C, DISPLAY, Segmented, glass } from '../ui/kit';
 import { isTouchFirst, useLayout } from '../ui/layout';
+import { deviceOffsetMin, offsetLabel, shiftClock } from '../game/localTime';
 
 export type PanelId = 'fleet' | 'buy' | 'schedule' | 'airports' | 'bank' | 'stats';
 export type AiDensityLevel = 'off' | 'low' | 'medium' | 'high';
@@ -246,7 +247,10 @@ function ClockButton(props: {
             <div className="num" style={{ fontFamily: DISPLAY, fontSize: 22, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
               {live && <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '0.06em', lineHeight: '16px', padding: '0 5px', borderRadius: 4, background: C.brand, color: C.brandInk }}>LIVE</span>}
               {DAY_NAMES_SHORT[dayIndexOf(props.mapClock.day)]} {formatClockShort(props.mapClock.min)}
-              {live && <span style={{ color: C.muted, fontWeight: 500 }}>UTC</span>}
+              <span style={{ color: C.muted, fontWeight: 500 }}>UTC</span>
+            </div>
+            <div className="num" style={{ fontSize: 14, color: C.textDim, margin: '-4px 0 8px' }}>
+              {deviceLocal(props.mapClock)} <span style={{ color: C.muted }}>your local time ({offsetLabel(deviceOffsetMin())})</span>
             </div>
             <Segmented<MapSpeed>
               size="sm"
@@ -442,7 +446,11 @@ export function TopBar(props: {
               </span>
             )}
             {DAY_NAMES_SHORT[dayIndexOf(props.mapClock.day)]} {formatClockShort(props.mapClock.min)}
-            <span style={{ color: C.muted, fontWeight: 500 }}>{props.mapSpeed === 'live' ? 'UTC' : ''}</span>
+            <span style={{ color: C.muted, fontWeight: 500 }}>UTC</span>
+            <span style={{ color: C.textDim, fontWeight: 600, marginLeft: 6 }} title={`This computer's time (${offsetLabel(deviceOffsetMin())})`}>
+              {deviceLocal(props.mapClock)}
+            </span>
+            <span style={{ color: C.muted, fontWeight: 500 }}>local</span>
           </Readout>
           <Segmented<MapSpeed>
             size="sm"
@@ -469,6 +477,12 @@ export function TopBar(props: {
       )}
     </header>
   );
+}
+
+/** The map clock on this computer's local time: "Thu 15:16" (v2.55). */
+function deviceLocal(clock: { day: number; min: number }): string {
+  const { text, dayShift } = shiftClock(clock.min, deviceOffsetMin());
+  return `${DAY_NAMES_SHORT[dayIndexOf(clock.day + dayShift)]} ${text}`;
 }
 
 // ----------------------------------------------------------------------------

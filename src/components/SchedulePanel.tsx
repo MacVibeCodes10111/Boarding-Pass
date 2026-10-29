@@ -5,6 +5,7 @@ import { daysOrAll, formatClockShort } from '../game/time';
 import type { Airport, PlayerAircraft, ScheduledFlight } from '../game/types';
 import { Icon } from '../ui/icons';
 import { Button, C, EmptyState, Pill, SearchInput, Segmented, SidePanel, inputStyle } from '../ui/kit';
+import { legLocalText } from '../game/localTime';
 
 export interface ScheduleTabProps {
   schedule: ScheduledFlight[];
@@ -276,6 +277,15 @@ export function SchedulePanel({ schedule, fleet, hubs, primaryHub, airportByIata
                             {returnLeg ? `, back ${formatClockShort(returnLeg.depTimeMin)}–${formatClockShort(returnLeg.arrTimeMin)}` : ''} UTC
                             {chainSummary ? `. ${chainSummary}` : ''}
                           </div>
+                          {(() => {
+                            const out = legLocalText(outbound.depTimeMin, outbound.arrTimeMin, outbound.origin.iata_code, outbound.destination.iata_code);
+                            const back = returnLeg ? legLocalText(returnLeg.depTimeMin, returnLeg.arrTimeMin, returnLeg.origin.iata_code, returnLeg.destination.iata_code) : '';
+                            return out || back ? (
+                              <div className="num" style={{ fontSize: 11.5, color: C.faint, marginTop: 1 }}>
+                                {[out, back].filter(Boolean).join('; ')}
+                              </div>
+                            ) : null;
+                          })()}
                         </div>
                         <div className="num" style={{ fontSize: 13, fontWeight: 600, color: profit >= 0 ? C.green : C.red, textAlign: 'right' }}>
                           {profit >= 0 ? '+' : '−'}${Math.abs(profit).toLocaleString()}

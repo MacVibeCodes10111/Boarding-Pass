@@ -4,6 +4,7 @@ import { DAY_NAMES_SHORT, MIN_PER_DAY, daysOrAll, formatClockShort, formatDurati
 import type { PlayerAircraft, ScheduledFlight, WeekDays } from '../game/types';
 import { C } from '../ui/kit';
 import { Icon } from '../ui/icons';
+import { airportLocalClock, legLocalText } from '../game/localTime';
 
 export interface ScheduleTimelineProps {
   aircraft: PlayerAircraft;
@@ -145,6 +146,10 @@ export function ScheduleTimeline({
 
   const hasConflict = Boolean(conflictMessage);
   const outLabel = `${originIata}→${destIata}`;
+  // Local times at each end (v2.55)
+  const depLocal = airportLocalClock(selectedDepMin, originIata);
+  const outLocal = legLocalText(selectedDepMin, outArrMin, originIata, destIata);
+  const retLocal = legLocalText(retDepMin, retArrMin, destIata, originIata);
   const retLabel = `${destIata}→${originIata}`;
 
   return (
@@ -208,6 +213,11 @@ export function ScheduleTimeline({
           <TimePart value={mm} max={59} step={5} onCommit={(m) => onChangeDepMin(snapToFiveMin(hh * 60 + m))} />
           <span style={{ fontSize: 11, color: C.faint, marginLeft: 4 }}>UTC</span>
         </div>
+        {depLocal && (
+          <span className="num" style={{ fontSize: 12, color: C.textDim, padding: '0 4px' }} title={`Local time at ${originIata}`}>
+            = {depLocal} at {originIata}
+          </span>
+        )}
         <StepButton label="+5m" onClick={() => onChangeDepMin(snapToFiveMin(selectedDepMin + 5))} />
         <StepButton label="+1h" onClick={() => onChangeDepMin(snapToFiveMin(selectedDepMin + 60))} />
       </div>
@@ -216,11 +226,13 @@ export function ScheduleTimeline({
       {candidateBlockMin > 0 && (
         <div className="num" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 16px', fontSize: 12, color: C.textDim, marginBottom: 10 }}>
           <span>
-            <b style={{ color: C.brand, fontWeight: 600 }}>{outLabel}</b> {formatClockShort(selectedDepMin)}–{formatClockShort(outArrMin)}
+            <b style={{ color: C.brand, fontWeight: 600 }}>{outLabel}</b> {formatClockShort(selectedDepMin)}–{formatClockShort(outArrMin)} UTC
+            {outLocal && <span style={{ color: C.muted }}> ({outLocal})</span>}
           </span>
           {autoRoundtrip && (
             <span>
-              <b style={{ color: C.brand, fontWeight: 600 }}>{retLabel}</b> {formatClockShort(retDepMin)}–{formatClockShort(retArrMin)}
+              <b style={{ color: C.brand, fontWeight: 600 }}>{retLabel}</b> {formatClockShort(retDepMin)}–{formatClockShort(retArrMin)} UTC
+              {retLocal && <span style={{ color: C.muted }}> ({retLocal})</span>}
             </span>
           )}
           <span style={{ color: C.muted }}>
