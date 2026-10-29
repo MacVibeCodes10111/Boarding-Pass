@@ -25,32 +25,41 @@ const log = (s) => {
   appendFileSync(LOG, s + '\n');
 };
 // Three smaller queries (busy servers turn away one big one)
-const QUERIES = {
-  'apron ways': `[out:json][timeout:600];(way["aeroway"="apron"]["apron"~"cargo|freight",i];way["aeroway"="apron"]["usage"~"cargo|freight",i];way["aeroway"="apron"]["name"~"${WORDS}",i];);out geom;`,
+const QUERIES = {};
+// Apron outlines region by region: the whole world at once times out
+for (const [s0, n0] of [[-60, -20], [-20, 15], [15, 35], [35, 50], [50, 75]])
+  for (let w0 = -180; w0 < 180; w0 += 30) {
+    const bb = `(${s0},${w0},${n0},${w0 + 30})`;
+    QUERIES[`apron ways ${bb}`] = `[out:json][timeout:300];(way["aeroway"="apron"]["apron"~"cargo|freight",i]${bb};way["aeroway"="apron"]["usage"~"cargo|freight",i]${bb};way["aeroway"="apron"]["name"~"${WORDS}",i]${bb};);out geom;`;
+  }
+Object.assign(QUERIES, {
   'apron relations': `[out:json][timeout:600];(relation["aeroway"="apron"]["apron"~"cargo|freight",i];relation["aeroway"="apron"]["name"~"${WORDS}",i];);out geom;`,
   'cargo stands': `[out:json][timeout:600];(node["aeroway"="parking_position"]["name"~"${WORDS}",i];node["aeroway"="parking_position"]["usage"~"cargo|freight",i];);out;`,
-};
+});
 const MIRRORS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
 const data = { elements: [] };
 for (const [what, q] of Object.entries(QUERIES)) {
   let ok = false;
-  for (let attempt = 0; attempt < 2 && !ok; attempt++)
+  for (let attempt = 0; attempt < 3 && !ok; attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, 20_000 * attempt));
     for (const url of MIRRORS) {
       try {
-        const res = await fetch(url, { method: 'POST', body: new URLSearchParams({ data: q }), headers: { 'User-Agent': 'BoardingPass-data-build (boardingpass.my)', Accept: 'application/json' }, signal: AbortSignal.timeout(660_000) });
+        const res = await fetch(url, { method: 'POST', body: new URLSearchParams({ data: q }), headers: { 'User-Agent': 'BoardingPass-data-build (boardingpass.my)', Accept: 'application/json' }, signal: AbortSignal.timeout(400_000) });
         const text = await res.text();
         if (!res.ok) throw new Error(`HTTP ${res.status} ${text.slice(0, 200).replace(/\s+/g, ' ')}`);
         const j = JSON.parse(text);
         if (j.remark) log(`  remark: ${j.remark}`);
         data.elements.push(...j.elements);
-        log(`${what}: ${j.elements.length} from ${url}`);
+        if (j.elements.length || !what.startsWith('apron ways')) log(`${what}: ${j.elements.length} from ${url}`);
         ok = true;
         break;
       } catch (e) {
-        log(`${what}: ${url} failed: ${e.message}`);
+        log(`${what}: ${url} failed: ${e.message.slice(0, 90)}`);
       }
     }
+  }
   if (!ok) log(`${what}: GAVE UP`);
+  await new Promise((r) => setTimeout(r, 1500));
 }
 if (!data.elements.length) process.exit(1);
 
