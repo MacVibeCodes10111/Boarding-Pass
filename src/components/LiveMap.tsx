@@ -172,6 +172,61 @@ const mapStyleFor = (id: MapStyleId): any =>
     : id === 'satellite'
     ? SATELLITE_STYLE
     : 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+/**
+ * Map credits (required by CARTO / OpenStreetMap, and EOX on satellite), as a
+ * small (i) in the corner (v2.54). MapLibre's own credits control puts text
+ * that map servers send through an HTML cleaner with a known flaw
+ * (GHSA-jrc7-96c5-q579, fixed only in MapLibre 6.5+); this one is built from
+ * fixed text with DOM calls, so nothing from outside is ever read as HTML.
+ */
+class TrustedCredits {
+  private map: any;
+  private box?: HTMLDetailsElement;
+  private eox?: HTMLElement;
+  private update = () => {
+    if (this.eox) this.eox.hidden = !this.map?.getSource?.('s2cloudless');
+  };
+  onAdd(map: any) {
+    this.map = map;
+    const box = document.createElement('details');
+    box.className = 'maplibregl-ctrl maplibregl-ctrl-attrib maplibregl-compact';
+    const btn = document.createElement('summary');
+    btn.className = 'maplibregl-ctrl-attrib-button';
+    btn.title = 'Map credits';
+    btn.setAttribute('aria-label', 'Map credits');
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const show = !box.classList.contains('maplibregl-compact-show');
+      box.classList.toggle('maplibregl-compact-show', show);
+      box.open = show;
+    });
+    const inner = document.createElement('div');
+    inner.className = 'maplibregl-ctrl-attrib-inner';
+    const link = (href: string, text: string) => {
+      const a = document.createElement('a');
+      a.href = href;
+      a.target = '_blank';
+      a.rel = 'noreferrer';
+      a.textContent = text;
+      return a;
+    };
+    inner.append(link('https://carto.com/attributions', '© CARTO'), ' ', link('https://www.openstreetmap.org/copyright', '© OpenStreetMap contributors'));
+    const eox = document.createElement('span');
+    eox.append(' | ', link('https://cloudless.eox.at', 'EOxCloudless https://cloudless.eox.at'), ' by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2024)');
+    inner.append(eox);
+    box.append(btn, inner);
+    this.box = box;
+    this.eox = eox;
+    map.on('styledata', this.update);
+    this.update();
+    return box;
+  }
+  onRemove() {
+    this.map?.off('styledata', this.update);
+    this.box?.remove();
+  }
+}
+
 /** Other airlines' aircraft: light grey on dark maps, slate on the light map. */
 const aiTintFor = (id: MapStyleId) => (id === 'light' ? '#475569' : AI_TINT);
 
@@ -1182,18 +1237,15 @@ export function LiveMap(props: LiveMapProps) {
           style: mapStyleFor(shownStyle.current),
           center: latest.current.initialCenter,
           zoom: 4.6,
-          // Map credits (required by CARTO / OpenStreetMap, and EOX on satellite), as a small (i) in the corner
-          attributionControl: {
-            compact: true,
-            customAttribution:
-              '<a href="https://carto.com/attributions" target="_blank" rel="noreferrer">© CARTO</a> <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a>',
-          },
+          // Map credits are our own control (TrustedCredits), built from fixed text only (v2.54)
+          attributionControl: false,
           // No symbol cross-fade: aircraft move every frame, and fading left a
           // ghost copy of each one behind while zooming
           fadeDuration: 0,
           maxPitch: 85,
         });
         mapRef.current = map;
+        map.addControl(new TrustedCredits(), 'bottom-right');
 
         map.on('load', () => {
           installMapContent(map, shownStyle.current, latest.current.threeD);
