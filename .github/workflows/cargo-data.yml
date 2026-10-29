@@ -1,0 +1,28 @@
+# Cargo data: builds public/data/cargo-aprons.json from OpenStreetMap
+# (tools/build-cargo-aprons.mjs) on the data/cargo-aprons branch and commits
+# it there, to be checked and brought into dev by hand.
+name: Cargo data
+
+on:
+  push:
+    branches: [data/cargo-aprons]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Build cargo aprons from OpenStreetMap
+        run: node tools/build-cargo-aprons.mjs
+      - name: Commit the data to this branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/data/cargo-aprons.json
+          git commit -m "Cargo aprons from OpenStreetMap" || echo "no change"
+          git push origin HEAD:${GITHUB_REF_NAME}
