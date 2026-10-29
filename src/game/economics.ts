@@ -68,7 +68,8 @@ export function buildCabinPreset(model: AircraftModel, preset: CabinPreset): Cab
   const fits = (econ: number) => econ <= target && calculateCabinUsage(model, { ...cabin, econSeats: econ }).isValid;
   let econ = 0;
   while (fits(econ + ab.econ)) econ += ab.econ;
-  if (preset === 'dense') while (fits(econ + 1)) econ += 1;
+  // High density, and small commuter cabins (odd seat counts like 9 or 19), top up seat by seat
+  if (preset === 'dense' || tiny) while (fits(econ + 1)) econ += 1;
   return { ...cabin, econSeats: econ };
 }
 
