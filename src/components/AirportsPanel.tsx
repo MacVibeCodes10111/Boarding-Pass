@@ -73,7 +73,7 @@ export function AirportsPanel({
               return (
                 <div
                   key={ap.iata_code}
-                  className="bp-row"
+                  className="bp-row bp-ap-row"
                   style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px', borderTop: i ? `1px solid ${C.line}` : 'none' }}
                 >
                   <span style={{ width: 40, fontWeight: 650, color: owned ? C.brand : C.text }}>{ap.iata_code}</span>

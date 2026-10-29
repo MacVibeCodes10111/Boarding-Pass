@@ -191,6 +191,10 @@ export const globalCss = () => `
   /* Grids inside panels and dialogs: stat rows become two columns, marked layouts stack */
   html[data-layout=phone] :is(.bp-panel-body, [role=dialog]) [style*="grid-template-columns: repeat("] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   html[data-layout=phone] .bp-stack { grid-template-columns: minmax(0, 1fr) !important; }
+  html[data-layout=phone] .bp-ap-row { flex-wrap: wrap; row-gap: 6px !important; }
+  html[data-layout=phone] .bp-ap-row > :nth-child(2) { flex-basis: calc(100% - 52px) !important; }
+  html[data-layout=phone] .bp-ap-row > :nth-child(3) { margin-left: 52px; }
+  html[data-layout=phone] .bp-ap-row > :nth-child(4) { margin-left: auto; }
   html[data-layout=phone] .bp-sched-row { grid-template-columns: minmax(0, 1fr) auto !important; gap: 6px 10px !important; align-items: start !important; }
   html[data-layout=phone] .bp-sched-row > :first-child { grid-row: span 2; }
   html[data-layout=phone] .bp-sched-row > :nth-child(3) { grid-column: 2; }

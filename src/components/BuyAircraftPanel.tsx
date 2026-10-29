@@ -91,7 +91,15 @@ function Browse(props: BuyAircraftPanelProps & { onOpen: (m: AircraftModel) => v
           (maker === 'all' || x.manufacturer === maker) &&
           (!q || [x.name, x.family, x.manufacturer, x.icao_code].some((s) => s.toLowerCase().includes(q))),
       )
-      .sort((a, b) => BRAND_ORDER.indexOf(a.manufacturer) - BRAND_ORDER.indexOf(b.manufacturer) || a.family.localeCompare(b.family) || a.base_price_usd - b.base_price_usd);
+      .sort(
+        (a, b) =>
+          BRAND_ORDER.indexOf(a.manufacturer) - BRAND_ORDER.indexOf(b.manufacturer) ||
+          a.family.localeCompare(b.family) ||
+          // smallest to largest within a family, so A318 → A319 → A320 → A321 reads in order
+          (a.is_cargo ? a.cargo_cap_tons - b.cargo_cap_tons : a.typical_seats - b.typical_seats) ||
+          a.range_nm - b.range_nm ||
+          a.base_price_usd - b.base_price_usd
+      );
     const byFamily = new Map<string, AircraftModel[]>();
     for (const x of list) {
       const k = `${x.manufacturer}|${x.family}`;
@@ -186,6 +194,8 @@ function Browse(props: BuyAircraftPanelProps & { onOpen: (m: AircraftModel) => v
                       aria-label={`${shortName(x)}, ${formatMoneyM(x.base_price_usd)}`}
                       style={{
                         display: 'grid',
+                        gridTemplateColumns: 'minmax(0, 1fr)',
+                        alignContent: 'start',
                         gap: 6,
                         minWidth: 0,
                         padding: '10px 12px',
@@ -197,10 +207,10 @@ function Browse(props: BuyAircraftPanelProps & { onOpen: (m: AircraftModel) => v
                         border: `1px solid ${x.id === props.selectedModel.id ? C.brand : C.line}`,
                       }}
                     >
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ display: 'flex', alignItems: 'flex-start', gap: 8, minWidth: 0 }}>
                         <img src={props.iconForModel(x)} alt="" style={{ width: 22, height: 22, flex: 'none' }} />
-                        <span style={{ flex: 1, minWidth: 0, fontWeight: 650, fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shortName(x)}</span>
-                        <span className="num" style={{ fontSize: 10.5, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: C.bg, color: C.textDim }}>
+                        <span style={{ flex: 1, minWidth: 0, fontWeight: 650, fontSize: 13.5, lineHeight: 1.3, overflowWrap: 'anywhere', paddingTop: 2 }}>{shortName(x)}</span>
+                        <span className="num" style={{ flex: 'none', marginTop: 2, fontSize: 10.5, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: C.bg, color: C.textDim }}>
                           {x.icao_code}
                         </span>
                       </span>

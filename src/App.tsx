@@ -221,6 +221,10 @@ export default function App() {
   useEffect(() => {
     if (panel !== 'schedule') setScheduleSearch('');
   }, [panel]);
+  // On narrower screens a side panel and the airport window would overlap: opening a panel closes the airport window
+  useEffect(() => {
+    if (panel && window.innerWidth < 1280) setInspectedAirport(null);
+  }, [panel]);
   // Last tab used in each toolbar group (My Airline, Buy)
   const [groupTab, setGroupTab] = useState<{ airline: PanelId; buy: PanelId }>({ airline: 'stats', buy: 'buy' });
   useEffect(() => {
@@ -877,8 +881,9 @@ export default function App() {
       setCash(s.cash + res.cashDelta);
       setLedgerHistory([...(s.ledgerHistory ?? []), ...res.closedWeeks].slice(-LEDGER_HISTORY_WEEKS));
       setCareer(settleCareerAdvance(savedCareer, res, s.cash + res.cashDelta, s.airlineName, { standard: s.gameMode === 'standard' }));
+      // Only worth a popup when something actually happened while away
       setAwayReport(
-        awayMs >= 60_000
+        awayMs >= 60_000 && (Math.round(res.cashDelta) !== 0 || res.closedWeeks.length > 0)
           ? {
               realAwayMs: awayMs,
               gameMinutes,
