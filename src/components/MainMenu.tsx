@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { IS_DEV } from '../game/channel';
 import { Icon, type IconName } from '../ui/icons';
-import { Button, C, DISPLAY, ModalShell } from '../ui/kit';
+import { Button, C, DISPLAY, Field, ModalShell, inputStyle } from '../ui/kit';
 import { openAppearance } from './Appearance';
 import { CreditsModal } from './Credits';
 
@@ -15,11 +15,15 @@ export function MainMenu(props: {
   onSave: () => void;
   onExport: () => void;
   onCloud: () => void;
+  airlineCallsign: string;
+  /** Change the airline's name and radio callsign; returns an error message. */
+  onAirlineDetails: (name: string, callsign: string) => string | null;
   onTour: () => void;
   onLeave: () => void;
 }) {
   const [saved, setSaved] = useState(false);
   const [credits, setCredits] = useState(false);
+  const [details, setDetails] = useState(false);
   const row = (icon: IconName, label: string, hint: string, onClick: () => void) => (
     <button
       type="button"
@@ -59,6 +63,7 @@ export function MainMenu(props: {
             })}
             {row('download', 'Export save file', 'A protected copy to keep or move to another computer', props.onExport)}
             {row('swap', 'Cloud saves', 'Sign in to play your careers on all your devices', props.onCloud)}
+            {row('edit', 'Airline name and callsign', `${props.airlineName}, callsign ${props.airlineCallsign}`, () => setDetails(true))}
             {row('help', 'Welcome tour', 'How to play, in a minute', () => {
               props.onClose();
               props.onTour();
@@ -87,6 +92,47 @@ export function MainMenu(props: {
         </div>
       </ModalShell>
       {credits && <CreditsModal onClose={() => setCredits(false)} />}
+      {details && <AirlineDetailsModal name={props.airlineName} callsign={props.airlineCallsign} onSave={props.onAirlineDetails} onClose={() => setDetails(false)} />}
     </>
+  );
+}
+
+/** Rename the airline or change its radio callsign (v2.52). The code stays: flight numbers use it. */
+function AirlineDetailsModal(props: { name: string; callsign: string; onSave: (name: string, callsign: string) => string | null; onClose: () => void }) {
+  const [name, setName] = useState(props.name);
+  const [callsign, setCallsign] = useState(props.callsign);
+  const [err, setErr] = useState<string | null>(null);
+  const save = () => {
+    const e = props.onSave(name, callsign);
+    setErr(e);
+    if (!e) props.onClose();
+  };
+  return (
+    <ModalShell onClose={props.onClose} maxWidth={420} zIndex={260} label="Airline name and callsign">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          save();
+        }}
+        style={{ display: 'grid', gap: 12 }}
+      >
+        <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: 24 }}>Airline name and callsign</h2>
+        <Field label="Airline name">
+          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} style={inputStyle} />
+        </Field>
+        <Field label="Radio callsign" hint="What controllers call your flights on the map, like SPEEDBIRD or JETSTREAM. Letters, digits and spaces.">
+          <input value={callsign} onChange={(e) => setCallsign(e.target.value.toUpperCase())} maxLength={20} autoCapitalize="characters" spellCheck={false} style={inputStyle} />
+        </Field>
+        <div role="alert" style={{ minHeight: 16, fontSize: 12.5, color: C.red }}>
+          {err}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <Button onClick={props.onClose}>Cancel</Button>
+          <Button type="submit" variant="primary">
+            Save
+          </Button>
+        </div>
+      </form>
+    </ModalShell>
   );
 }

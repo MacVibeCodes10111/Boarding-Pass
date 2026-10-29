@@ -1,7 +1,7 @@
 // ============================================================================
 // WEEKLY BLOCK SCHEDULE: conflicts, spatial continuity, circuits & route planning
 // ============================================================================
-import { flightNumberBand, nextRegistration } from './registrations';
+import { flightNumberBand, registrationsForNewAircraft } from './registrations';
 import { getRouteDemandAndFares } from './economics';
 import { calcBlockTimeMin, calcDistanceNm } from './geo';
 import { airportRestrictionFor } from './tiers';
@@ -86,7 +86,7 @@ export function returnFlightNumber(schedule: ScheduledFlight[], airlineIata: str
 
 /** First free registration for a new aircraft based at a hub in `country` (see registrations.ts). */
 export function nextFreeTailNumber(fleet: PlayerAircraft[], airlineIata: string, country = 'US'): string {
-  return nextRegistration(fleet.map((a) => a.tailNumber), airlineIata, country);
+  return registrationsForNewAircraft(fleet.map((a) => a.tailNumber), airlineIata, country, 1)[0];
 }
 
 // ----------------------------------------------------------------------------
@@ -160,16 +160,56 @@ export function getAircraftCircuitStatus(
 }
 
 /** Airport the aircraft is parked at when a new leg departs at `depTimeMin`. */
+/**
+ * Where the aircraft is at a moment in the week (minutes from Monday 00:00):
+ * the arrival airport of the last leg that departed before then, counting
+ * each leg on the days it actually flies (v2.52; before, only the time of day
+ * counted, so a round trip on Mon/Wed/Fri made the aircraft look away on
+ * Tuesday too). Before its first leg of the week it is where the week ended.
+ */
+export function getAircraftLocationAtWeekMin(aircraft: PlayerAircraft, allSchedule: ScheduledFlight[], weekMin: number): string {
+  const legs = flightsForTail(allSchedule, aircraft.tailNumber).flatMap((fl) =>
+    daysOrAll(fl.daysOfWeek).flatMap((on, d) => (on ? [{ at: d * MIN_PER_DAY + fl.depTimeMin, to: fl.destination.iata_code }] : []))
+  );
+  if (legs.length === 0) return aircraft.hubIata;
+  legs.sort((a, b) => a.at - b.at);
+  const t = ((weekMin % MIN_PER_WEEK) + MIN_PER_WEEK) % MIN_PER_WEEK;
+  let where = legs[legs.length - 1].to; // wraps from the end of the week
+  for (const l of legs) {
+    if (l.at > t) break;
+    where = l.to;
+  }
+  return where;
+}
+
+/**
+ * The first selected day on which the aircraft is not at `originIata` at
+ * `depMin`, with where it is instead, or null when it is there every day.
+ */
+export function aircraftAwayOnDays(
+  aircraft: PlayerAircraft,
+  allSchedule: ScheduledFlight[],
+  depMin: number,
+  days: WeekDays,
+  originIata: string
+): { day: number; at: string } | null {
+  for (let d = 0; d < 7; d++) {
+    if (!days[d]) continue;
+    const at = getAircraftLocationAtWeekMin(aircraft, allSchedule, d * MIN_PER_DAY + depMin);
+    if (at !== originIata) return { day: d, at };
+  }
+  return null;
+}
+
+/** Where the aircraft is at a time of day on the first of `days` (all days when omitted). */
 export function getAircraftLocationAtTime(
   aircraft: PlayerAircraft,
   allSchedule: ScheduledFlight[],
-  depTimeMin: number
+  depTimeMin: number,
+  days?: WeekDays
 ): string {
-  const sorted = flightsForTail(allSchedule, aircraft.tailNumber);
-  if (sorted.length === 0) return aircraft.hubIata;
-  const prior = [...sorted].reverse().find((fl) => fl.depTimeMin <= depTimeMin);
-  // Before the first departure of the day the aircraft is where it ended yesterday.
-  return (prior ?? sorted[sorted.length - 1]).destination.iata_code;
+  const first = Math.max(0, daysOrAll(days).findIndex(Boolean));
+  return getAircraftLocationAtWeekMin(aircraft, allSchedule, first * MIN_PER_DAY + depTimeMin);
 }
 
 // ----------------------------------------------------------------------------
@@ -396,6 +436,7 @@ export interface PlanFailure {
 }
 export type PlanResult = PlanSuccess | PlanFailure;
 
+const DAY_NAMES_LONG = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const fail = (title: string, message: string, detail?: string, severity: GameAlert['severity'] = 'error'): PlanFailure => ({
   ok: false,
   alert: { title, message, detail, severity },
@@ -411,16 +452,17 @@ export function planRouteDispatch(req: DispatchRequest): PlanResult {
   }
 
   if (existing.length > 0) {
-    const expected = getAircraftLocationAtTime(ac, schedule, outDepMin);
-    if (origin.iata_code !== expected) {
+    const away = aircraftAwayOnDays(ac, schedule, outDepMin, days, origin.iata_code);
+    if (away) {
+      const dayName = DAY_NAMES_LONG[away.day];
       return {
         ...fail(
-          `${ac.tailNumber} is at ${expected} then`,
-          `At ${formatClockShort(outDepMin)} UTC ${ac.tailNumber} is parked at ${expected}, so it can't depart from ${origin.iata_code}.`,
-          `The departure airport has been switched to ${expected}.`,
+          `${ac.tailNumber} is at ${away.at} then`,
+          `On ${dayName} at ${formatClockShort(outDepMin)} UTC ${ac.tailNumber} is at ${away.at}, so it can't depart from ${origin.iata_code}.`,
+          `Pick days when it's at ${origin.iata_code}, another time, or depart from ${away.at}. The departure airport has been switched to ${away.at}.`,
           'warning'
         ),
-        lockOriginIata: expected,
+        lockOriginIata: away.at,
       };
     }
   } else if (!hubs.includes(origin.iata_code)) {

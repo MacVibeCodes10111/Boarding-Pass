@@ -2,13 +2,14 @@
 // FLEET ACTIONS (v2.38+): manage one aircraft (registration, lease, sell),
 // replace aircraft with another type, refit several cabins at once.
 // ============================================================================
-import { useMemo, useState } from 'react';
+import { useMemo, useState, Fragment } from 'react';
 import { CABIN_PRESET_LABELS, calculateCabinUsage, cabinSeatTotal, type CabinPreset } from '../game/economics';
 import { checkReplacement, replacementSummary } from '../game/fleetOps';
 import { DEFAULT_LEASE_WEEKS, LEASE_OPTIONS, buyoutPrice, leaseQuote, leaseStatus, returnTerms, weeksText } from '../game/leasing';
 import { calcAircraftResaleUsd } from '../game/tiers';
 import { formatMoneyM } from '../game/time';
 import type { AircraftModel, CabinConfig, PlayerAircraft, ScheduledFlight } from '../game/types';
+import { reRegisterSequence, validRegistration } from '../game/registrations';
 import { Button, C, Field, ModalShell, Segmented, inputStyle } from '../ui/kit';
 import { CabinEditor } from './CabinEditor';
 
@@ -261,6 +262,64 @@ export function BulkCabinModal(props: { aircraft: PlayerAircraft[]; onRefit: (fi
           ))}
         </div>
       )}
+    </ModalShell>
+  );
+}
+
+/**
+ * Re-register several aircraft at once (v2.52): type the first new
+ * registration and the rest count on from it, in fleet order (N401JT,
+ * N402JT… or P4-AAA, P4-AAB…). Registrations other aircraft use are skipped.
+ */
+export function ReRegisterModal(props: { aircraft: PlayerAircraft[]; fleet: string[]; onApply: (start: string) => string | null; onClose: () => void }) {
+  const ordered = props.fleet.filter((t) => props.aircraft.some((a) => a.tailNumber === t));
+  const [start, setStart] = useState(ordered[0] ?? '');
+  const [err, setErr] = useState<string | null>(null);
+  const preview = useMemo(() => {
+    const s = start.trim().toUpperCase();
+    return validRegistration(s) ? reRegisterSequence(s, ordered, props.fleet) : null;
+  }, [start, ordered, props.fleet]);
+  const apply = () => setErr(props.onApply(start));
+  return (
+    <ModalShell onClose={props.onClose} maxWidth={520} label="Re-register aircraft">
+      <h2 style={{ margin: '0 0 4px', fontSize: 20 }}>Re-register {ordered.length} aircraft</h2>
+      <p style={{ margin: '0 0 12px', fontSize: 13, color: C.muted }}>
+        Type the first new registration. The rest count on from it, in fleet order, skipping ones other aircraft already use. Their flights keep flying.
+      </p>
+      <Field label="First registration" hint="The last digits count up (N401JT, N402JT), or the letters after the dash (P4-AAA, P4-AAB).">
+        <input
+          value={start}
+          onChange={(e) => {
+            setStart(e.target.value.toUpperCase());
+            setErr(null);
+          }}
+          onKeyDown={(e) => e.key === 'Enter' && apply()}
+          maxLength={10}
+          autoCapitalize="characters"
+          spellCheck={false}
+          style={{ ...inputStyle, fontWeight: 650, letterSpacing: 0.5 }}
+        />
+      </Field>
+      <div className="num" style={{ marginTop: 12, maxHeight: 220, overflowY: 'auto', fontSize: 13, display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '4px 10px', alignItems: 'center' }}>
+        {preview
+          ? ordered.map((t, i) => (
+              <Fragment key={t}>
+                <span style={{ color: C.muted }}>{t}</span>
+                <span aria-hidden="true" style={{ color: C.faint }}>→</span>
+                <span style={{ fontWeight: 650 }}>{preview[i]}</span>
+              </Fragment>
+            ))
+          : start.trim() && <span style={{ gridColumn: '1 / -1', color: C.muted }}>This registration has nothing to count on yet.</span>}
+      </div>
+      <div role="alert" style={{ minHeight: 18, marginTop: 8, fontSize: 12.5, color: C.red }}>
+        {err}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+        <Button onClick={props.onClose}>Cancel</Button>
+        <Button variant="primary" disabled={!preview} onClick={apply}>
+          Re-register {ordered.length}
+        </Button>
+      </div>
     </ModalShell>
   );
 }

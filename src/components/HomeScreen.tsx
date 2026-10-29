@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { getAirportMaxAircraftTier } from '../game/tiers';
 import type { Airport, GameMode, SaveGameState } from '../game/types';
+import { CloudCareersOnHome } from './CloudPanel';
 import { Icon } from '../ui/icons';
 import { Button, C, Field, SearchInput, Segmented, inputStyle, glass } from '../ui/kit';
 import { useLayout } from '../ui/layout';
@@ -31,6 +32,9 @@ export interface HomeScreenProps {
   onDeleteSave: (saveId: string) => void;
   onImportFile: (file: File) => void;
   onCloud: () => void;
+  /** A career was downloaded from the cloud: re-read the save slots. */
+  onCloudDownloaded: () => void;
+  toast: (message: string) => void;
 }
 
 export function HomeScreen(props: HomeScreenProps) {
@@ -224,6 +228,7 @@ export function HomeScreen(props: HomeScreenProps) {
             />
           </div>
 
+          <CloudCareersOnHome onDownloaded={props.onCloudDownloaded} toast={props.toast} />
           {savedGames.length === 0 ? (
             <div style={{ border: `1px dashed ${C.border}`, borderRadius: 12, padding: '30px 20px', textAlign: 'center', color: C.muted, fontSize: 13 }}>
               No saved airlines yet. Your career saves itself every minute once you start.

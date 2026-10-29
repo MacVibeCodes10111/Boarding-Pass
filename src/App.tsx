@@ -52,7 +52,7 @@ import { parseOurAirportsCsvFiles, parseOurAirportsNavaidsCsv } from './game/csv
 import { buildCabinPreset, computeNetworkEconomics, getDefaultCabinForModel, getRouteDemandAndFares, calculateCabinUsage, type CabinPreset } from './game/economics';
 import { checkReplacement, type BulkScheduleResult } from './game/fleetOps';
 import { DEFAULT_LEASE_WEEKS, buyoutPrice, leaseQuote, returnTerms } from './game/leasing';
-import { nextRegistrations, validRegistration } from './game/registrations';
+import { reRegisterSequence, registrationsForNewAircraft, validRegistration } from './game/registrations';
 import {
   BANK,
   MIN_PART_REPAYMENT,
@@ -998,7 +998,9 @@ export default function App() {
   // Aircraft
   // ---------------------------------------------------------------------------
   const hubCountry = airportByIata.get(hubIata)?.iso_country ?? 'US';
-  const regFor = (taken: PlayerAircraft[], n = 1) => nextRegistrations(taken.map((a) => a.tailNumber), airlineIata, hubCountry, n);
+  /** Registrations for new aircraft: they follow the first aircraft's sequence (v2.52). */
+  const regFor = (taken: PlayerAircraft[], n = 1, typedFirst?: string) =>
+    registrationsForNewAircraft(taken.map((a) => a.tailNumber), airlineIata, hubCountry, n, typedFirst);
 
   /** Buy or lease `count` aircraft of the selected type (leases for `leaseWeeks`). */
   const acquireAircraft = (mode: 'owned' | 'leased', leaseWeeks = DEFAULT_LEASE_WEEKS, count = 1) => {
@@ -1024,10 +1026,11 @@ export default function App() {
       );
       return;
     }
-    // The typed registration for the first one, if it's free and valid; the rest are numbered on
+    // The typed registration starts the batch and the rest count on from it (N418JT, N419JT…);
+    // without one they follow the airline's first aircraft
     let first = tailInput.trim().toUpperCase();
     if (!first || !validRegistration(first) || fleet.some((f) => f.tailNumber === first)) first = '';
-    const regs = first ? [first, ...regFor([...fleet, { tailNumber: first } as PlayerAircraft], n - 1)] : regFor(fleet, n);
+    const regs = regFor(fleet, n, first || undefined);
     spend(cost);
     const added: PlayerAircraft[] = regs.map((tail) => ({
       tailNumber: tail,
@@ -1144,6 +1147,26 @@ export default function App() {
     setScheduleModal((m) => (m?.tail === tail ? { ...m, tail: next } : m));
     if (draft.tailNumber === tail) updateDraft({ tailNumber: next });
     flashToast(`${tail} is now ${next}`);
+    return null;
+  };
+
+  /**
+   * Gives several aircraft new registrations counting on from `startRaw`, in
+   * the order given (v2.52). Their flights follow. Returns an error message.
+   */
+  const reRegisterAircraft = (tails: string[], startRaw: string): string | null => {
+    const start = startRaw.trim().toUpperCase();
+    if (!validRegistration(start)) return 'Use 3 to 10 letters, digits and dashes, like G-JTAB or N401JT.';
+    const ordered = fleet.map((f) => f.tailNumber).filter((t) => tails.includes(t));
+    const regs = reRegisterSequence(start, ordered, fleet.map((f) => f.tailNumber));
+    if (!regs) return `${start} has nothing to count on (it needs digits, or letters after a dash). Try one like N401JT or P4-AAA.`;
+    const map = new Map(ordered.map((t, i) => [t, regs[i]]));
+    const to = (t: string) => map.get(t) ?? t;
+    setFleet((prev) => prev.map((f) => (map.has(f.tailNumber) ? { ...f, tailNumber: to(f.tailNumber) } : f)));
+    setSchedule((prev) => prev.map((s) => (map.has(s.tailNumber) ? { ...s, tailNumber: to(s.tailNumber) } : s)));
+    setScheduleModal((m) => (m && map.has(m.tail) ? { ...m, tail: to(m.tail) } : m));
+    if (map.has(draft.tailNumber)) updateDraft({ tailNumber: to(draft.tailNumber) });
+    flashToast(`${ordered.length} aircraft re-registered: ${regs[0]} to ${regs[regs.length - 1]}`);
     return null;
   };
 
@@ -1491,6 +1514,8 @@ export default function App() {
         <CloudHost openSaveId={null} onSlotsChanged={() => setSavedGames(readSaveSlots())} toast={flashToast} />
         <HomeScreen
           onCloud={openCloud}
+          onCloudDownloaded={() => setSavedGames(readSaveSlots())}
+          toast={flashToast}
           airlineName={airlineName}
           airlineIata={airlineIata}
           airlineCallsign={airlineCallsign}
@@ -1638,6 +1663,17 @@ export default function App() {
             setMenuOpen(false);
             openCloud();
           }}
+          airlineCallsign={airlineCallsign}
+          onAirlineDetails={(nameRaw, callRaw) => {
+            const name = nameRaw.trim().replace(/\s+/g, ' ');
+            const call = callRaw.trim().toUpperCase().replace(/\s+/g, ' ');
+            if (!/^[\p{L}\p{N} .,'&-]{2,40}$/u.test(name)) return 'The name needs 2 to 40 letters, digits, spaces or . , \' & -';
+            if (!/^[A-Z0-9 ]{2,20}$/.test(call)) return 'The callsign needs 2 to 20 letters, digits or spaces.';
+            setAirlineName(name);
+            setAirlineCallsign(call);
+            flashToast(`Now flying as ${name}, callsign ${call}`);
+            return null;
+          }}
           airlineName={airlineName}
           version={APP_VERSION}
           onClose={() => setMenuOpen(false)}
@@ -1722,6 +1758,7 @@ export default function App() {
           onSellOrReturn={sellOrReturnAircraft}
           onBuyOut={buyOutLease}
           onRename={renameAircraft}
+          onReRegister={reRegisterAircraft}
           onRefit={refitAircraft}
           onReplace={replaceAircraft}
           onBuy={() => setPanel('buy')}

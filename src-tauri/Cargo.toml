@@ -1,6 +1,6 @@
 [package]
 name = "boarding-pass"
-version = "2.51.0"
+version = "2.52.0"
 description = "Boarding Pass, a small airline manager game"
 authors = ["ebncraft"]
 edition = "2021"

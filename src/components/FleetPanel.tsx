@@ -4,7 +4,7 @@ import { leaseStatus, weeksText } from '../game/leasing';
 import { calcAircraftScheduleUsage, flightsForTail, getAircraftCircuitStatus } from '../game/scheduling';
 import type { AircraftModel, CabinConfig, PlayerAircraft, ScheduledFlight } from '../game/types';
 import { Button, C, EmptyState, SearchInput, Segmented, SidePanel, inputStyle } from '../ui/kit';
-import { BulkCabinModal, ManageAircraftModal, ReplaceAircraftModal } from './FleetActions';
+import { BulkCabinModal, ManageAircraftModal, ReRegisterModal, ReplaceAircraftModal } from './FleetActions';
 
 /** Rows drawn per group before "Show more". */
 const ROW_PAGE = 40;
@@ -22,6 +22,8 @@ export interface FleetPanelProps {
   onSellOrReturn: (tails: string[]) => void;
   onBuyOut: (tail: string) => void;
   onRename: (tail: string, reg: string) => string | null;
+  /** New registrations for several aircraft, counting on from the one given. */
+  onReRegister: (tails: string[], start: string) => string | null;
   onRefit: (tails: string[], fit: { cabin: CabinConfig } | { preset: CabinPreset }) => void;
   onReplace: (tails: string[], model: AircraftModel, mode: 'owned' | 'leased', leaseWeeks: number, dropClashing: boolean) => void;
   onBuy: () => void;
@@ -70,7 +72,7 @@ export function FleetPanel(props: FleetPanelProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // Big fleets: each group draws its first rows, with "Show more" for the rest
   const [limits, setLimits] = useState<Record<string, number>>({});
-  const [dialog, setDialog] = useState<{ kind: 'manage' | 'cabin' | 'replace'; tails: string[] } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: 'manage' | 'cabin' | 'replace' | 'reregister'; tails: string[] } | null>(null);
   const toggle = (tail: string) =>
     setSelected((prev) => {
       const n = new Set(prev);
@@ -226,6 +228,9 @@ export function FleetPanel(props: FleetPanelProps) {
                 <Button size="sm" onClick={() => setDialog({ kind: 'replace', tails: pickedTails })}>
                   Replace
                 </Button>
+                <Button size="sm" onClick={() => setDialog({ kind: 'reregister', tails: pickedTails })}>
+                  Re-register
+                </Button>
                 <Button size="sm" variant="ghost" onClick={() => props.onSellOrReturn(pickedTails)}>
                   Sell or return
                 </Button>
@@ -345,6 +350,21 @@ export function FleetPanel(props: FleetPanelProps) {
           onRefit={(fit) => {
             props.onRefit(dialog.tails, fit);
             setDialog(null);
+          }}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === 'reregister' && dialogAc.length > 0 && (
+        <ReRegisterModal
+          aircraft={dialogAc}
+          fleet={fleet.map((f) => f.tailNumber)}
+          onApply={(start) => {
+            const err = props.onReRegister(dialog.tails, start);
+            if (!err) {
+              setDialog(null);
+              setSelected(new Set());
+            }
+            return err;
           }}
           onClose={() => setDialog(null)}
         />

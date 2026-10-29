@@ -40,6 +40,7 @@ export const CLOUD_SESSION_KEY = 'bp_cloud_session_v1';
 const DEVICE_KEY = 'bp_cloud_device_v1';
 const SYNCED_KEY = 'bp_cloud_synced_v1';
 const AGE_KEY = 'bp_cloud_age_v1';
+const AUTO_KEY = 'bp_cloud_auto_v1';
 
 const CHANNEL = IS_DEV ? 'dev' : 'main';
 /** Desktop apps get sign-in back from the browser through this link. */
@@ -323,10 +324,19 @@ async function signedInClient(): Promise<SupabaseClient | null> {
   return data.session ? c : null;
 }
 
-/** Uploads one career if it changed since it was last synced. */
-async function pushOne(c: SupabaseClient, s: SaveGameState): Promise<'saved' | 'same' | 'older' | 'full' | 'server_full' | 'too_big' | 'rate_limited' | 'skip'> {
+/** Whether careers from other devices download by themselves (on unless turned off). */
+export const autoDownload = () => store.get(AUTO_KEY) !== 'off';
+export const setAutoDownload = (on: boolean) => store.set(AUTO_KEY, on ? 'on' : 'off');
+
+/** Whether this device's copy of a career has been uploaded (or came from the cloud) since it last changed. */
+export const isSynced = (s: SaveGameState) => saveRev(s) <= (readSynced()[s.saveId] ?? 0);
+
+type PushResult = 'saved' | 'same' | 'older' | 'full' | 'server_full' | 'too_big' | 'rate_limited' | 'skip';
+
+/** Uploads one career if it changed since it was last synced (or always, with `force`). */
+async function pushOne(c: SupabaseClient, s: SaveGameState, force = false): Promise<PushResult> {
   const rev = saveRev(s);
-  if (!(rev > 0) || rev <= (readSynced()[s.saveId] ?? 0)) return 'skip';
+  if (!(rev > 0) || (!force && rev <= (readSynced()[s.saveId] ?? 0))) return 'skip';
   const data = protectSave(serializeSave(s));
   if (data.length > MAX_UPLOAD_CHARS) return 'too_big';
   const { data: res, error } = await c.rpc('cloud_push', {
@@ -341,6 +351,86 @@ async function pushOne(c: SupabaseClient, s: SaveGameState): Promise<'saved' | '
   if (error) throw error;
   if (res === 'saved' || res === 'same') markSynced(s.saveId, rev);
   return res as 'saved';
+}
+
+type CloudRow = { save_id: string; rev: number; airline: string; data: string };
+type StoreResult =
+  | { kind: 'stored' | 'had' | 'playing' | 'dropped'; name: string }
+  | { kind: 'full' | 'failed'; name: string; message: string };
+
+/**
+ * Stores a career that came from the cloud: checks it, keeps this device's
+ * copy if it's as new or newer, never replaces the career being played,
+ * writes it, reads it back, and only then tells the server it arrived.
+ */
+async function storeIncoming(c: SupabaseClient, row: CloudRow, openSaveId: string | null): Promise<StoreResult> {
+  const dev = deviceId();
+  const rev = Number(row.rev);
+  const opened = openProtectedSave<SaveGameState>(row.data);
+  const ack = async () => {
+    await c.rpc('cloud_ack', { p_device: dev, p_channel: CHANNEL, p_save_id: row.save_id, p_rev: rev });
+  };
+  if (!opened.ok || !isValidSave(opened.value) || opened.value.saveId !== row.save_id) {
+    await ack(); // damaged or not a career: drop it
+    return { kind: 'dropped', name: row.airline };
+  }
+  const name = row.airline || opened.value.airlineName;
+  const slots = readSaveSlots();
+  const local = slots.find((s) => s.saveId === row.save_id);
+  if (local && saveRev(local) >= rev) {
+    markSynced(row.save_id, saveRev(local));
+    await ack();
+    return { kind: 'had', name };
+  }
+  if (row.save_id === openSaveId) return { kind: 'playing', name };
+  const incoming: SaveGameState = { ...opened.value, rev };
+  const next = local ? slots.map((s) => (s.saveId === row.save_id ? incoming : s)) : [incoming, ...slots];
+  if (!writeSaveSlots(next)) {
+    return { kind: 'full', name, message: 'This device’s storage is full, so a career from the cloud couldn’t be stored. Delete or export a career and try again.' };
+  }
+  const check = readSaveSlots().find((s) => s.saveId === row.save_id);
+  if (!check || saveRev(check) !== rev) {
+    return { kind: 'failed', name, message: `${name} didn’t store correctly. It stays in the cloud; try again.` };
+  }
+  markSynced(row.save_id, rev);
+  await ack();
+  return { kind: 'stored', name };
+}
+
+/** Downloads one career the player picked from the cloud (v2.52). Returns its name. */
+export async function downloadCareer(saveId: string, openSaveId: string | null = null): Promise<string> {
+  const c = await signedInClient();
+  if (!c) throw new Error('Sign in to download careers.');
+  const { data, error } = await c.rpc('cloud_fetch', { p_device: deviceId(), p_device_name: deviceName(), p_channel: CHANNEL, p_save_id: saveId });
+  if (error) throw new Error(friendlyAuthError(error.message));
+  const row = ((data ?? []) as CloudRow[])[0];
+  if (!row) throw new Error('That career isn’t in the cloud any more.');
+  const r = await storeIncoming(c, row, openSaveId);
+  if (r.kind === 'playing') throw new Error(`You’re playing ${r.name} right now. Leave to the home screen to load the newer copy.`);
+  if (r.kind === 'full' || r.kind === 'failed') throw new Error(r.message);
+  if (r.kind === 'dropped') throw new Error('That copy is damaged, so it was removed.');
+  return r.name;
+}
+
+/** Uploads one career now, even if it was uploaded before (v2.52). */
+export async function uploadCareer(saveId: string): Promise<void> {
+  const c = await signedInClient();
+  if (!c) throw new Error('Sign in to upload careers.');
+  const s = readSaveSlots().find((x) => x.saveId === saveId);
+  if (!s) throw new Error('That career isn’t on this device.');
+  const r = await pushOne(c, s, true);
+  if (r === 'saved' || r === 'same' || r === 'skip') return;
+  throw new Error(
+    r === 'older'
+      ? 'The cloud has a newer copy of this career from another device. Download it instead.'
+      : r === 'full'
+        ? 'The cloud keeps up to 10 careers per account. Remove one you no longer play.'
+        : r === 'too_big'
+          ? 'This career is too big to sync. Use Export save file to move it.'
+          : r === 'rate_limited'
+            ? 'You’ve synced a lot this hour. Try again later.'
+            : 'The cloud is full right now. Try again later.',
+  );
 }
 
 let running: Promise<SyncReport> | null = null;
@@ -363,45 +453,19 @@ async function doSync(openSaveId: string | null): Promise<SyncReport> {
   if (!c) return report;
   const dev = deviceId();
   try {
-    // 1. Download
-    const { data: rows, error } = await c.rpc('cloud_pull', { p_device: dev, p_device_name: deviceName(), p_channel: CHANNEL });
-    if (error) throw error;
-    for (const row of (rows ?? []) as { save_id: string; rev: number; airline: string; data: string }[]) {
-      const rev = Number(row.rev);
-      const opened = openProtectedSave<SaveGameState>(row.data);
-      const ack = async () => {
-        await c.rpc('cloud_ack', { p_device: dev, p_channel: CHANNEL, p_save_id: row.save_id, p_rev: rev });
-      };
-      if (!opened.ok || !isValidSave(opened.value) || opened.value.saveId !== row.save_id) {
-        await ack(); // damaged or not a career: drop it
-        continue;
+    // 1. Download (unless the player downloads careers themselves)
+    if (autoDownload()) {
+      const { data: rows, error } = await c.rpc('cloud_pull', { p_device: dev, p_device_name: deviceName(), p_channel: CHANNEL });
+      if (error) throw error;
+      for (const row of (rows ?? []) as CloudRow[]) {
+        const r = await storeIncoming(c, row, openSaveId);
+        if (r.kind === 'stored') report.received.push(r.name);
+        else if (r.kind === 'playing') report.waiting.push(r.name);
+        else if (r.kind === 'full') {
+          report.problem = r.message;
+          break;
+        } else if (r.kind === 'failed') report.problem = r.message;
       }
-      const slots = readSaveSlots();
-      const local = slots.find((s) => s.saveId === row.save_id);
-      if (local && saveRev(local) >= rev) {
-        markSynced(row.save_id, saveRev(local));
-        await ack(); // this device already has it or newer
-        continue;
-      }
-      if (row.save_id === openSaveId) {
-        report.waiting.push(row.airline || opened.value.airlineName);
-        continue;
-      }
-      const incoming: SaveGameState = { ...opened.value, rev };
-      const next = local ? slots.map((s) => (s.saveId === row.save_id ? incoming : s)) : [incoming, ...slots];
-      // Store, read back, and only then let the server forget it
-      if (!writeSaveSlots(next)) {
-        report.problem = 'This device’s storage is full, so a career from another device couldn’t be stored. Delete or export a career and sync again.';
-        break;
-      }
-      const check = readSaveSlots().find((s) => s.saveId === row.save_id);
-      if (!check || saveRev(check) !== rev) {
-        report.problem = 'A career from another device didn’t store correctly. It stays in the cloud; sync again to retry.';
-        continue;
-      }
-      markSynced(row.save_id, rev);
-      await ack();
-      report.received.push(row.airline || incoming.airlineName);
     }
 
     // 2. Upload what changed here
@@ -438,7 +502,7 @@ export async function cloudDeleteSave(saveId: string): Promise<void> {
 }
 
 export type CloudOverview = {
-  saves: { saveId: string; airline: string; updatedAt: string; fromThisDevice: boolean; fromName: string; bytes: number }[];
+  saves: { saveId: string; airline: string; rev: number; updatedAt: string; fromThisDevice: boolean; fromName: string; bytes: number; waitingHere: boolean }[];
   devices: { name: string; lastSeen: string; thisDevice: boolean }[];
 };
 export async function cloudOverview(): Promise<CloudOverview | null> {

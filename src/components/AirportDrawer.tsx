@@ -7,7 +7,7 @@ import {
   calcAircraftScheduleUsage,
   findScheduleConflict,
   flightsForTail,
-  getAircraftLocationAtTime,
+  aircraftAwayOnDays,
   getAircraftCircuitStatus,
   nextFreeFlightNumber,
   planCloseLoop,
@@ -164,8 +164,10 @@ export function AirportDrawer({
         const usage = calcAircraftScheduleUsage(ac, schedule);
         const hasFlights = flightsForTail(schedule, ac.tailNumber).length > 0;
         // Aircraft without flights can start anywhere; others are where their last leg before departure ended
-        const where = hasFlights ? getAircraftLocationAtTime(ac, schedule, draft.depMin) : null;
-        const atOrigin = !hasFlights || where === draft.originIata;
+        // Week-aware: it must be at the departure airport on every day picked
+        const away = hasFlights ? aircraftAwayOnDays(ac, schedule, draft.depMin, draft.days, draft.originIata) : null;
+        const where = hasFlights ? (away?.at ?? draft.originIata) : null;
+        const atOrigin = !hasFlights || !away;
         const routeFrom = origin ?? airportByIata.get(ac.hubIata) ?? null;
         const from = routeFrom;
         const dist = from && from.iata_code !== airport.iata_code ? calcDistanceNm(from, airport) : 0;
@@ -190,7 +192,7 @@ export function AirportDrawer({
           a.usage.usedPct - b.usage.usedPct ||
           a.ac.tailNumber.localeCompare(b.ac.tailNumber)
       );
-  }, [fleet, schedule, airport, airportByIata, origin, draft.mode, draft.originIata, draft.depMin]);
+  }, [fleet, schedule, airport, airportByIata, origin, draft.mode, draft.originIata, draft.depMin, draft.days]);
 
   // Keep the aircraft you were scheduling if it can still fly this route from
   // here; otherwise switch to the least-used one that can and is parked at your

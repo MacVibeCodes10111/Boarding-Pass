@@ -16,8 +16,14 @@ import {
   finishDesktopSignIn,
   finishWebSignIn,
   inDesktopApp,
+  autoDownload,
+  downloadCareer,
+  cloudDeleteSave,
+  isSynced,
   lastSyncMs,
   mightBeSignedIn,
+  setAutoDownload,
+  uploadCareer,
   recordAge,
   signInWith,
   signInWithUsername,
@@ -29,6 +35,8 @@ import {
   type CloudUser,
   type SyncReport,
 } from '../game/cloud';
+import { readSaveSlots } from '../game/saves';
+import type { SaveGameState } from '../game/types';
 import { Icon } from '../ui/icons';
 import { Button, C, DISPLAY, ModalShell, Segmented, inputStyle, labelStyle } from '../ui/kit';
 
@@ -200,7 +208,7 @@ function CloudModal(props: { onClose: () => void; openSaveId: string | null; onS
         {user === undefined ? (
           <p style={{ color: C.muted, fontSize: 13 }}>Checking…</p>
         ) : user ? (
-          <SignedIn user={user} overview={overview} lastSync={lastSync} busy={busy} onSync={sync} act={act} />
+          <SignedIn user={user} overview={overview} lastSync={lastSync} busy={busy} onSync={sync} act={act} openSaveId={props.openSaveId} onSlotsChanged={props.onSlotsChanged} />
         ) : age === 'unknown' ? (
           <AgeCheck onDone={setAge} />
         ) : age === 'under13' ? (
@@ -373,14 +381,31 @@ function SignedIn(props: {
   busy: boolean;
   onSync: () => void;
   act: (label: string, fn: () => Promise<unknown>) => Promise<void>;
+  openSaveId: string | null;
+  onSlotsChanged: () => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [auto, setAuto] = useState(autoDownload());
+  const [local, setLocal] = useState<SaveGameState[]>(() => readSaveSlots());
+  useEffect(() => setLocal(readSaveSlots()), [props.overview, props.lastSync]);
   const via = props.user.provider === 'google' ? 'Google' : props.user.provider === 'discord' ? 'Discord' : 'a username';
-  const waiting = props.overview?.saves ?? [];
+  const cloud = props.overview?.saves ?? [];
   const devices = props.overview?.devices ?? [];
+  const localIds = new Set(local.map((l) => l.saveId));
+  const changed = () => {
+    props.onSlotsChanged();
+    setLocal(readSaveSlots());
+    announceChange();
+  };
+  const sectionTitle = (id: string, text: string) => (
+    <h3 id={id} style={{ fontSize: 14, margin: '6px 0 6px' }}>
+      {text}
+    </h3>
+  );
+  const row: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 10, background: C.raised, border: `1px solid ${C.line}` };
   return (
     <div style={{ display: 'grid', gap: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: C.raised, border: `1px solid ${C.line}`, borderRadius: 10, padding: '10px 12px' }}>
+      <div style={row}>
         <Icon name="check" size={18} color={C.green} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis' }}>Signed in as {props.user.name}</div>
@@ -388,39 +413,121 @@ function SignedIn(props: {
             With {via}. Last synced {ago(props.lastSync)}.
           </div>
         </div>
+        <Button size="sm" variant="primary" disabled={props.busy} onClick={props.onSync}>
+          <Icon name="swap" size={15} />
+          Sync now
+        </Button>
       </div>
 
-      <Button variant="primary" size="lg" block disabled={props.busy} onClick={props.onSync}>
-        <Icon name="swap" size={18} />
-        Sync now
-      </Button>
-      <p style={{ fontSize: 12.5, color: C.muted, margin: 0, lineHeight: 1.45 }}>
-        Your careers sync by themselves every few minutes. Each career keeps its newest copy. A copy leaves the cloud once all your other devices have it.
-      </p>
-
-      <section aria-labelledby="bp-cloud-waiting">
-        <h3 id="bp-cloud-waiting" style={{ fontSize: 13.5, margin: '4px 0 6px' }}>
-          In the cloud now
-        </h3>
-        {waiting.length === 0 ? (
-          <p style={{ fontSize: 12.5, color: C.muted, margin: 0 }}>Nothing waiting. All your devices are up to date.</p>
+      <section aria-labelledby="bp-cloud-in">
+        {sectionTitle('bp-cloud-in', 'In the cloud')}
+        {cloud.length === 0 ? (
+          <p style={{ fontSize: 12.5, color: C.muted, margin: 0 }}>Nothing here right now. Careers you save are uploaded, and leave the cloud once all your other devices have them.</p>
         ) : (
-          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: 1.6 }}>
-            {waiting.map((s) => (
-              <li key={s.saveId}>
-                {s.airline || 'A career'} <span style={{ color: C.muted }}>from {s.fromThisDevice ? 'this device' : s.fromName || 'another device'}, {Math.max(1, Math.round(s.bytes / 1024))} KB</span>
-              </li>
-            ))}
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 6 }}>
+            {cloud.map((c) => {
+              const here = localIds.has(c.saveId);
+              return (
+                <li key={c.saveId} style={row}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.airline || 'A career'}</div>
+                    <div style={{ fontSize: 12, color: C.muted }}>
+                      From {c.fromThisDevice ? 'this device' : c.fromName || 'another device'}, {ago(Date.parse(c.updatedAt))}
+                      {c.waitingHere ? (here ? '. Newer than yours.' : '. Not on this device yet.') : '. You have this one.'}
+                    </div>
+                  </div>
+                  {c.waitingHere && (
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      disabled={props.busy}
+                      aria-label={`Download ${c.airline || 'career'}`}
+                      onClick={() =>
+                        props.act(`Downloading ${c.airline}…`, async () => {
+                          await downloadCareer(c.saveId, props.openSaveId);
+                          changed();
+                        })
+                      }
+                    >
+                      <Icon name="download" size={15} />
+                      Download
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={props.busy}
+                    aria-label={`Remove ${c.airline || 'career'} from the cloud`}
+                    title="Remove from the cloud (careers on your devices stay)"
+                    onClick={() => props.act('Removing…', () => cloudDeleteSave(c.saveId))}
+                  >
+                    <Icon name="trash" size={15} />
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13, marginTop: 10, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={auto}
+            onChange={(e) => {
+              setAuto(e.target.checked);
+              setAutoDownload(e.target.checked);
+            }}
+            style={{ width: 18, height: 18, marginTop: 1, flex: 'none' }}
+          />
+          <span>
+            Download careers from my other devices by themselves
+            <span style={{ display: 'block', fontSize: 12, color: C.muted }}>Turn off to pick which ones to download here or on the home screen.</span>
+          </span>
+        </label>
+      </section>
+
+      <section aria-labelledby="bp-cloud-here">
+        {sectionTitle('bp-cloud-here', 'On this device')}
+        {local.length === 0 ? (
+          <p style={{ fontSize: 12.5, color: C.muted, margin: 0 }}>No careers saved on this device yet.</p>
+        ) : (
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 6 }}>
+            {local.map((l) => {
+              const synced = isSynced(l);
+              return (
+                <li key={l.saveId} style={row}>
+                  <Icon name={synced ? 'check' : 'upload'} size={16} color={synced ? C.green : C.muted} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.airlineName}</div>
+                    <div style={{ fontSize: 12, color: C.muted }}>{synced ? 'Synced' : 'Changes not uploaded yet'}</div>
+                  </div>
+                  {!synced && (
+                    <Button
+                      size="sm"
+                      disabled={props.busy}
+                      aria-label={`Upload ${l.airlineName}`}
+                      onClick={() =>
+                        props.act(`Uploading ${l.airlineName}…`, async () => {
+                          await uploadCareer(l.saveId);
+                          setLocal(readSaveSlots());
+                          announceChange();
+                        })
+                      }
+                    >
+                      <Icon name="upload" size={15} />
+                      Upload
+                    </Button>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
 
       {devices.length > 0 && (
-        <section aria-labelledby="bp-cloud-devices">
-          <h3 id="bp-cloud-devices" style={{ fontSize: 13.5, margin: '4px 0 6px' }}>
-            Your devices
-          </h3>
-          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: 1.6 }}>
+        <details>
+          <summary style={{ cursor: 'pointer', fontSize: 13, color: C.textDim }}>Your devices ({devices.length})</summary>
+          <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 13, lineHeight: 1.6 }}>
             {devices.map((d, i) => (
               <li key={i}>
                 {d.name || 'Device'}
@@ -428,7 +535,7 @@ function SignedIn(props: {
               </li>
             ))}
           </ul>
-        </section>
+        </details>
       )}
 
       <div style={{ height: 1, background: C.line, margin: '2px 0' }} />
@@ -461,6 +568,69 @@ function SignedIn(props: {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Home screen: careers waiting in the cloud for this device (v2.52)
+// ---------------------------------------------------------------------------
+export function CloudCareersOnHome(props: { onDownloaded: () => void; toast: (m: string) => void }) {
+  const [items, setItems] = useState<CloudOverview['saves']>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      if (!mightBeSignedIn()) return setItems([]);
+      try {
+        const o = await cloudOverview();
+        if (alive) setItems((o?.saves ?? []).filter((s) => s.waitingHere));
+      } catch {
+        /* offline: nothing to show */
+      }
+    };
+    void load();
+    const onChange = () => void load();
+    window.addEventListener(CHANGED_EVENT, onChange);
+    return () => {
+      alive = false;
+      window.removeEventListener(CHANGED_EVENT, onChange);
+    };
+  }, []);
+  if (items.length === 0) return null;
+  return (
+    <div role="region" aria-label="Careers in the cloud" style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
+      {items.map((c) => (
+        <div key={c.saveId} style={{ background: C.panel, border: `1px dashed ${C.brand}88`, borderRadius: 10, padding: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Icon name="download" size={20} color={C.brand} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.airline || 'A career'}</div>
+            <div style={{ fontSize: 12, color: C.muted }}>
+              In the cloud from {c.fromName || 'another device'}, {ago(Date.parse(c.updatedAt))}
+            </div>
+          </div>
+          <Button
+            variant="primary"
+            disabled={busy !== null}
+            aria-label={`Download ${c.airline || 'career'}`}
+            onClick={async () => {
+              setBusy(c.saveId);
+              try {
+                const name = await downloadCareer(c.saveId);
+                props.onDownloaded();
+                props.toast(`${name} downloaded`);
+                announceChange();
+              } catch (e) {
+                props.toast(e instanceof Error ? e.message : String(e));
+              } finally {
+                setBusy(null);
+              }
+            }}
+          >
+            {busy === c.saveId ? 'Downloading…' : 'Download'}
+          </Button>
+        </div>
+      ))}
     </div>
   );
 }

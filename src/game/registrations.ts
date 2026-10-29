@@ -73,6 +73,119 @@ export function nextRegistrations(taken: Iterable<string>, airlineIata: string, 
   return out;
 }
 
+// ----------------------------------------------------------------------------
+// Sequences (v2.52): registrations that count on from one you choose
+//   The part that counts is the last run of digits after the country prefix
+//   (N418JT → N419JT, B-3021 → B-3022, JA401A → JA402A); with no digits
+//   there, the letters after the dash (P4-AAA → P4-AAB, G-JTAZ → G-JTBA).
+// ----------------------------------------------------------------------------
+type RegParts = { head: string; group: string; tail: string; kind: 'digits' | 'letters' };
+
+function regParts(reg: string): RegParts | null {
+  const r = reg.toUpperCase();
+  const dash = r.lastIndexOf('-');
+  const prefix = dash >= 0 ? r.slice(0, dash + 1) : '';
+  const body = dash >= 0 ? r.slice(dash + 1) : r;
+  const m = /^(.*?)(\d+)(\D*)$/.exec(body);
+  if (m) return { head: prefix + m[1], group: m[2], tail: m[3], kind: 'digits' };
+  const l = /^(.*?)([A-Z]+)$/.exec(body);
+  if (l) return { head: prefix + l[1], group: l[2], tail: '', kind: 'letters' };
+  return null;
+}
+
+/** The shape two registrations share when they belong to one sequence. */
+export function regShape(reg: string): string {
+  const p = regParts(reg);
+  return p ? `${p.head}|${p.kind}${p.group.length}|${p.tail}` : reg.toUpperCase();
+}
+
+/** Position in its sequence (a number, so "after" can be compared). */
+function regOrdinal(reg: string): number {
+  const p = regParts(reg);
+  if (!p) return -1;
+  if (p.kind === 'digits') return Number(p.group);
+  return [...p.group].reduce((n, ch) => n * 26 + (ch.charCodeAt(0) - 64), 0);
+}
+
+/** The registration after this one in its sequence (null if it has nothing to count). */
+export function incrementRegistration(reg: string): string | null {
+  const p = regParts(reg);
+  if (!p) return null;
+  let group: string;
+  if (p.kind === 'digits') {
+    group = String(Number(p.group) + 1).padStart(p.group.length, '0');
+  } else {
+    const chars = [...p.group];
+    let i = chars.length - 1;
+    while (i >= 0 && chars[i] === 'Z') chars[i--] = 'A';
+    if (i < 0) chars.unshift('A');
+    else chars[i] = String.fromCharCode(chars[i].charCodeAt(0) + 1);
+    group = chars.join('');
+  }
+  const next = `${p.head}${group}${p.tail}`;
+  return validRegistration(next) ? next : null;
+}
+
+/**
+ * `count` free registrations counting on from `start`: `start` itself first
+ * when `includeStart` and it is free, then the ones after it, skipping any
+ * already `taken`. Falls back to null if the sequence runs out.
+ */
+export function sequenceFrom(start: string, count: number, taken: Iterable<string>, includeStart = true): string[] | null {
+  const used = new Set([...taken].map((t) => t.toUpperCase()));
+  const out: string[] = [];
+  let cur: string | null = start.toUpperCase();
+  if (!includeStart) cur = incrementRegistration(cur);
+  let guard = 0;
+  while (out.length < count && cur && guard++ < 100_000) {
+    if (!used.has(cur)) {
+      out.push(cur);
+      used.add(cur);
+    }
+    cur = incrementRegistration(cur);
+  }
+  return out.length === count ? out : null;
+}
+
+/**
+ * Registrations for new aircraft (v2.52). They follow the airline's first
+ * aircraft: the next ones after the highest registration in its sequence, so
+ * the numbers always go up and never fill in gaps left by aircraft sold. A
+ * typed registration starts the batch and the rest count on from it. With no
+ * fleet yet, the hub country's usual style is used.
+ */
+export function registrationsForNewAircraft(
+  fleetInOrder: string[],
+  airlineIata: string,
+  country: string,
+  count: number,
+  typedFirst?: string
+): string[] {
+  const taken = fleetInOrder;
+  if (typedFirst) {
+    const seq = sequenceFrom(typedFirst, count, taken);
+    if (seq) return seq;
+  }
+  if (fleetInOrder.length > 0) {
+    const shape = regShape(fleetInOrder[0]);
+    const same = fleetInOrder.filter((r) => regShape(r) === shape);
+    const last = same.reduce((a, b) => (regOrdinal(b) > regOrdinal(a) ? b : a), same[0]);
+    const seq = sequenceFrom(last, count, taken, false);
+    if (seq) return seq;
+  }
+  return nextRegistrations(taken, airlineIata, country, count);
+}
+
+/**
+ * New registrations for several aircraft at once, counting on from `start`
+ * in the order given. Registrations of the aircraft being renamed are free to
+ * reuse; others in the fleet are skipped. Null if `start` can't count.
+ */
+export function reRegisterSequence(start: string, renaming: string[], fleet: string[]): string[] | null {
+  const moving = new Set(renaming.map((r) => r.toUpperCase()));
+  return sequenceFrom(start, renaming.length, fleet.filter((r) => !moving.has(r.toUpperCase())));
+}
+
 /** A registration the player typed: letters, digits and dashes, 3 to 10 long. */
 export const validRegistration = (r: string) => /^[A-Z0-9][A-Z0-9-]{1,8}[A-Z0-9]$/.test(r);
 
