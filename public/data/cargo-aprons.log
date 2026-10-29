@@ -1,0 +1,12 @@
+apron ways: https://overpass-api.de/api/interpreter failed: HTTP 502 # 502 Gateway Timeout This Overpass API server is currently at capacity. All query workers are busy and the request queue is full. ## What to do Retry your request using exponential backoff: wait a
+apron ways: https://overpass.private.coffee/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"> <html xmlns="http://www.w3.org/1999/xhtml" xml:
+apron ways: https://overpass.kumi.systems/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"> <html xmlns="http://www.w3.org/1999/xhtml" xml:
+apron ways: https://maps.mail.ru/osm/tools/overpass/api/interpreter failed: HTTP 504 <html> <head><title>504 Gateway Time-out</title></head> <body> <center><h1>504 Gateway Time-out</h1></center> <hr><center>nginx</center> </body> </html> 
+apron ways: https://overpass-api.de/api/interpreter failed: HTTP 502 # 502 Gateway Timeout This Overpass API server is currently at capacity. All query workers are busy and the request queue is full. ## What to do Retry your request using exponential backoff: wait a
+apron ways: https://overpass.private.coffee/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"> <html xmlns="http://www.w3.org/1999/xhtml" xml:
+apron ways: https://overpass.kumi.systems/api/interpreter failed: HTTP 502 <html> <head><title>502 Bad Gateway</title></head> <body> <center><h1>502 Bad Gateway</h1></center> <hr><center>nginx/1.26.3</center> </body> </html> 
+apron ways: https://maps.mail.ru/osm/tools/overpass/api/interpreter failed: HTTP 504 <html> <head><title>504 Gateway Time-out</title></head> <body> <center><h1>504 Gateway Time-out</h1></center> <hr><center>nginx</center> </body> </html> 
+apron ways: GAVE UP
+apron relations: 12 from https://overpass-api.de/api/interpreter
+cargo stands: 1 from https://overpass-api.de/api/interpreter
+cargo-aprons.json: 9 airports, 31 aprons, 1 stands, 9 kB
