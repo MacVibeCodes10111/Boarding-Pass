@@ -1,0 +1,1 @@
+import{t as e}from"./index-D8ppTanp.js";async function t(t,n){await e(`plugin:opener|open_url`,{url:t,with:n})}export{t as openUrl};
