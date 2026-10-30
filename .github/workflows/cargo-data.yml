@@ -25,6 +25,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f public/data/cargo-aprons.json public/data/cargo-aprons.log 2>/dev/null || git add -f public/data/cargo-aprons.log
+          git add -f public/data/cargo-aprons.* || true
           git commit -m "Cargo aprons from OpenStreetMap" || echo "no change"
           git push origin HEAD:${GITHUB_REF_NAME}

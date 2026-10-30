@@ -14,7 +14,7 @@
 // ============================================================================
 import { LINEUP_MIN, VACATE_MIN } from './runwayUse';
 import type { LonLat } from './geo';
-import { cargoAreasFor, inRing } from './cargoAprons';
+import { cargoAreasFor, inRing, metresToRing } from './cargoAprons';
 import { filletPath } from './navdata';
 
 type XY = [number, number];
@@ -648,7 +648,12 @@ export class TaxiNetwork {
     if (areas === undefined || this.stands.length === 0) return null;
     const ll = this.stands.map((s) => this.toLL(s.g));
     let use: number[] = ll.map((p) =>
-      areas && (areas.a.some((ring) => inRing(p, ring)) || (areas.p ?? []).some((q) => Math.hypot((q[0] - p[0]) * Math.cos((p[1] * Math.PI) / 180), q[1] - p[1]) * 111_320 < 60)) ? 1 : 0
+      areas &&
+      (areas.a.some((ring) => inRing(p, ring)) ||
+        (areas.b ?? []).some((ring) => inRing(p, ring) || metresToRing(p, ring) < 150) ||
+        (areas.p ?? []).some((q) => Math.hypot((q[0] - p[0]) * Math.cos((p[1] * Math.PI) / 180), q[1] - p[1]) * 111_320 < 60))
+        ? 1
+        : 0
     );
     if (!use.includes(1) && this.stands.length >= 6) {
       // No cargo areas mapped: the stands farthest from the middle of the others are the remote ones

@@ -7,7 +7,7 @@
 // GitHub workflow does this): node tools/build-cargo-aprons.mjs
 //
 // Output: { "v": 1, "built": "...", "airports": { "MEM": { "a": [polygon…], "p": [[lon,lat]…] } } }
-//   a: cargo apron outlines (lon/lat rings, 5 decimals), p: single cargo stands
+//   a: cargo apron outlines (lon/lat rings, 5 decimals), b: cargo buildings, p: single cargo stands
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,43 +24,107 @@ const log = (s) => {
   console.log(s);
   appendFileSync(LOG, s + '\n');
 };
-// Three smaller queries (busy servers turn away one big one)
-const QUERIES = {};
-// Apron outlines region by region: the whole world at once times out
+// The world is split into tiles (30° to start). A tile the servers can't
+// manage is split into four smaller ones there and then, down to 2.5°.
+const wayQ = (bb) => `[out:json][timeout:170];(way["aeroway"="apron"]["apron"~"cargo|freight",i]${bb};way["aeroway"="apron"]["usage"~"cargo|freight",i]${bb};way["aeroway"="apron"]["name"~"${WORDS}",i]${bb};);out geom;`;
+const extraQ = (bb) => `[out:json][timeout:170];(relation["aeroway"="apron"]["apron"~"cargo|freight",i]${bb};relation["aeroway"="apron"]["name"~"${WORDS}",i]${bb};node["aeroway"="parking_position"]["name"~"${WORDS}",i]${bb};node["aeroway"="parking_position"]["usage"~"cargo|freight",i]${bb};);out geom;`;
+// Cargo buildings and carrier ramps inside airports with an IATA code (many
+// airports map their cargo terminals but not a cargo apron)
+const CARRIERS = 'Atlas Air|Kalitta|Cargolux|Polar Air|Western Global|Amazon Air|Prime Air|AeroLogic|Swissport|Worldwide Flight|Menzies|dnata|SkyCargo|Cargo City|Luftfracht|Fedex|Federal Express';
+const bQ = (bb) => `[out:json][timeout:170];(way["aeroway"="aerodrome"]["iata"]${bb};relation["aeroway"="aerodrome"]["iata"]${bb};);map_to_area->.a;(way(area.a)["building"]["name"~"${WORDS}|${CARRIERS}",i];way(area.a)["building"]["name"~"UPS|DHL|FedEx|ABX|TNT"];way(area.a)["building"]["operator"~"UPS|DHL|FedEx"];way(area.a)["aeroway"="apron"]["name"~"${CARRIERS}",i];way(area.a)["aeroway"="apron"]["name"~"UPS|DHL|FedEx"];way(area.a)["aeroway"~"^(terminal|hangar)$"]["name"~"${WORDS}|${CARRIERS}",i];);out geom;`;
+const KINDS = { 'apron ways': wayQ, extras: extraQ, 'cargo buildings': bQ };
+const key = (kind, [s, w, n, e]) => `${kind} (${s},${w},${n},${e})`;
+const quarters = ([s, w, n, e]) => {
+  const m = (s + n) / 2;
+  const c = (w + e) / 2;
+  return [[s, w, m, c], [s, c, m, e], [m, w, n, c], [m, c, n, e]];
+};
+const TOP = [];
 for (const [s0, n0] of [[-60, -20], [-20, 15], [15, 35], [35, 50], [50, 75]])
-  for (let w0 = -180; w0 < 180; w0 += 30) {
-    const bb = `(${s0},${w0},${n0},${w0 + 30})`;
-    QUERIES[`apron ways ${bb}`] = `[out:json][timeout:300];(way["aeroway"="apron"]["apron"~"cargo|freight",i]${bb};way["aeroway"="apron"]["usage"~"cargo|freight",i]${bb};way["aeroway"="apron"]["name"~"${WORDS}",i]${bb};);out geom;`;
-  }
-Object.assign(QUERIES, {
-  'apron relations': `[out:json][timeout:600];(relation["aeroway"="apron"]["apron"~"cargo|freight",i];relation["aeroway"="apron"]["name"~"${WORDS}",i];);out geom;`,
-  'cargo stands': `[out:json][timeout:600];(node["aeroway"="parking_position"]["name"~"${WORDS}",i];node["aeroway"="parking_position"]["usage"~"cargo|freight",i];);out;`,
-});
-const MIRRORS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+  for (let w0 = -180; w0 < 180; w0 += 30) TOP.push([s0, w0, n0, w0 + 30]);
+// No airports in a tile: nothing to fetch there
+const hasAirport = ([s, w, n, e]) => airports.some((a) => a.lat >= s - 0.1 && a.lat <= n + 0.1 && a.lon >= w - 0.1 && a.lon <= e + 0.1);
+const MIRRORS = ['https://overpass-api.de/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
+// Resumable: tiles already downloaded are kept in a state file and skipped
+// next time (the servers are often busy, so a run may not get through them all)
+const STATE = resolve(root, 'public/data/cargo-aprons.state.json');
+let state = {};
+try {
+  state = JSON.parse(readFileSync(STATE, 'utf8'));
+} catch {}
+// Older state files named the two worldwide queries without a tile
+if (state['apron relations'] || state['cargo stands']) {
+  if (state['apron relations'] && state['cargo stands']) state['extras (-90,-180,90,180)'] = [...state['apron relations'], ...state['cargo stands']];
+  delete state['apron relations'];
+  delete state['cargo stands'];
+}
+const split = new Set(state.__split ?? []);
+const save = () => writeFileSync(STATE, JSON.stringify({ ...state, __split: [...split] }));
+delete state.__split;
+const startedAt = Date.now();
 const data = { elements: [] };
-for (const [what, q] of Object.entries(QUERIES)) {
-  let ok = false;
-  for (let attempt = 0; attempt < 3 && !ok; attempt++) {
-    if (attempt) await new Promise((r) => setTimeout(r, 20_000 * attempt));
-    for (const url of MIRRORS) {
-      try {
-        const res = await fetch(url, { method: 'POST', body: new URLSearchParams({ data: q }), headers: { 'User-Agent': 'BoardingPass-data-build (boardingpass.my)', Accept: 'application/json' }, signal: AbortSignal.timeout(400_000) });
-        const text = await res.text();
-        if (!res.ok) throw new Error(`HTTP ${res.status} ${text.slice(0, 200).replace(/\s+/g, ' ')}`);
-        const j = JSON.parse(text);
-        if (j.remark) log(`  remark: ${j.remark}`);
-        data.elements.push(...j.elements);
-        if (j.elements.length || !what.startsWith('apron ways')) log(`${what}: ${j.elements.length} from ${url}`);
-        ok = true;
-        break;
-      } catch (e) {
-        log(`${what}: ${url} failed: ${e.message.slice(0, 90)}`);
-      }
+const seen = new Set();
+const take = (els) => {
+  for (const el of els) {
+    const id = `${el.type}${el.id}`;
+    if (!seen.has(id)) seen.add(id), data.elements.push(el);
+  }
+};
+let left = 0;
+const fetchTile = async (q) => {
+  for (const url of MIRRORS) {
+    try {
+      const res = await fetch(url, { method: 'POST', body: new URLSearchParams({ data: q }), headers: { 'User-Agent': 'BoardingPass-data-build (boardingpass.my)', Accept: 'application/json' }, signal: AbortSignal.timeout(185_000) });
+      const text = await res.text();
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${text.slice(0, 120).replace(/\s+/g, ' ')}`);
+      const j = JSON.parse(text);
+      if (j.remark && /timed out|out of memory|error/i.test(j.remark)) throw new Error(j.remark.slice(0, 120));
+      return { els: j.elements, url };
+    } catch (e) {
+      log(`  ${url.split('/')[2]} failed: ${e.message.slice(0, 90)}`);
     }
   }
-  if (!ok) log(`${what}: GAVE UP`);
+  return null;
+};
+const extrasWorld = state['extras (-90,-180,90,180)'];
+const queue = [];
+for (const bb of TOP) queue.push(['apron ways', bb]);
+for (const bb of TOP) queue.push(['cargo buildings', bb]);
+if (extrasWorld) take(extrasWorld);
+else for (const [s, n] of [[-60, -20], [-20, 15], [15, 35], [35, 50], [50, 75]]) queue.push(['extras', [s, -180, n, 180]]);
+while (queue.length) {
+  const [kind, bb] = queue.shift();
+  const k = key(kind, bb);
+  if (state[k]) {
+    take(state[k]);
+    continue;
+  }
+  if (!hasAirport(bb)) continue;
+  if (split.has(k)) {
+    queue.unshift(...quarters(bb).map((b) => [kind, b]));
+    continue;
+  }
+  if (Date.now() - startedAt > 70 * 60_000) {
+    left++;
+    continue;
+  }
+  const got = await fetchTile(KINDS[kind](`(${bb.join(',')})`));
+  if (got) {
+    state[k] = got.els;
+    take(got.els);
+    log(`${k}: ${got.els.length} from ${got.url.split('/')[2]}`);
+  } else if (bb[2] - bb[0] > 2.5 && bb[3] - bb[1] > 2.5) {
+    split.add(k);
+    log(`${k}: too big for the servers, splitting it in four`);
+    queue.unshift(...quarters(bb).map((b) => [kind, b]));
+  } else {
+    left++;
+    log(`${k}: GAVE UP (try again next run)`);
+  }
+  save();
   await new Promise((r) => setTimeout(r, 1500));
 }
+save();
 if (!data.elements.length) process.exit(1);
 
 const r5 = (x) => Math.round(x * 1e5) / 1e5;
@@ -96,7 +160,7 @@ const thin = (ring) => {
 };
 
 const out = {};
-const add = (iata) => (out[iata] ??= { a: [], p: [] });
+const add = (iata) => (out[iata] ??= { a: [], b: [], p: [] });
 for (const el of data.elements) {
   if (el.type === 'node') {
     const ap = nearest(el);
@@ -108,11 +172,12 @@ for (const el of data.elements) {
     if (!ring || ring.length < 4) continue;
     const c = { lat: ring.reduce((s, q) => s + q.lat, 0) / ring.length, lon: ring.reduce((s, q) => s + q.lon, 0) / ring.length };
     const ap = nearest(c);
-    if (ap) add(ap.iata).a.push(thin(ring));
+    if (ap) add(ap.iata)[el.type === 'way' && el.tags?.aeroway !== 'apron' ? 'b' : 'a'].push(thin(ring));
   }
 }
-for (const k of Object.keys(out)) if (!out[k].p.length) delete out[k].p;
+for (const k of Object.keys(out)) for (const f of ['b', 'p']) if (!out[k][f].length) delete out[k][f];
 const file = resolve(root, 'public/data/cargo-aprons.json');
 writeFileSync(file, JSON.stringify({ v: 1, built: new Date().toISOString().slice(0, 10), source: '© OpenStreetMap contributors (ODbL)', airports: out }));
 const n = Object.keys(out).length;
-log(`cargo-aprons.json: ${n} airports, ${Object.values(out).reduce((s, x) => s + x.a.length, 0)} aprons, ${Object.values(out).reduce((s, x) => s + (x.p?.length ?? 0), 0)} stands, ${(JSON.stringify(out).length / 1024).toFixed(0)} kB`);
+log(`tiles left: ${left}${left ? "" : " (all done)"}`);
+log(`cargo-aprons.json: ${n} airports, ${Object.values(out).reduce((s, x) => s + x.a.length, 0)} aprons, ${Object.values(out).reduce((s, x) => s + (x.b?.length ?? 0), 0)} buildings, ${Object.values(out).reduce((s, x) => s + (x.p?.length ?? 0), 0)} stands, ${(JSON.stringify(out).length / 1024).toFixed(0)} kB`);

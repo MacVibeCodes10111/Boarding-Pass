@@ -10,6 +10,8 @@ import type { LonLat } from './geo';
 export interface CargoAreas {
   /** Cargo apron outlines (lon/lat rings). */
   a: LonLat[][];
+  /** Cargo building outlines (stands beside them are cargo stands). */
+  b?: LonLat[][];
   /** Single cargo stands. */
   p?: LonLat[];
 }
@@ -45,4 +47,20 @@ export function inRing(p: LonLat, ring: LonLat[]): boolean {
     if (yi > p[1] !== yj > p[1] && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) inside = !inside;
   }
   return inside;
+}
+
+/** Metres from the point to the nearest edge of the ring. */
+export function metresToRing(p: LonLat, ring: LonLat[]): number {
+  const kx = Math.cos((p[1] * Math.PI) / 180) * 111_320;
+  const ky = 111_320;
+  let best = Infinity;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const ax = (ring[j][0] - p[0]) * kx;
+    const ay = (ring[j][1] - p[1]) * ky;
+    const dx = (ring[i][0] - p[0]) * kx - ax;
+    const dy = (ring[i][1] - p[1]) * ky - ay;
+    const t = dx || dy ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / (dx * dx + dy * dy))) : 0;
+    best = Math.min(best, Math.hypot(ax + t * dx, ay + t * dy));
+  }
+  return best;
 }
