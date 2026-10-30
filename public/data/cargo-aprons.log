@@ -1,12 +1,38 @@
-apron ways: https://overpass-api.de/api/interpreter failed: HTTP 502 # 502 Gateway Timeout This Overpass API server is currently at capacity. All query workers are busy and the request queue is full. ## What to do Retry your request using exponential backoff: wait a
-apron ways: https://overpass.private.coffee/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"> <html xmlns="http://www.w3.org/1999/xhtml" xml:
-apron ways: https://overpass.kumi.systems/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"> <html xmlns="http://www.w3.org/1999/xhtml" xml:
-apron ways: https://maps.mail.ru/osm/tools/overpass/api/interpreter failed: HTTP 504 <html> <head><title>504 Gateway Time-out</title></head> <body> <center><h1>504 Gateway Time-out</h1></center> <hr><center>nginx</center> </body> </html> 
-apron ways: https://overpass-api.de/api/interpreter failed: HTTP 502 # 502 Gateway Timeout This Overpass API server is currently at capacity. All query workers are busy and the request queue is full. ## What to do Retry your request using exponential backoff: wait a
-apron ways: https://overpass.private.coffee/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"> <html xmlns="http://www.w3.org/1999/xhtml" xml:
-apron ways: https://overpass.kumi.systems/api/interpreter failed: HTTP 502 <html> <head><title>502 Bad Gateway</title></head> <body> <center><h1>502 Bad Gateway</h1></center> <hr><center>nginx/1.26.3</center> </body> </html> 
-apron ways: https://maps.mail.ru/osm/tools/overpass/api/interpreter failed: HTTP 504 <html> <head><title>504 Gateway Time-out</title></head> <body> <center><h1>504 Gateway Time-out</h1></center> <hr><center>nginx</center> </body> </html> 
-apron ways: GAVE UP
-apron relations: 12 from https://overpass-api.de/api/interpreter
-cargo stands: 1 from https://overpass-api.de/api/interpreter
-cargo-aprons.json: 9 airports, 31 aprons, 1 stands, 9 kB
+apron ways (-60,-90,-20,-60): 3 from https://overpass-api.de/api/interpreter
+apron ways (-60,-60,-20,-30): 2 from https://overpass-api.de/api/interpreter
+apron ways (-60,0,-20,30): 3 from https://overpass-api.de/api/interpreter
+apron ways (-60,30,-20,60): 4 from https://overpass-api.de/api/interpreter
+apron ways (-60,60,-20,90): https://overpass-api.de/api/interpreter failed: HTTP 502 # 502 Gateway Timeout This Overpass API server is currently at capacity. All quer
+apron ways (-60,60,-20,90): https://overpass.private.coffee/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
+apron ways (-60,60,-20,90): https://overpass.kumi.systems/api/interpreter failed: fetch failed
+apron ways (-60,120,-20,150): 2 from https://overpass-api.de/api/interpreter
+apron ways (-60,150,-20,180): https://overpass-api.de/api/interpreter failed: HTTP 502 # 502 Gateway Timeout This Overpass API server is currently at capacity. All quer
+apron ways (-60,150,-20,180): https://overpass.private.coffee/api/interpreter failed: HTTP 502 <html> <head><title>502 Bad Gateway</title></head> <body> <center><h1>502 Bad Gat
+apron ways (-60,150,-20,180): https://overpass.kumi.systems/api/interpreter failed: fetch failed
+apron ways (-60,150,-20,180): https://maps.mail.ru/osm/tools/overpass/api/interpreter failed: HTTP 504 <html> <head><title>504 Gateway Time-out</title></head> <body> <center><h1>504 Ga
+apron ways (-60,150,-20,180): https://overpass-api.de/api/interpreter failed: HTTP 502 # 502 Gateway Timeout This Overpass API server is currently at capacity. All quer
+apron ways (-20,-120,15,-90): 1 from https://overpass-api.de/api/interpreter
+apron ways (-20,-90,15,-60): 10 from https://overpass-api.de/api/interpreter
+apron ways (-20,0,15,30): https://overpass-api.de/api/interpreter failed: fetch failed
+apron ways (-20,0,15,30): https://overpass.private.coffee/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
+apron ways (-20,0,15,30): https://overpass.kumi.systems/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
+apron ways (-20,0,15,30): 1 from https://maps.mail.ru/osm/tools/overpass/api/interpreter
+apron ways (-20,30,15,60): 2 from https://overpass-api.de/api/interpreter
+apron ways (-20,60,15,90): https://overpass-api.de/api/interpreter failed: HTTP 502 # 502 Gateway Timeout This Overpass API server is currently at capacity. All quer
+apron ways (-20,60,15,90): https://overpass.private.coffee/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
+apron ways (-20,60,15,90): https://overpass.kumi.systems/api/interpreter failed: fetch failed
+apron ways (-20,60,15,90): 1 from https://maps.mail.ru/osm/tools/overpass/api/interpreter
+apron ways (-20,90,15,120): 10 from https://overpass-api.de/api/interpreter
+apron ways (-20,120,15,150): 1 from https://overpass-api.de/api/interpreter
+apron ways (-20,150,15,180): https://overpass-api.de/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
+apron ways (-20,150,15,180): https://overpass.private.coffee/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
+apron ways (-20,150,15,180): https://overpass.kumi.systems/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
+apron ways (-20,150,15,180): https://maps.mail.ru/osm/tools/overpass/api/interpreter failed: HTTP 504 <html> <head><title>504 Gateway Time-out</title></head> <body> <center><h1>504 Ga
+apron ways (15,-180,35,-150): 1 from https://overpass-api.de/api/interpreter
+apron ways (15,-120,35,-90): 17 from https://overpass-api.de/api/interpreter
+apron ways (15,-90,35,-60): 9 from https://overpass-api.de/api/interpreter
+apron ways (15,-30,35,0): 2 from https://overpass-api.de/api/interpreter
+apron ways (15,0,35,30): 1 from https://overpass-api.de/api/interpreter
+apron ways (15,30,35,60): 8 from https://overpass-api.de/api/interpreter
+apron ways (15,60,35,90): 3 from https://overpass-api.de/api/interpreter
+apron ways (15,90,35,120): https://overpass-api.de/api/interpreter failed: HTTP 502 # 502 Gateway Timeout This Overpass API server is currently at capacity. All quer
