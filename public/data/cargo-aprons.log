@@ -1,85 +1,35 @@
-apron ways (-60,30,-20,60): 4 from https://overpass-api.de/api/interpreter
-apron ways (-20,-120,15,-90): https://overpass-api.de/api/interpreter failed: HTTP 502 # 502 Gateway Timeout This Overpass API server is currently at capacity. All quer
-apron ways (-20,-120,15,-90): 1 from https://maps.mail.ru/osm/tools/overpass/api/interpreter
-apron ways (-20,30,15,60): 2 from https://overpass-api.de/api/interpreter
-apron ways (15,-180,35,-150): 1 from https://overpass-api.de/api/interpreter
-apron ways (15,-120,35,-90): https://overpass-api.de/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
-apron ways (15,-120,35,-90): https://maps.mail.ru/osm/tools/overpass/api/interpreter failed: HTTP 504 <html> <head><title>504 Gateway Time-out</title></head> <body> <center><h1>504 Ga
-apron ways (15,-120,35,-90): https://overpass.private.coffee/api/interpreter failed: The operation was aborted due to timeout
-apron ways (15,-120,35,-90): 17 from https://overpass-api.de/api/interpreter
-apron ways (15,-90,35,-60): 9 from https://overpass-api.de/api/interpreter
-apron ways (15,-30,35,0): 2 from https://overpass-api.de/api/interpreter
-apron ways (15,0,35,30): 1 from https://overpass-api.de/api/interpreter
-apron ways (15,30,35,60): 8 from https://overpass-api.de/api/interpreter
-apron ways (15,60,35,90): 3 from https://overpass-api.de/api/interpreter
-apron ways (15,90,35,120): https://overpass-api.de/api/interpreter failed: The operation was aborted due to timeout
-apron ways (15,90,35,120): https://maps.mail.ru/osm/tools/overpass/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
-apron ways (15,90,35,120): https://overpass.private.coffee/api/interpreter failed: The operation was aborted due to timeout
-apron ways (15,90,35,120): https://overpass-api.de/api/interpreter failed: fetch failed
-apron ways (15,90,35,120): https://maps.mail.ru/osm/tools/overpass/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
-apron ways (15,90,35,120): https://overpass.private.coffee/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
-apron ways (15,90,35,120): GAVE UP
-apron ways (15,120,35,150): https://overpass-api.de/api/interpreter failed: fetch failed
-apron ways (15,120,35,150): https://maps.mail.ru/osm/tools/overpass/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
-apron ways (15,120,35,150): https://overpass.private.coffee/api/interpreter failed: The operation was aborted due to timeout
-apron ways (15,120,35,150): https://overpass-api.de/api/interpreter failed: fetch failed
-apron ways (15,120,35,150): https://maps.mail.ru/osm/tools/overpass/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
-apron ways (15,120,35,150): https://overpass.private.coffee/api/interpreter failed: The operation was aborted due to timeout
-apron ways (15,120,35,150): GAVE UP
+apron ways (15,90,35,120): 2 from https://overpass-api.de/api/interpreter
+apron ways (15,120,35,150): 4 from https://overpass-api.de/api/interpreter
 apron ways (15,150,35,180): https://overpass-api.de/api/interpreter failed: fetch failed
-apron ways (15,150,35,180): https://maps.mail.ru/osm/tools/overpass/api/interpreter failed: HTTP 504 <html> <head><title>504 Gateway Time-out</title></head> <body> <center><h1>504 Ga
-apron ways (15,150,35,180): https://overpass.private.coffee/api/interpreter failed: The operation was aborted due to timeout
-apron ways (15,150,35,180): https://overpass-api.de/api/interpreter failed: fetch failed
-apron ways (15,150,35,180): https://maps.mail.ru/osm/tools/overpass/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
-apron ways (15,150,35,180): https://overpass.private.coffee/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
-apron ways (15,150,35,180): GAVE UP
-apron ways (35,-180,50,-150): https://overpass-api.de/api/interpreter failed: fetch failed
-apron ways (35,-150,50,-120): https://overpass-api.de/api/interpreter failed: fetch failed
-apron ways (35,-150,50,-120): 6 from https://maps.mail.ru/osm/tools/overpass/api/interpreter
-apron ways (35,-120,50,-90): https://overpass-api.de/api/interpreter failed: fetch failed
-apron ways (35,-120,50,-90): 19 from https://maps.mail.ru/osm/tools/overpass/api/interpreter
-apron ways (35,-90,50,-60): https://overpass-api.de/api/interpreter failed: fetch failed
-apron ways (35,-90,50,-60): https://maps.mail.ru/osm/tools/overpass/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
-apron ways (35,-90,50,-60): https://overpass.private.coffee/api/interpreter failed: The operation was aborted due to timeout
-apron ways (35,-90,50,-60): https://overpass-api.de/api/interpreter failed: fetch failed
-apron ways (35,-90,50,-60): 39 from https://maps.mail.ru/osm/tools/overpass/api/interpreter
-apron ways (35,-60,50,-30): https://overpass-api.de/api/interpreter failed: fetch failed
-apron ways (35,-60,50,-30): https://maps.mail.ru/osm/tools/overpass/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
-apron ways (35,-60,50,-30): https://overpass.private.coffee/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
-apron ways (35,-60,50,-30): https://overpass-api.de/api/interpreter failed: fetch failed
-apron ways (35,-60,50,-30): https://maps.mail.ru/osm/tools/overpass/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
-apron ways (35,-60,50,-30): https://overpass.private.coffee/api/interpreter failed: The operation was aborted due to timeout
-apron ways (35,-60,50,-30): GAVE UP
-apron ways (35,-30,50,0): https://overpass-api.de/api/interpreter failed: fetch failed
-apron ways (35,-30,50,0): https://maps.mail.ru/osm/tools/overpass/api/interpreter failed: HTTP 504 <html> <head><title>504 Gateway Time-out</title></head> <body> <center><h1>504 Ga
-apron ways (35,-30,50,0): https://overpass.private.coffee/api/interpreter failed: The operation was aborted due to timeout
-apron ways (35,-30,50,0): https://overpass-api.de/api/interpreter failed: fetch failed
-apron ways (35,-30,50,0): 3 from https://maps.mail.ru/osm/tools/overpass/api/interpreter
-apron ways (35,0,50,30): https://overpass-api.de/api/interpreter failed: fetch failed
-apron ways (35,0,50,30): https://maps.mail.ru/osm/tools/overpass/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
-apron ways (35,0,50,30): https://overpass.private.coffee/api/interpreter failed: The operation was aborted due to timeout
-apron ways (35,0,50,30): https://overpass-api.de/api/interpreter failed: fetch failed
-apron ways (35,0,50,30): https://maps.mail.ru/osm/tools/overpass/api/interpreter failed: HTTP 504 <html> <head><title>504 Gateway Time-out</title></head> <body> <center><h1>504 Ga
-apron ways (35,0,50,30): https://overpass.private.coffee/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
-apron ways (35,0,50,30): GAVE UP
-apron ways (35,30,50,60): left for the next run
-apron ways (35,60,50,90): left for the next run
-apron ways (35,90,50,120): left for the next run
-apron ways (35,120,50,150): left for the next run
-apron ways (35,150,50,180): left for the next run
-apron ways (50,-180,75,-150): left for the next run
-apron ways (50,-150,75,-120): left for the next run
-apron ways (50,-120,75,-90): left for the next run
-apron ways (50,-90,75,-60): left for the next run
-apron ways (50,-60,75,-30): left for the next run
-apron ways (50,-30,75,0): left for the next run
-apron ways (50,0,75,30): left for the next run
-apron ways (50,30,75,60): left for the next run
-apron ways (50,60,75,90): left for the next run
-apron ways (50,90,75,120): left for the next run
-apron ways (50,120,75,150): left for the next run
-apron ways (50,150,75,180): left for the next run
-apron relations: left for the next run
-cargo stands: left for the next run
-regions done: 38 of 62
-cargo-aprons.json: 97 airports, 132 aprons, 0 stands, 52 kB
+apron ways (35,0,50,30): 9 from https://overpass-api.de/api/interpreter
+apron ways (35,30,50,60): 4 from https://overpass-api.de/api/interpreter
+apron ways (35,60,50,90): 1 from https://overpass-api.de/api/interpreter
+apron ways (35,120,50,150): https://overpass-api.de/api/interpreter failed: HTTP 502 # 502 Gateway Timeout This Overpass API server is currently at capacity. All quer
+apron ways (35,120,50,150): https://maps.mail.ru/osm/tools/overpass/api/interpreter failed: HTTP 504 <html> <head><title>504 Gateway Time-out</title></head> <body> <center><h1>504 Ga
+apron ways (35,120,50,150): https://overpass.private.coffee/api/interpreter failed: The operation was aborted due to timeout
+apron ways (35,120,50,150): 2 from https://overpass-api.de/api/interpreter
+apron ways (50,-180,75,-150): 1 from https://overpass-api.de/api/interpreter
+apron ways (50,-150,75,-120): 1 from https://overpass-api.de/api/interpreter
+apron ways (50,-120,75,-90): 1 from https://overpass-api.de/api/interpreter
+apron ways (50,-90,75,-60): https://overpass-api.de/api/interpreter failed: HTTP 502 # 502 Gateway Timeout This Overpass API server is currently at capacity. All quer
+apron ways (50,-30,75,0): 4 from https://overpass-api.de/api/interpreter
+apron ways (50,0,75,30): 9 from https://overpass-api.de/api/interpreter
+apron ways (50,30,75,60): 2 from https://overpass-api.de/api/interpreter
+apron ways (50,60,75,90): https://overpass-api.de/api/interpreter failed: HTTP 502 # 502 Gateway Timeout This Overpass API server is currently at capacity. All quer
+apron ways (50,60,75,90): https://maps.mail.ru/osm/tools/overpass/api/interpreter failed: HTTP 504 <html> <head><title>504 Gateway Time-out</title></head> <body> <center><h1>504 Ga
+apron ways (50,60,75,90): https://overpass.private.coffee/api/interpreter failed: The operation was aborted due to timeout
+apron ways (50,90,75,120): 1 from https://overpass-api.de/api/interpreter
+apron ways (50,120,75,150): https://overpass-api.de/api/interpreter failed: fetch failed
+apron ways (50,150,75,180): https://overpass-api.de/api/interpreter failed: fetch failed
+apron ways (50,150,75,180): https://maps.mail.ru/osm/tools/overpass/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
+apron ways (50,150,75,180): https://overpass.private.coffee/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
+apron ways (50,150,75,180): https://overpass-api.de/api/interpreter failed: fetch failed
+apron ways (50,150,75,180): https://maps.mail.ru/osm/tools/overpass/api/interpreter failed: HTTP 504 <html> <head><title>504 Gateway Time-out</title></head> <body> <center><h1>504 Ga
+apron ways (50,150,75,180): https://overpass.private.coffee/api/interpreter failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
+apron ways (50,150,75,180): GAVE UP
+apron relations: https://overpass-api.de/api/interpreter failed: fetch failed
+apron relations: 12 from https://maps.mail.ru/osm/tools/overpass/api/interpreter
+cargo stands: https://overpass-api.de/api/interpreter failed: fetch failed
+cargo stands: 1 from https://maps.mail.ru/osm/tools/overpass/api/interpreter
+regions done: 61 of 62
+cargo-aprons.json: 129 airports, 199 aprons, 1 stands, 70 kB
