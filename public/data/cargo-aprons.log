@@ -1,87 +1,66 @@
-cargo buildings (-20,121.875,-17.8125,123.75): 0 from overpass-api.de
-cargo buildings (-17.8125,121.875,-15.625,123.75): 0 from overpass-api.de
-cargo buildings (-20,123.75,-17.8125,125.625): 0 from overpass-api.de
-  overpass-api.de failed: HTTP 502 # 502 Gateway Timeout This Overpass API server is currently at capacity. All quer
-  maps.mail.ru failed: HTTP 504 <html> <head><title>504 Gateway Time-out</title></head> <body> <center><h1>504 Ga
-  overpass.private.coffee failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
-cargo buildings (-20,125.625,-17.8125,127.5): GAVE UP (try again next run)
-cargo buildings (-17.8125,123.75,-15.625,125.625): 0 from overpass-api.de
-cargo buildings (-15.625,125.625,-13.4375,127.5): 0 from overpass-api.de
-cargo buildings (-20,127.5,-17.8125,129.375): 0 from overpass-api.de
-cargo buildings (-17.8125,127.5,-15.625,129.375): 0 from overpass-api.de
-cargo buildings (-20,131.25,-15.625,135): 0 from overpass-api.de
-cargo buildings (-15.625,127.5,-11.25,131.25): 0 from overpass-api.de
-cargo buildings (-15.625,131.25,-11.25,135): 0 from overpass-api.de
-cargo buildings (-11.25,120,-2.5,127.5): 0 from overpass-api.de
-cargo buildings (-11.25,127.5,-2.5,135): 0 from overpass-api.de
-cargo buildings (-20,135,-2.5,150): 2 from overpass-api.de
-  overpass-api.de failed: The operation was aborted due to timeout
-  maps.mail.ru failed: HTTP 504 <html> <head><title>504 Gateway Time-out</title></head> <body> <center><h1>504 Ga
-  overpass.private.coffee failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
-cargo buildings (-2.5,120,15,135): too big for the servers, splitting it in four
-  overpass-api.de failed: HTTP 502 # 502 Gateway Timeout This Overpass API server is currently at capacity. All quer
-  maps.mail.ru failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
-  overpass.private.coffee failed: The operation was aborted due to timeout
-cargo buildings (-2.5,120,6.25,127.5): too big for the servers, splitting it in four
-cargo buildings (-2.5,120,1.875,123.75): 0 from overpass-api.de
-  overpass-api.de failed: HTTP 502 # 502 Gateway Timeout This Overpass API server is currently at capacity. All quer
-cargo buildings (-2.5,123.75,1.875,127.5): 1 from maps.mail.ru
-cargo buildings (1.875,120,6.25,123.75): 0 from overpass-api.de
-cargo buildings (1.875,123.75,6.25,127.5): 3 from overpass-api.de
-cargo buildings (-2.5,127.5,6.25,135): 0 from overpass-api.de
-  overpass-api.de failed: The operation was aborted due to timeout
-  maps.mail.ru failed: HTTP 504 <html> <head><title>504 Gateway Time-out</title></head> <body> <center><h1>504 Ga
-  overpass.private.coffee failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
-cargo buildings (6.25,120,15,127.5): too big for the servers, splitting it in four
-cargo buildings (6.25,120,10.625,123.75): 0 from overpass-api.de
-cargo buildings (6.25,123.75,10.625,127.5): 4 from overpass-api.de
   overpass-api.de failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
-cargo buildings (10.625,120,15,123.75): 5 from maps.mail.ru
-cargo buildings (10.625,123.75,15,127.5): 0 from overpass-api.de
-cargo buildings (6.25,127.5,15,135): 0 from overpass-api.de
-cargo buildings (-2.5,135,15,150): 1 from overpass-api.de
-cargo buildings (-20,150,15,180): 2 from overpass-api.de
-cargo buildings (15,-180,35,-150): 13 from overpass-api.de
-cargo buildings (15,-150,35,-120): 0 from overpass-api.de
-  overpass-api.de failed: HTTP 502 # 502 Gateway Timeout This Overpass API server is currently at capacity. All quer
-  maps.mail.ru failed: HTTP 504 <html> <head><title>504 Gateway Time-out</title></head> <body> <center><h1>504 Ga
-  overpass.private.coffee failed: The operation was aborted due to timeout
-cargo buildings (15,-120,35,-90): too big for the servers, splitting it in four
-  overpass-api.de failed: HTTP 502 # 502 Gateway Timeout This Overpass API server is currently at capacity. All quer
   maps.mail.ru failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
-cargo buildings (15,-120,25,-105): 0 from overpass.private.coffee
-cargo buildings (15,-105,25,-90): 3 from overpass-api.de
+  overpass.private.coffee failed: The operation was aborted due to timeout
+cargo buildings (-20,125.625,-17.8125,127.5): GAVE UP (try again next run)
+cargo buildings (30,-7.5,35,0): 0 from overpass-api.de
+cargo buildings (15,0,35,30): 0 from overpass-api.de
   overpass-api.de failed: The operation was aborted due to timeout
-cargo buildings (25,-120,35,-105): 12 from maps.mail.ru
-  overpass-api.de failed: HTTP 502 # 502 Gateway Timeout This Overpass API server is currently at capacity. All quer
   maps.mail.ru failed: HTTP 504 <html> <head><title>504 Gateway Time-out</title></head> <body> <center><h1>504 Ga
   overpass.private.coffee failed: The operation was aborted due to timeout
-cargo buildings (25,-105,35,-90): too big for the servers, splitting it in four
-cargo buildings (25,-105,30,-97.5): 4 from overpass-api.de
-cargo buildings (25,-97.5,30,-90): 5 from overpass-api.de
-cargo buildings (30,-105,35,-97.5): 3 from overpass-api.de
-cargo buildings (30,-97.5,35,-90): 15 from overpass-api.de
+cargo buildings (15,30,35,60): too big for the servers, splitting it in four
+cargo buildings (15,30,25,45): 1 from overpass-api.de
+cargo buildings (15,45,25,60): 5 from overpass-api.de
+cargo buildings (25,30,35,45): 4 from overpass-api.de
+  overpass-api.de failed: The operation was aborted due to timeout
+cargo buildings (25,45,35,60): 4 from maps.mail.ru
+  overpass-api.de failed: The operation was aborted due to timeout
+cargo buildings (15,60,35,90): 22 from maps.mail.ru
+  overpass-api.de failed: The operation was aborted due to timeout
+cargo buildings (15,90,35,120): 22 from maps.mail.ru
+  overpass-api.de failed: HTTP 502 # 502 Gateway Timeout This Overpass API server is currently at capacity. All quer
+cargo buildings (15,120,35,150): 39 from maps.mail.ru
+cargo buildings (15,150,35,180): 0 from overpass-api.de
   overpass-api.de failed: fetch failed
-cargo buildings (15,-90,35,-60): 46 from maps.mail.ru
-  overpass-api.de failed: HTTP 502 # 502 Gateway Timeout This Overpass API server is currently at capacity. All quer
   maps.mail.ru failed: HTTP 504 <html> <head><title>504 Gateway Time-out</title></head> <body> <center><h1>504 Ga
-  overpass.private.coffee failed: The operation was aborted due to timeout
-cargo buildings (15,-30,35,0): too big for the servers, splitting it in four
-cargo buildings (15,-30,25,-15): 1 from overpass-api.de
-cargo buildings (15,-15,25,0): 0 from overpass-api.de
-cargo buildings (25,-30,35,-15): 1 from overpass-api.de
+  overpass.private.coffee failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
+cargo buildings (35,-150,50,-120): too big for the servers, splitting it in four
+cargo buildings (35,-135,42.5,-120): 4 from overpass-api.de
   overpass-api.de failed: The operation was aborted due to timeout
+  maps.mail.ru failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
+  overpass.private.coffee failed: The operation was aborted due to timeout
+cargo buildings (42.5,-135,50,-120): too big for the servers, splitting it in four
+cargo buildings (42.5,-127.5,46.25,-120): 4 from overpass-api.de
+  overpass-api.de failed: The operation was aborted due to timeout
+cargo buildings (46.25,-127.5,50,-120): 19 from maps.mail.ru
+  overpass-api.de failed: The operation was aborted due to timeout
+  maps.mail.ru failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
+  overpass.private.coffee failed: The operation was aborted due to timeout
+cargo buildings (35,-120,50,-90): too big for the servers, splitting it in four
+  overpass-api.de failed: fetch failed
+  maps.mail.ru failed: HTTP 504 <html> <head><title>504 Gateway Time-out</title></head> <body> <center><h1>504 Ga
+  overpass.private.coffee failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
+cargo buildings (35,-120,42.5,-105): too big for the servers, splitting it in four
+  overpass-api.de failed: fetch failed
+cargo buildings (35,-120,38.75,-112.5): 4 from maps.mail.ru
+  overpass-api.de failed: fetch failed
+  maps.mail.ru failed: HTTP 504 <html> <head><title>504 Gateway Time-out</title></head> <body> <center><h1>504 Ga
+  overpass.private.coffee failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
+cargo buildings (35,-112.5,38.75,-105): too big for the servers, splitting it in four
+  overpass-api.de failed: fetch failed
+  maps.mail.ru failed: HTTP 504 <html> <head><title>504 Gateway Time-out</title></head> <body> <center><h1>504 Ga
+  overpass.private.coffee failed: HTTP 502 <html> <head><title>502 Bad Gateway</title></head> <body> <center><h1>502 Bad Gat
+cargo buildings (35,-112.5,36.875,-108.75): GAVE UP (try again next run)
+  overpass-api.de failed: fetch failed
   maps.mail.ru failed: HTTP 504 <html> <head><title>504 Gateway Time-out</title></head> <body> <center><h1>504 Ga
   overpass.private.coffee failed: The operation was aborted due to timeout
-cargo buildings (25,-15,35,0): too big for the servers, splitting it in four
-  overpass-api.de failed: HTTP 502 # 502 Gateway Timeout This Overpass API server is currently at capacity. All quer
-  maps.mail.ru failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
-cargo buildings (25,-15,30,-7.5): 1 from overpass.private.coffee
-  overpass-api.de failed: HTTP 502 # 502 Gateway Timeout This Overpass API server is currently at capacity. All quer
+cargo buildings (35,-108.75,36.875,-105): GAVE UP (try again next run)
+  overpass-api.de failed: fetch failed
   maps.mail.ru failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
   overpass.private.coffee failed: The operation was aborted due to timeout
-cargo buildings (25,-7.5,30,0): too big for the servers, splitting it in four
-cargo buildings (27.5,-3.75,30,0): 0 from overpass-api.de
-cargo buildings (30,-15,35,-7.5): 1 from overpass-api.de
+cargo buildings (36.875,-112.5,38.75,-108.75): GAVE UP (try again next run)
+  overpass-api.de failed: fetch failed
+  maps.mail.ru failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
+  overpass.private.coffee failed: HTTP 504 <?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1
+cargo buildings (36.875,-108.75,38.75,-105): GAVE UP (try again next run)
 tiles left: 30
-cargo-aprons.json: 279 airports, 203 aprons, 307 buildings, 1 stands, 145 kB
+cargo-aprons.json: 327 airports, 203 aprons, 431 buildings, 1 stands, 170 kB
