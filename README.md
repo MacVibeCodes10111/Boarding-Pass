@@ -181,6 +181,7 @@ Boarding Pass's own code is © 2026 Mac under the [MIT licence](LICENSE). It is 
 - **Airports, runways and navaids:** [OurAirports](https://ourairports.com/data/) (public domain).
 - **Airline routes flown today:** [airline-route-data](https://github.com/Jonty/airline-route-data) by Jonty Wareing. Route demand and the other airlines' schedules are worked out from them.
 - **Population around airports:** [GeoNames](https://www.geonames.org) (CC BY 4.0).
+- **Cargo ramps at airports:** © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL).
 - **Software:** React (MIT), Tauri (MIT / Apache 2.0).
 
 Full licence texts are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Because some of the maps and data are licensed for non-commercial use only, Boarding Pass is free and must stay free: no sales, ads or paid features.

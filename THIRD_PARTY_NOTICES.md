@@ -17,6 +17,7 @@ The map credits are shown on the map itself (the (i) in the corner).
 - **OurAirports** (`airports.csv`, `runways.csv`, `navaids.csv`): https://ourairports.com/data/, released into the public domain.
 - **airline-route-data** by Jonty Wareing (`network.json`, routes and airlines): https://github.com/Jonty/airline-route-data, the routes airlines publish, collected weekly. Route demand and the other airlines' schedules in the game are worked out from these routes.
 - **GeoNames** (`network.json`, population around each airport): https://www.geonames.org, under the Creative Commons Attribution 4.0 licence (CC BY 4.0), https://creativecommons.org/licenses/by/4.0/. The game adds up the population of the towns and cities around each airport; the numbers are changed from the original (summed and shared between nearby airports).
+- **OpenStreetMap** (`cargo-aprons.json`, cargo aprons and cargo stands at airports): © OpenStreetMap contributors, under the Open Database Licence (ODbL), https://www.openstreetmap.org/copyright. Built by `tools/build-cargo-aprons.mjs` from the Overpass API; the outlines are simplified (at most 48 points each). The file is a derived database under the ODbL and is shared under the same licence.
 
 `network.json` is made from these by `tools/build-network.mjs`.
 

@@ -70,6 +70,10 @@ export function CreditsModal({ onClose }: { onClose: () => void }) {
             {link('https://www.geonames.org', 'GeoNames')}, under the Creative Commons Attribution 4.0 licence (CC BY 4.0). The game adds up the people living around each
             airport from its towns and cities.
           </Item>
+          <Item name="Cargo ramps:">
+            Map data © {link('https://www.openstreetmap.org/copyright', 'OpenStreetMap contributors')}, under the Open Database Licence. Freighters park on the cargo
+            aprons and stands mapped there.
+          </Item>
         </Section>
 
         <Section title="Software">
