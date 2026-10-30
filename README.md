@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 2.60. Free to play. See [Credits and licences](#credits-and-licences).
+Version 2.61. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -20,6 +20,10 @@ Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 2.61:
+
+- **Freighters park at the cargo ramp.** At about 500 airports with cargo areas mapped in OpenStreetMap (Memphis, Louisville, Anchorage, Leipzig, Frankfurt, Hong Kong and more), your freighters use the cargo stands by the cargo terminals, and passenger flights keep off them. Elsewhere, freighters use the remote stands.
 
 Version 2.60:
 
