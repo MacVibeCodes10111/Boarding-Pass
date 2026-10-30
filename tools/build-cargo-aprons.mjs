@@ -36,20 +36,38 @@ Object.assign(QUERIES, {
   'apron relations': `[out:json][timeout:600];(relation["aeroway"="apron"]["apron"~"cargo|freight",i];relation["aeroway"="apron"]["name"~"${WORDS}",i];);out geom;`,
   'cargo stands': `[out:json][timeout:600];(node["aeroway"="parking_position"]["name"~"${WORDS}",i];node["aeroway"="parking_position"]["usage"~"cargo|freight",i];);out;`,
 });
-const MIRRORS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+const MIRRORS = ['https://overpass-api.de/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
+// Resumable: regions already downloaded are kept in a state file and skipped
+// next time (the servers are often busy, so a run may not get through them all)
+const STATE = resolve(root, 'public/data/cargo-aprons.state.json');
+let state = {};
+try {
+  state = JSON.parse(readFileSync(STATE, 'utf8'));
+} catch {}
+const startedAt = Date.now();
 const data = { elements: [] };
 for (const [what, q] of Object.entries(QUERIES)) {
+  if (state[what]) {
+    data.elements.push(...state[what]);
+    continue;
+  }
+  if (Date.now() - startedAt > 70 * 60_000) {
+    log(`${what}: left for the next run`);
+    continue;
+  }
   let ok = false;
-  for (let attempt = 0; attempt < 3 && !ok; attempt++) {
-    if (attempt) await new Promise((r) => setTimeout(r, 20_000 * attempt));
+  for (let attempt = 0; attempt < 2 && !ok; attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, 30_000));
     for (const url of MIRRORS) {
       try {
-        const res = await fetch(url, { method: 'POST', body: new URLSearchParams({ data: q }), headers: { 'User-Agent': 'BoardingPass-data-build (boardingpass.my)', Accept: 'application/json' }, signal: AbortSignal.timeout(400_000) });
+        const res = await fetch(url, { method: 'POST', body: new URLSearchParams({ data: q }), headers: { 'User-Agent': 'BoardingPass-data-build (boardingpass.my)', Accept: 'application/json' }, signal: AbortSignal.timeout(200_000) });
         const text = await res.text();
         if (!res.ok) throw new Error(`HTTP ${res.status} ${text.slice(0, 200).replace(/\s+/g, ' ')}`);
         const j = JSON.parse(text);
         if (j.remark) log(`  remark: ${j.remark}`);
         data.elements.push(...j.elements);
+        state[what] = j.elements;
+        writeFileSync(STATE, JSON.stringify(state));
         if (j.elements.length || !what.startsWith('apron ways')) log(`${what}: ${j.elements.length} from ${url}`);
         ok = true;
         break;
@@ -115,4 +133,5 @@ for (const k of Object.keys(out)) if (!out[k].p.length) delete out[k].p;
 const file = resolve(root, 'public/data/cargo-aprons.json');
 writeFileSync(file, JSON.stringify({ v: 1, built: new Date().toISOString().slice(0, 10), source: '© OpenStreetMap contributors (ODbL)', airports: out }));
 const n = Object.keys(out).length;
+log(`regions done: ${Object.keys(state).length} of ${Object.keys(QUERIES).length}`);
 log(`cargo-aprons.json: ${n} airports, ${Object.values(out).reduce((s, x) => s + x.a.length, 0)} aprons, ${Object.values(out).reduce((s, x) => s + (x.p?.length ?? 0), 0)} stands, ${(JSON.stringify(out).length / 1024).toFixed(0)} kB`);
