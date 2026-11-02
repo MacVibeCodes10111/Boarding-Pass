@@ -18,7 +18,7 @@ jobs:
           mkdir -p tools/art/out
           python3 -m venv /tmp/venv 2>&1 | tee tools/art/out/run.log
           /tmp/venv/bin/pip install --quiet psd-tools 2>&1 | tee -a tools/art/out/run.log
-          /tmp/venv/bin/python tools/art/inspect.py 2>&1 | tee -a tools/art/out/run.log
+          /tmp/venv/bin/python tools/art/read_templates.py 2>&1 | tee -a tools/art/out/run.log
           exit ${PIPESTATUS[0]}
       - name: Save the report and previews
         if: always()
