@@ -74,6 +74,11 @@ export function CreditsModal({ onClose }: { onClose: () => void }) {
             Map data © {link('https://www.openstreetmap.org/copyright', 'OpenStreetMap contributors')}, under the Open Database Licence. Freighters park on the cargo
             aprons and stands mapped there.
           </Item>
+          <Item name="Aircraft pictures:">
+            Made from the {link('https://www.airline-empires.com', 'Airline Empires')} community's free aircraft templates, by their artists, among them Atsuk0,
+            Adam0896, AvV008, itri_py2, N664US, Pouchok, Redrado and the777fan; the Il-114 by Joshuamosss (@the_airline_livery_guy) and med. Some types are Boarding
+            Pass's own variants of these templates.
+          </Item>
         </Section>
 
         <Section title="Software">

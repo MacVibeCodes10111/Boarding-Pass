@@ -6,6 +6,7 @@
 //   and sort by free time, seats or type.
 // ============================================================================
 import { useMemo, useState } from 'react';
+import { AircraftPhoto, hasAircraftPhoto } from './AircraftPhoto';
 import { cabinSeatTotal } from '../game/economics';
 import type { AircraftModel, PlayerAircraft } from '../game/types';
 import { Icon } from '../ui/icons';
@@ -141,7 +142,13 @@ function PickerCard({ row, selected, originIata, iconForModel, onPick }: { row: 
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {iconForModel ? <img src={iconForModel(ac.model)} alt="" style={{ width: 22, height: 22, flex: 'none' }} /> : <Icon name="fleet" size={18} color={C.muted} />}
+        {hasAircraftPhoto(ac.model) ? (
+          <AircraftPhoto model={ac.model} width={72} />
+        ) : iconForModel ? (
+          <img src={iconForModel(ac.model)} alt="" style={{ width: 22, height: 22, flex: 'none' }} />
+        ) : (
+          <Icon name="fleet" size={18} color={C.muted} />
+        )}
         <span style={{ flex: 1, minWidth: 0, fontWeight: 650, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ac.model.name}</span>
         {ac.model.icao_code && (
           <span className="num" style={{ fontSize: 10.5, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: C.panel, color: C.textDim }}>

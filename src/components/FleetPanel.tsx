@@ -1,3 +1,4 @@
+import { AircraftPhoto } from './AircraftPhoto';
 import { useMemo, useState } from 'react';
 import type { CabinPreset } from '../game/economics';
 import { leaseStatus, weeksText } from '../game/leasing';
@@ -260,7 +261,7 @@ export function FleetPanel(props: FleetPanelProps) {
                 className="bp-row bp-fleet-row"
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '22px 28px minmax(150px, 1.4fr) minmax(110px, 1fr) 120px auto',
+                  gridTemplateColumns: '22px 64px minmax(150px, 1.4fr) minmax(110px, 1fr) 120px auto',
                   alignItems: 'center',
                   gap: 12,
                   padding: '10px 12px',
@@ -268,7 +269,7 @@ export function FleetPanel(props: FleetPanelProps) {
                 }}
               >
                 <input type="checkbox" aria-label={`Select ${ac.tailNumber}`} checked={selected.has(ac.tailNumber)} onChange={() => toggle(ac.tailNumber)} />
-                <img src={iconForModel(ac.model)} alt="" style={{ width: 24, height: 24 }} />
+                <AircraftPhoto model={ac.model} width={64} fallback={iconForModel(ac.model)} style={{ justifySelf: 'center' }} />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 650 }}>
                     {ac.tailNumber}

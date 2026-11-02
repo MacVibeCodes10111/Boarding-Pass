@@ -7,6 +7,7 @@
 //        and the cabin and full specs folded away until wanted.
 //   Works the same on phones (one column, everything a tap away).
 // ============================================================================
+import { AircraftPhoto, hasAircraftPhoto } from './AircraftPhoto';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BRAND_ORDER } from '../game/aircraftCatalog';
 import { cabinSeatTotal, calculateCabinUsage, getDefaultCabinForModel } from '../game/economics';
@@ -207,8 +208,9 @@ function Browse(props: BuyAircraftPanelProps & { onOpen: (m: AircraftModel) => v
                         border: `1px solid ${x.id === props.selectedModel.id ? C.brand : C.line}`,
                       }}
                     >
+                      {hasAircraftPhoto(x) && <AircraftPhoto model={x} width="100%" style={{ height: 58 }} />}
                       <span style={{ display: 'flex', alignItems: 'flex-start', gap: 8, minWidth: 0 }}>
-                        <img src={props.iconForModel(x)} alt="" style={{ width: 22, height: 22, flex: 'none' }} />
+                        {!hasAircraftPhoto(x) && <img src={props.iconForModel(x)} alt="" style={{ width: 22, height: 22, flex: 'none' }} />}
                         <span style={{ flex: 1, minWidth: 0, fontWeight: 650, fontSize: 13.5, lineHeight: 1.3, overflowWrap: 'anywhere', paddingTop: 2 }}>{shortName(x)}</span>
                         <span className="num" style={{ flex: 'none', marginTop: 2, fontSize: 10.5, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: C.bg, color: C.textDim }}>
                           {x.icao_code}
@@ -274,8 +276,13 @@ function ModelView(props: BuyAircraftPanelProps) {
 
   return (
     <div ref={top} style={{ display: 'grid', gap: 14, scrollMarginTop: 8 }}>
+      {hasAircraftPhoto(m) && (
+        <div style={{ padding: '6px 4px 0', display: 'flex', justifyContent: 'center' }}>
+          <AircraftPhoto model={m} width={560} />
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <img src={props.iconForModel(m)} alt="" style={{ width: 44, height: 44 }} />
+        {!hasAircraftPhoto(m) && <img src={props.iconForModel(m)} alt="" style={{ width: 44, height: 44 }} />}
         <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.4 }}>
           {tier.sizeLabel}
           {m.is_cargo ? ' freighter' : ''}, type code <b style={{ color: C.textSoft }}>{m.icao_code}</b>. Needs {m.min_runway_ft.toLocaleString()} ft of runway.

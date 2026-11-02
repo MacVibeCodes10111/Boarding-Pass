@@ -1,3 +1,4 @@
+import { AircraftPhoto } from './AircraftPhoto';
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../ui/icons';
 import { calcBlockTimeMin, calcDistanceNm } from '../game/geo';
@@ -509,7 +510,7 @@ export function AirportDrawer({
                     }}
                     style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, border: `1px solid ${C.border}`, background: C.panel, color: C.text, cursor: 'pointer', textAlign: 'left' }}
                   >
-                    {aircraft && iconForModel && <img src={iconForModel(aircraft.model)} alt="" style={{ width: 24, height: 24, flex: 'none' }} />}
+                    {aircraft && <AircraftPhoto model={aircraft.model} width={68} fallback={iconForModel?.(aircraft.model)} />}
                     <span style={{ flex: 1, minWidth: 0 }}>
                       <span style={{ display: 'block', fontWeight: 650, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {aircraft ? `${aircraft.tailNumber} · ${aircraft.model.name}` : 'Choose an aircraft'}
