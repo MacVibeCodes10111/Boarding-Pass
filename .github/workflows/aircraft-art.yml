@@ -12,10 +12,14 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Download and inspect the templates
+        shell: bash
         continue-on-error: true
         run: |
-          pip install --quiet psd-tools
-          python3 tools/art/inspect.py
+          mkdir -p tools/art/out
+          python3 -m venv /tmp/venv 2>&1 | tee tools/art/out/run.log
+          /tmp/venv/bin/pip install --quiet psd-tools 2>&1 | tee -a tools/art/out/run.log
+          /tmp/venv/bin/python tools/art/inspect.py 2>&1 | tee -a tools/art/out/run.log
+          exit ${PIPESTATUS[0]}
       - name: Save the report and previews
         if: always()
         run: |
