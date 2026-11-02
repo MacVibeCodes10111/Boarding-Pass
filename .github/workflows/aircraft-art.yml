@@ -1,0 +1,26 @@
+name: Aircraft art
+on:
+  push:
+    branches: [data/aircraft-art]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Download and inspect the templates
+        continue-on-error: true
+        run: |
+          pip install --quiet psd-tools
+          python3 tools/art/inspect.py
+      - name: Save the report and previews
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add -f tools/art/out || true
+          git commit -m "Aircraft art: layer report and previews" || exit 0
+          git push origin HEAD:data/aircraft-art
