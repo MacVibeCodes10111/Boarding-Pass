@@ -20,6 +20,14 @@ jobs:
           /tmp/venv/bin/pip install --quiet psd-tools 2>&1 | tee -a tools/art/out/run.log
           /tmp/venv/bin/python tools/art/read_templates.py 2>&1 | tee -a tools/art/out/run.log
           exit ${PIPESTATUS[0]}
+      - name: Pack the templates into a draft release (not public)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tar -C /tmp/psd -cf /tmp/templates.tar .
+          gh release view art-sources >/dev/null 2>&1 || gh release create art-sources --draft --title "Aircraft templates (working files)" --notes "Working files for the aircraft art. Draft, not published." --target data/aircraft-art
+          gh release upload art-sources /tmp/templates.tar --clobber
       - name: Save the report and previews
         if: always()
         run: |
