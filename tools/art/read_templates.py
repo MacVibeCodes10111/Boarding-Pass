@@ -11,6 +11,8 @@ dl = os.environ.get('PSD_DIR', '/tmp/psd')
 os.makedirs(dl, exist_ok=True)
 items = json.load(open(os.path.join(root, 'templates.json')))
 report = []
+# Templates kept whole, as sources for the variants made from them
+KEEP = set(json.load(open(os.path.join(root, 'keep.json'))))
 
 def tree(layer, depth=0):
     lines = []
@@ -37,6 +39,10 @@ for it in items:
     if not os.path.exists(path):
         report.append(f"## {it['name']}: DOWNLOAD FAILED\n")
         continue
+    if it['name'] in KEEP:
+        import shutil
+        os.makedirs(os.path.join(out, 'src'), exist_ok=True)
+        shutil.copy(path, os.path.join(out, 'src', os.path.basename(path)))
     try:
         psd = PSDImage.open(path)
         report.append(f"## {it['name']} ({os.path.basename(path)}, {os.path.getsize(path)//1024} kB, {psd.width}x{psd.height}, {psd.color_mode.name})")
