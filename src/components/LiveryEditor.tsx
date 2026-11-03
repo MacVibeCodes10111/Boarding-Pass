@@ -6,6 +6,7 @@
 // ============================================================================
 import { useMemo, useState } from 'react';
 import { AIRCRAFT_PHOTOS } from '../game/aircraftPhotos';
+import { cloudSkyCss } from '../game/cloudSky';
 import { CHEATS, DEFAULT_LIVERY, LIVERY_STYLES, TAIL_ARTS, type CheatLine, type Livery, type TailArt } from '../game/livery';
 import { Button, C, DISPLAY, ModalShell, Segmented } from '../ui/kit';
 import { usePaintedPhoto } from './AircraftPhoto';
@@ -18,7 +19,11 @@ function Preview({ id, livery, name }: { id: string; livery: Livery; name: strin
   const url = usePaintedPhoto(id, livery, name);
   const size = AIRCRAFT_PHOTOS[id];
   if (!size) return null;
-  return <img src={url} alt="" draggable={false} style={{ display: 'block', width: '100%', height: 'auto', aspectRatio: `${size[0]} / ${size[1]}` }} />;
+  return (
+    <div style={{ borderRadius: 10, overflow: 'hidden', background: `${cloudSkyCss(`livery-${id}`)} center / cover`, padding: '18px 6%' }}>
+      <img src={url} alt="" draggable={false} style={{ display: 'block', width: '100%', height: 'auto', aspectRatio: `${size[0]} / ${size[1]}`, filter: 'drop-shadow(0 10px 12px rgba(10,20,40,.28))' }} />
+    </div>
+  );
 }
 
 function Colour({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {

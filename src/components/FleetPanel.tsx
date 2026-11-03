@@ -26,6 +26,8 @@ export interface FleetPanelProps {
   /** New registrations for several aircraft, counting on from the one given. */
   onReRegister: (tails: string[], start: string) => string | null;
   onRefit: (tails: string[], fit: { cabin: CabinConfig } | { preset: CabinPreset }) => void;
+  /** Opens the livery editor. */
+  onLivery?: () => void;
   onReplace: (tails: string[], model: AircraftModel, mode: 'owned' | 'leased', leaseWeeks: number, dropClashing: boolean) => void;
   onBuy: () => void;
   iconForModel: (m: AircraftModel) => string;
@@ -132,9 +134,12 @@ export function FleetPanel(props: FleetPanelProps) {
       width={820}
       onClose={props.onClose}
       actions={
-        <Button variant="primary" onClick={props.onBuy}>
-          Buy aircraft
-        </Button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {props.onLivery && <Button onClick={props.onLivery}>Livery</Button>}
+          <Button variant="primary" onClick={props.onBuy}>
+            Buy aircraft
+          </Button>
+        </div>
       }
     >
       {fleet.length === 0 ? (

@@ -22,6 +22,7 @@ import { HomeScreen } from './components/HomeScreen';
 import { LiveMap, type AiDensity, type AiDetail, type AiDrawStats } from './components/LiveMap';
 import { SchedulePanel } from './components/SchedulePanel';
 import { StatsPanel } from './components/StatsPanel';
+import { LiveryEditor } from './components/LiveryEditor';
 import { AIRCRAFT_BY_ID, BUILTIN_AIRCRAFT } from './game/aircraftCatalog';
 import { AI_AIRLINES, findMatchingAiAirline } from './game/aiAirlines';
 import { generateAiTraffic, generateNetworkTraffic, type AiTraffic } from './game/aiTraffic';
@@ -829,6 +830,7 @@ export default function App() {
 
   // Main menu and the welcome tour (shown when a new career starts)
   const [menuOpen, setMenuOpen] = useState(false);
+  const [liveryOpen, setLiveryOpen] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
 
   const launchNewCareer = (replaces: string | null) => {
@@ -1674,6 +1676,18 @@ export default function App() {
         version={APP_VERSION}
       />
       <CloudHost openSaveId={activeSaveId} onSlotsChanged={() => setSavedGames(readSaveSlots())} toast={flashToast} />
+      {liveryOpen && (
+        <LiveryEditor
+          livery={livery}
+          airlineName={airlineName}
+          models={[...new Set(fleet.map((a) => a.model.id))]}
+          onSave={(l) => {
+            setLivery(l);
+            flashToast(l ? 'Livery saved' : 'Back to plain white');
+          }}
+          onClose={() => setLiveryOpen(false)}
+        />
+      )}
       {menuOpen && (
         <MainMenu
           onCloud={() => {
@@ -1789,6 +1803,7 @@ export default function App() {
           onRename={renameAircraft}
           onReRegister={reRegisterAircraft}
           onRefit={refitAircraft}
+          onLivery={() => setLiveryOpen(true)}
           onReplace={replaceAircraft}
           onBuy={() => setPanel('buy')}
           iconForModel={iconForModel}
@@ -1879,6 +1894,7 @@ export default function App() {
           sandbox={gameMode === 'sandbox'}
           onClose={closePanel}
           onOpenAirports={() => setPanel('airports')}
+          onLivery={() => setLiveryOpen(true)}
         />
       )}
       {panel === 'airports' && (

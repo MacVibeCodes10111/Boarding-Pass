@@ -1,5 +1,5 @@
 import { typeMaxCruiseFt } from '../game/altitude';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { FlightEconomics } from '../game/economics';
 import { interpolateCoordPair, offsetLatLonNm } from '../game/geo';
 import {
@@ -53,6 +53,10 @@ import type { Airport, PlayerAircraft, RadarIconGroup, ScheduledFlight } from '.
 import { C, MAP_C, useThemeVersion } from '../ui/kit';
 import { currentLayout, isTouchFirst } from '../ui/layout';
 import { loadCargoAprons } from '../game/cargoAprons';
+import { AIRCRAFT_PHOTOS } from '../game/aircraftPhotos';
+import { cloudSkyCss } from '../game/cloudSky';
+import { paintedPhoto } from '../game/liveryPaint';
+import { LiveryContext } from './AircraftPhoto';
 
 const EMPTY_FC = { type: 'FeatureCollection', features: [] as any[] };
 
@@ -379,6 +383,17 @@ export interface LiveMapProps {
 
 const escapeHtml = (v: unknown) =>
   String(v ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!);
+
+/** The player's aircraft in the airline's livery, on a sky of its own (picked by its tail number). */
+function planeHeroHtml(raw: Record<string, any>): string {
+  const id = String(raw.modelId ?? '');
+  const size = AIRCRAFT_PHOTOS[id];
+  if (!size) return '';
+  const sky = cloudSkyCss(String(raw.tailNumber ?? id)).replace(/"/g, "'");
+  return `<div class="bp-pop-hero" style="position:relative;margin:-2px 0 10px;border-radius:10px;overflow:hidden;aspect-ratio:2.8;background:${sky} center/cover;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)">
+    <img alt="" draggable="false" data-model="${escapeHtml(id)}" src="/aircraft/${escapeHtml(id)}.webp" style="position:absolute;left:6%;width:88%;top:50%;transform:translateY(-50%);height:auto;aspect-ratio:${size[0]}/${size[1]};filter:drop-shadow(0 8px 10px rgba(10,20,40,.28));pointer-events:none" />
+  </div>`;
+}
 
 function buildPlanePopupHtml(raw: Record<string, any>): string {
   const p: Record<string, string> = {};
@@ -1207,6 +1222,10 @@ export function LiveMap(props: LiveMapProps) {
   // Latest props for MapLibre event handlers registered once at init.
   const latest = useRef(props);
   latest.current = props;
+  // The player's livery, for the picture at the top of their aircraft's popup
+  const livery = useContext(LiveryContext);
+  const liveryRef = useRef(livery);
+  liveryRef.current = livery;
 
   const closePopup = () => {
     const popup = popupRef.current;
@@ -1265,7 +1284,7 @@ export function LiveMap(props: LiveMapProps) {
             if (e.originalEvent) (e.originalEvent as any).picked3d = true;
             if (planeClickBlocked()) return;
             const p = hit.props;
-            if (p.kind === 'player') openTrackedPopup([Number(p.at_lng), Number(p.at_lat)], buildPlanePopupHtml(p), String(p.flightId));
+            if (p.kind === 'player') openTrackedPopup([Number(p.at_lng), Number(p.at_lat)], buildPlanePopupHtml(p), String(p.flightId), p);
             else openAiById(Number(p.aiId));
           });
           map.on('mousemove', (e: any) => {
@@ -1284,7 +1303,7 @@ export function LiveMap(props: LiveMapProps) {
             if (found) latest.current.onInspectAirport(found);
           });
 
-          const openTrackedPopup = (coords: [number, number], html: string, trackId: string) => {
+          const openTrackedPopup = (coords: [number, number], html: string, trackId: string, plane?: Record<string, any>) => {
             // Close the previous popup *before* tracking the new flight, otherwise
             // its close handler would clear the new selection.
             closePopup();
@@ -1297,8 +1316,12 @@ export function LiveMap(props: LiveMapProps) {
               offset: [0, 0],
             })
               .setLngLat(coords)
-              .setHTML(`<div class="bp-live-popup-body">${html}</div>`)
+              .setHTML(`${plane ? planeHeroHtml(plane) : ''}<div class="bp-live-popup-body">${html}</div>`)
               .addTo(map);
+            // paint the picture in the airline's livery once it's ready
+            const heroImg = popup.getElement?.()?.querySelector('.bp-pop-hero img') as HTMLImageElement | null;
+            const lv = liveryRef.current;
+            if (heroImg && lv) paintedPhoto(String(plane?.modelId), lv.livery, lv.name).then((u) => u && (heroImg.src = u));
             attachOrbit(map, popup);
             popup.on('close', () => {
               if (popupRef.current === popup) {
@@ -1322,7 +1345,7 @@ export function LiveMap(props: LiveMapProps) {
             if (e.picked3d || e.originalEvent?.picked3d) return;
             const feat = e.features?.[0];
             if (!feat || (latest.current.threeD && map.queryRenderedFeatures(e.point, { layers: ['labels-3d-hit'] }).length > 0) || planeClickBlocked()) return;
-            openTrackedPopup(feat.geometry.coordinates.slice(), buildPlanePopupHtml(feat.properties), feat.properties.flightId);
+            openTrackedPopup(feat.geometry.coordinates.slice(), buildPlanePopupHtml(feat.properties), feat.properties.flightId, feat.properties);
           });
 
           const openAiById = (id: number) => {
@@ -1356,14 +1379,14 @@ export function LiveMap(props: LiveMapProps) {
             const feats = (e.features ?? []) as any[];
             const p = (feats.find((f) => f.properties?.kind === 'player') ?? feats[0])?.properties;
             if (!p || planeClickBlocked()) return;
-            if (p.kind === 'player') openTrackedPopup([Number(p.at_lng), Number(p.at_lat)], buildPlanePopupHtml(p), p.flightId);
+            if (p.kind === 'player') openTrackedPopup([Number(p.at_lng), Number(p.at_lat)], buildPlanePopupHtml(p), p.flightId, p);
             else onAiClick({ ...e, features: [{ properties: p }], fromHit3d: true });
           });
           map.on('click', 'planes-3d', (e: any) => {
             if (e.picked3d || e.originalEvent?.picked3d) return;
             const p = e.features?.[0]?.properties;
             if (!p || hit3d(e) || planeClickBlocked()) return;
-            openTrackedPopup([Number(p.at_lng), Number(p.at_lat)], buildPlanePopupHtml(p), p.flightId);
+            openTrackedPopup([Number(p.at_lng), Number(p.at_lat)], buildPlanePopupHtml(p), p.flightId, p);
           });
           map.on('click', 'ai-3d', (e: any) => {
             if (e.picked3d || e.originalEvent?.picked3d || hit3d(e) || map.queryRenderedFeatures(e.point, { layers: ['planes-3d'] }).length > 0) return;
@@ -1378,7 +1401,7 @@ export function LiveMap(props: LiveMapProps) {
             if (planeClickBlocked()) return;
             const p = feat.properties;
             if (p.kind === 'player') {
-              openTrackedPopup(feat.geometry.coordinates.slice(), buildPlanePopupHtml(p), p.flightId);
+              openTrackedPopup(feat.geometry.coordinates.slice(), buildPlanePopupHtml(p), p.flightId, p);
               return;
             }
             const entry = groundRef.current.ai.get(p.groundKey);
@@ -1881,6 +1904,7 @@ export function LiveMap(props: LiveMapProps) {
           callsign: `${airlineCallsign} ${fl.flightNumber.replace(/\D+/g, '') || '1'}`,
           tailNumber: fl.tailNumber,
           modelName: ac?.model.name ?? 'Commercial Jet',
+          modelId: ac?.model.id ?? '',
           acTier: acTier.tier,
           isCargo: ac?.model.is_cargo ? 1 : 0,
           originIata: fl.origin.iata_code,

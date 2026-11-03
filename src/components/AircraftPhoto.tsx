@@ -6,6 +6,7 @@
 // ============================================================================
 import { createContext, useContext, useEffect, useState } from 'react';
 import { AIRCRAFT_PHOTOS } from '../game/aircraftPhotos';
+import { cloudSkyCss } from '../game/cloudSky';
 import type { Livery } from '../game/livery';
 import { paintedPhoto } from '../game/liveryPaint';
 import type { AircraftModel } from '../game/types';
@@ -63,5 +64,33 @@ export function AircraftPhoto(props: {
       onError={() => setFailed(true)}
       style={{ display: 'block', width: props.width, maxWidth: '100%', height: 'auto', aspectRatio: `${size[0]} / ${size[1]}`, objectFit: 'contain', flex: 'none', ...props.style }}
     />
+  );
+}
+
+/** One of the player's aircraft in the airline's livery, on a sky of its own (picked by its tail number). */
+export function AircraftHero(props: { model: AircraftModel; tailNumber: string; photoWidth?: string; style?: React.CSSProperties }) {
+  if (!AIRCRAFT_PHOTOS[props.model.id]) return null;
+  return (
+    <div
+      style={{
+        position: 'relative',
+        aspectRatio: '3 / 1',
+        borderRadius: 12,
+        overflow: 'hidden',
+        background: `${cloudSkyCss(props.tailNumber || props.model.id)} center / cover`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.08)',
+        ...props.style,
+      }}
+    >
+      {/* pinned to the middle, whatever the card's size */}
+      <AircraftPhoto
+        model={props.model}
+        width={props.photoWidth ?? 'min(86%, 720px)'}
+        style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', maxWidth: '92%', maxHeight: '86%', filter: 'drop-shadow(0 10px 12px rgba(10,20,40,.28))' }}
+      />
+    </div>
   );
 }

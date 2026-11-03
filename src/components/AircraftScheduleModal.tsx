@@ -6,6 +6,7 @@ import { MIN_PER_DAY, daysOrAll, formatClockShort, formatDurationHm, formatMoney
 import type { Fares, PlayerAircraft, ScheduledFlight, WeekDays } from '../game/types';
 import { Button, C, DayPicker, ModalShell, NumberField, inputStyle, labelStyle } from '../ui/kit';
 import { Icon } from '../ui/icons';
+import { AircraftHero } from './AircraftPhoto';
 import { RouteDemandBar } from './RouteDemandBar';
 import { ScheduleTimeline } from './ScheduleTimeline';
 import { legLocalText } from '../game/localTime';
@@ -108,6 +109,7 @@ export function AircraftScheduleModal({
 
   return (
     <ModalShell onClose={onClose} closeButton={false}>
+      <AircraftHero model={aircraft.model} tailNumber={aircraft.tailNumber} style={{ marginBottom: 14 }} />
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 14, borderBottom: `1px solid ${C.line}`, marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

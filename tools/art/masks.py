@@ -14,8 +14,8 @@ os.makedirs(OUT, exist_ok=True)
 PAINT = {'TAIL': 0, 'FUSELAGE': 1, 'ENGINES': 2}
 
 
-def masks(i):
-    W, H, ls = get(i)
+def masks(i, width=640, out=None, ret=None):
+    W, H, ls = ret if ret else get(i)
     im = render(W, H, ls)
     tb = tight(im)
     cw, ch = tb[2] - tb[0], tb[3] - tb[1]
@@ -42,10 +42,11 @@ def masks(i):
                 cov[PAINT[g]] = np.maximum(cov[PAINT[g]], a)
     rgb = (np.clip(cov, 0, 1) * 255).astype(np.uint8).transpose(1, 2, 0)
     m = Image.fromarray(rgb, 'RGB')
-    h = round(ch * 640 / cw)
-    m = m.resize((640, h), Image.LANCZOS)
-    m.save(f'{OUT}/{i}.png', optimize=True)
-    return dict(id=i, h=h, kb=os.path.getsize(f'{OUT}/{i}.png') // 1024)
+    h = round(ch * width / cw)
+    m = m.resize((width, h), Image.LANCZOS)
+    o = out or OUT
+    m.save(f'{o}/{i}.png', optimize=True)
+    return dict(id=i, h=h, kb=os.path.getsize(f'{o}/{i}.png') // 1024)
 
 
 if __name__ == '__main__':

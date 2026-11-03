@@ -3,13 +3,16 @@
 //   Headline figures for one scheduled week, the weekly results so far, and
 //   breakdowns of the fleet, network and routes. Charts are plain SVG.
 // ============================================================================
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import type { WeekLedger } from '../game/clock';
 import type { FlightEconomics } from '../game/economics';
 import { computeAirlineStats, type AirlineStats, type RouteStat, type Slice } from '../game/stats';
 import type { Airport, PlayerAircraft, ScheduledFlight } from '../game/types';
 import { Button, C, EmptyState, Segmented, SidePanel } from '../ui/kit';
+import { AIRCRAFT_BY_ID } from '../game/aircraftCatalog';
+import { AIRCRAFT_PHOTOS } from '../game/aircraftPhotos';
+import { AircraftHero, LiveryContext } from './AircraftPhoto';
 
 // Categorical colours, in a fixed order (checked for colour-blind separation on
 // the panel background); "Other" is always grey.
@@ -418,6 +421,32 @@ function Record({ label, value, sub }: { label: string; value: React.ReactNode; 
   );
 }
 
+/** The airline's livery on its most common aircraft type, with a way to change it. */
+function LiveryCard({ fleet, onEdit }: { fleet: PlayerAircraft[]; onEdit: () => void }) {
+  const ctx = useContext(LiveryContext);
+  const pick = useMemo(() => {
+    const n = new Map<string, { ac: PlayerAircraft; k: number }>();
+    for (const a of fleet) if (AIRCRAFT_PHOTOS[a.model.id]) n.set(a.model.id, { ac: a, k: (n.get(a.model.id)?.k ?? 0) + 1 });
+    return [...n.values()].sort((a, b) => b.k - a.k)[0]?.ac;
+  }, [fleet]);
+  const model = pick?.model ?? AIRCRAFT_BY_ID.get('a320neo');
+  if (!model) return null;
+  return (
+    <section aria-label="Livery" style={{ marginBottom: 12, borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.line}`, background: C.panelAlt }}>
+      <AircraftHero model={model} tailNumber={pick?.tailNumber ?? 'livery'} photoWidth="min(72%, 620px)" style={{ borderRadius: 0, aspectRatio: '4 / 1' }} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 14px', flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 650 }}>{ctx ? 'Your livery' : 'Plain white for now'}</div>
+          <div style={{ fontSize: 12, color: C.muted }}>{ctx ? 'On every aircraft you fly, here, in the fleet and on the map.' : 'Give your airline its own colours, tail and titles.'}</div>
+        </div>
+        <Button size="sm" variant="primary" onClick={onEdit}>
+          {ctx ? 'Edit livery' : 'Design a livery'}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
 // ----------------------------------------------------------------------------
 // The panel
 // ----------------------------------------------------------------------------
@@ -435,6 +464,8 @@ export function StatsPanel(props: {
   sandbox: boolean;
   onClose: () => void;
   onOpenAirports: () => void;
+  /** Opens the livery editor. */
+  onLivery?: () => void;
 }) {
   const [weekMetric, setWeekMetric] = useState<WeekMetric>('net');
   const st = useMemo(
@@ -453,7 +484,14 @@ export function StatsPanel(props: {
   const ap = (iata: string) => props.airportByIata.get(iata)?.municipality ?? '';
 
   return (
-    <SidePanel title={`${props.airlineName} in numbers`} subtitle="A scheduled week, and how the weeks have gone" width={900} onClose={props.onClose}>
+    <SidePanel
+      title={`${props.airlineName} in numbers`}
+      subtitle="A scheduled week, and how the weeks have gone"
+      width={900}
+      onClose={props.onClose}
+      actions={props.onLivery && <Button onClick={props.onLivery}>Livery</Button>}
+    >
+      {props.onLivery && <LiveryCard fleet={props.fleet} onEdit={props.onLivery} />}
       {st.departures === 0 ? (
         <EmptyState
           title="Nothing to count yet"
