@@ -4,3 +4,7 @@ src-tauri/target/
 src-tauri/gen/
 .DS_Store
 *.log
+
+# Aircraft art working files
+tools/art/templates/
+tools/art/out/

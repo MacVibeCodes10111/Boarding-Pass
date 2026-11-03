@@ -1,0 +1,183 @@
+# Which template (and which of its options) pictures each aircraft in the game.
+# show/hide: regexes on layer paths. 'build' names a variant made in builds.py.
+# Credits: Airline Empires community templates unless noted in BY.
+
+AE = 'Airline Empires'
+J31 = '13f04f98-British_Aerospace_Jetstream_31.psd'
+E145X = 'ac1c6d38-Embraer_E145.psd'
+BCF = 'e0d57353-Boeing_737-800BCF_V2.0.psd'
+
+C = {
+    # Airbus
+    'a318-100': dict(src='Airbus A318.psd'),
+    'a319-100': dict(src='Airbus A319.psd'),
+    'a319neo': dict(src='Airbus A319neo.psd', hide=[r'^PW 1000G']),
+    'a320-200': dict(src='Airbus A320.psd'),
+    'a320neo': dict(src='Airbus A320neo.psd'),
+    'a320-p2f': dict(build='a320p2f'),
+    'a321-200': dict(src='Airbus A321.psd'),
+    'a321-100': dict(src='Airbus A321.psd'),
+    'a321neo': dict(src='NEW A321 & A321neo.psd', show=[r'^NEO CFM'], hide=[r'^CEO IAE']),
+    'a321lr': dict(src='NEW A321 & A321neo.psd', show=[r'^NEO CFM', r'^FUSELAGE \(B\)'], hide=[r'^CEO IAE', r'^FUSELAGE \(A\)']),
+    'a321xlr': dict(src='NEW A321 & A321neo.psd', show=[r'^NEO CFM', r'^FUSELAGE \(B\)'], hide=[r'^CEO IAE', r'^FUSELAGE \(A\)']),
+    'a321-p2f': dict(src='Airbus A321P2F.psd'),
+    'a310-300': dict(src='Airbus A310.psd'),
+    'a300-600r': dict(src='Airbus A300-600.psd'),
+    'a300-600f': dict(src='Airbus A300-600F.psd'),
+    'a330-200': dict(src='Airbus A330-200.psd'),
+    'a330-200f': dict(src='Airbus A330-200F.psd'),
+    'a330-300': dict(src='Airbus A330-300.psd'),
+    'a330-300p2f': dict(src='Airbus A330-300P2F.psd'),
+    'a330-800neo': dict(src='A330-800N.psd'),
+    'a330-900neo': dict(src='A330-900N.psd'),
+    'a350-900': dict(src='Airbus A350-900.psd'),
+    'a350-900ulr': dict(src='Airbus A350-900.psd'),
+    'a350-1000': dict(src='Airbus A350-1000.psd'),
+    'a350-1000ulr': dict(src='Airbus A350-1000ULR.psd'),
+    'a350f': dict(build='a350f'),
+    'a340-300': dict(src='Airbus A340-300.psd'),
+    'a340-500': dict(src='Airbus A340-500.psd'),
+    'a340-600': dict(src='Airbus A340-600.psd'),
+    'a380-800': dict(src='Airbus A380-800.psd'),
+    # Boeing
+    'b717-200': dict(build='b717'),
+    'b737-200': dict(src='Boeing 737-200.psd'),
+    'b737-300': dict(src='Boeing 737-300.psd'),
+    'b737-300sf': dict(build='b737sf', base='Boeing 737-300.psd'),
+    'b737-400': dict(src='Boeing 737-400.psd'),
+    'b737-400sf': dict(build='b737sf', base='Boeing 737-400.psd'),
+    'b737-500': dict(src='Boeing 737-500.psd'),
+    'b737-700': dict(src='Boeing 737-700.psd', show=[r'^WINGLET']),
+    'b737-800': dict(src='Boeing 737-800.psd', show=[r'^WINGLET']),
+    'b737-800bcf': dict(src=BCF),
+    'b737-max7': dict(build='max7'),
+    'b737-max8': dict(src='Boeing 737 MAX 8.psd'),
+    'b737-max8-200': dict(build='max8200'),
+    'b737-900': dict(src='Boeing 737-900.psd', show=[r'^WINGLET']),
+    'b737-900er': dict(src='Boeing 737-900ER.psd'),
+    'b737-max9': dict(build='max9'),
+    'b737-max10': dict(build='max10'),
+    'b727-200f': dict(src='Boeing 727-200F.psd'),
+    'b757-200': dict(src='Boeing 757-200.psd'),
+    'b757-200pcf': dict(src='Boeing 757-200F.psd'),
+    'b757-300': dict(src='Boeing 757-300.psd'),
+    'b767-200er': dict(src='Boeing 767-200.psd'),
+    'b767-200f': dict(src='Boeing 767-200F.psd'),
+    'b767-300er': dict(src='Boeing 767-300.psd', show=[r'^GE/WINGLET']),
+    'b767-300f': dict(src='Boeing 767-300F.psd'),
+    'b767-400er': dict(src='Boeing 767-400ER.psd'),
+    'b787-8': dict(src='Boeing 787-8.psd'),
+    'b787-9': dict(src='Boeing 787-9.psd'),
+    'b787-10': dict(src='Boeing 787-10.psd'),
+    'b777-200': dict(src='Boeing 777-200.psd', show=[r'^GE$'], hide=[r'^LR$']),
+    'b777-200er': dict(src='Boeing 777-200.psd', show=[r'^GE$'], hide=[r'^LR$']),
+    'b777-200lr': dict(src='Boeing 777-200.psd'),
+    'b777f': dict(src='Boeing 777F.psd'),
+    'b777-300': dict(src='Boeing 777-300.psd'),
+    'b777-300er': dict(src='Boeing 777-300.psd', show=[r'^ER$'], hide=[r'^GE$']),
+    'b777-300ersf': dict(build='b777sf'),
+    'b777-9': dict(src='Boeing 777-9X.psd'),
+    'b777-8f': dict(build='b7778f'),
+    'b747-200b': dict(src='Boeing 747-200.psd'),
+    'b747-400': dict(src='Boeing 747-400.psd'),
+    'b747-400d': dict(src='Boeing 747-400D.psd'),
+    'b747-400f': dict(src='Boeing 747-400F.psd'),
+    'b747-8i': dict(src='Boeing 747-8i.psd'),
+    'b747-8f': dict(src='Boeing 747-8f.psd'),
+    # Embraer
+    'emb-120': dict(src='Embraer E120.psd'),
+    'erj-135': dict(src='Embraer E135.psd'),
+    'erj-140': dict(src='Embraer E140.psd'),
+    'erj-145': dict(src='Embraer E145.psd'),
+    'erj-145xr': dict(src=E145X, show=[r'^XR option']),
+    'e170': dict(src='Embraer E170.psd'),
+    'e175': dict(src='Embraer E175.psd'),
+    'e175lr': dict(src='Embraer E175.psd'),
+    'e190': dict(src='Embraer E190.psd'),
+    'e190f': dict(build='e190f'),
+    'e195': dict(src='Embraer E195.psd'),
+    'e190-e2': dict(src='E190-E2.psd'),
+    'e195-e2': dict(src='E195-E2.psd'),
+    # Bombardier and De Havilland
+    'crj-200': dict(src='Bombardier CRJ-200.psd'),
+    'crj-550': dict(src='Bombardier CRJ-700.psd'),
+    'crj-700': dict(src='Bombardier CRJ-700.psd'),
+    'crj-705': dict(src='Bombardier CRJ-900.psd'),
+    'crj-900': dict(src='Bombardier CRJ-900.psd'),
+    'crj-1000': dict(src='Bombardier_CRJ-1000.psd'),
+    'dhc6-400': dict(src='De Havilland Canada DHC-6.psd', gear=True),
+    'dash8-100': dict(src='Bombardier Q200.psd'),
+    'dash8-200': dict(src='Bombardier Q200.psd'),
+    'dash8-300': dict(src='Bombardier Q300.psd'),
+    'dash8-q400': dict(src='Bombardier Q400.psd'),
+    'dash8-q400pf': dict(src='Bombardier Q400.psd'),
+    # ATR
+    'atr-42-300f': dict(build='atr42f'),
+    'atr-42-500': dict(src='ATR 42.psd'),
+    'atr-42-600': dict(src='ATR 42.psd'),
+    'atr-72-500': dict(src='ATR 72.psd'),
+    'atr-72-600': dict(src='ATR 72.psd'),
+    'atr-72-500f': dict(src='ATR 72 ULD.psd'),
+    'atr-72-600f': dict(src='ATR 72 ULD.psd'),
+    # McDonnell Douglas
+    'md-82': dict(src='McDonnell Douglas MD-80.psd'),
+    'md-83': dict(src='McDonnell Douglas MD-80.psd'),
+    'md-88': dict(src='McDonnell Douglas MD-80.psd'),
+    'md-90': dict(src='McDonnell Douglas MD-90.psd'),
+    'md-11': dict(src='McDonnell Douglas MD-11.psd'),
+    'md-11f': dict(src='McDonnell Douglas MD-11.psd', show=[r'^FREIGHTER'], hide=[r'^PASSENGER', r'DOORS_WINDOWS \(A\)']),
+    'md-10f': dict(src='Douglas DC-10-10.psd', show=[r'^FREIGHTER \(A\)'], hide=[r'^PASSENGER \(A\)']),
+    # Russian, Ukrainian and Chinese
+    'sj-100': dict(src='Sukhoi Superjet 100.psd'),
+    'tu-204-100': dict(src='Tupolev Tu-204.psd'),
+    'tu-204c': dict(src='Tupolev Tu-204 (cargo).psd'),
+    'tu-214': dict(build='tu214'),
+    'il-96-300': dict(src='Ilyushin Il-96-300.psd'),
+    'il-96-400t': dict(build='il96t'),
+    'il-114-300': dict(src='IL-114-100 (1).psd'),
+    # Regional and small
+    'saab-340b': dict(src='SAAB 340B.psd'),
+    'saab-340bf': dict(build='saab340f'),
+    'saab-2000': dict(src='SAAB 2000.psd'),
+    'bae146-100': dict(src='British Aerospace BAe 146-100.psd'),
+    'bae146-200': dict(src='British Aerospace BAe 146-200.psd'),
+    'bae146-300': dict(src='British Aerospace BAe 146-300.psd'),
+    'avro-rj70': dict(src='British Aerospace BAe 146-100.psd'),
+    'avro-rj85': dict(src='British Aerospace BAe 146-200.psd'),
+    'avro-rj100': dict(src='British Aerospace BAe 146-300.psd'),
+    'jetstream-32': dict(src=J31),
+    'jetstream-41': dict(src='British Aerospace Jestream 41.psd'),
+    'fokker-70': dict(src='Fokker F70.psd'),
+    'fokker-100': dict(src='Fokker F100.psd'),
+    'do-328-100': dict(src='Dornier328.psd'),
+    'bn2-islander': dict(src='Britten-Norman BN-2 Islander.psd', gear=True),
+    'beech-1900d': dict(src='Beech1900D.psd'),
+    'beech-1900c-cargo': dict(src='Beech 1900C.psd'),
+}
+
+# Drawn from scratch (no template exists)
+DRAW = ['a220-100', 'a220-300', 'emb-110', 'xian-ma60', 'comac-c909', 'comac-c909ccf', 'comac-c919-std', 'comac-c919',
+        'an-24rv', 'an-26b', 'an-12bk', 'il-76td-90', 'an-124-100', 'mc-21-310', 'do-228ng', 'l-382g', 'c402c',
+        'c208b-ex', 'c208b-cargo', 'c408', 'tecnam-p2012', 'pilatus-pc12', 'l-410-uvp', 'metro-23', 'metro-3-cargo']
+
+# Template makers, for the credits (file -> maker), when not the Airline Empires base set
+BY = {
+    'A330-800N.psd': 'Atsuk0', 'A330-900N.psd': 'Atsuk0', 'NEW A321 & A321neo.psd': 'Atsuk0', 'E190-E2.psd': 'Atsuk0', 'E195-E2.psd': 'Atsuk0',
+    'Airbus A350-1000ULR.psd': 'Adam0896', 'Bombardier_CRJ-1000.psd': 'itri_py2', 'IL-114-100 (1).psd': 'Joshuamosss and med',
+    'Bombardier CRJ-200.psd': 'N664US', 'Embraer E135.psd': 'N664US', 'Embraer E140.psd': 'N664US', 'Embraer E145.psd': 'N664US', 'SAAB 340B.psd': 'N664US',
+    'Airbus A321P2F.psd': 'Pouchok', 'Airbus A330-300P2F.psd': 'Pouchok', 'Dornier328.psd': 'Redrado', 'Airbus A319neo.psd': 'the777fan',
+    'Boeing 777-9X.psd': 'the777fan', 'Boeing 777-8X.psd': 'the777fan', 'Ilyushin Il-96-400M.psd': 'AvV008',
+}
+
+# Layers that are never part of the plane
+JUNK = r'^(color fill.*|bg|background|backround|notice|logo airbus)$'
+# Bare-metal finishes: hidden so every plane is plain white (metal exhausts stay)
+METAL = r'metal|chrome'
+KEEP_METAL = r'exhaust|core|spinner'
+# Ground shadows in particular files (layer paths)
+HIDE_EXTRA = {
+    J31: [r'^Layer 4$'],
+    E145X: [r'^Layer 7$'],
+    'IL-114-100 (1).psd': ['TOP:4'],
+    BCF: [r'^Group 1/Group 2/Layer 5$', r'^FUSELAGE/Effects/Shape 2$'],
+}

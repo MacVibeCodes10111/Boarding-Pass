@@ -277,8 +277,8 @@ function ModelView(props: BuyAircraftPanelProps) {
   return (
     <div ref={top} style={{ display: 'grid', gap: 14, scrollMarginTop: 8 }}>
       {hasAircraftPhoto(m) && (
-        <div style={{ padding: '6px 4px 0', display: 'flex', justifyContent: 'center' }}>
-          <AircraftPhoto model={m} width={560} />
+        <div style={{ padding: '6px 4px 0', minWidth: 0 }}>
+          <AircraftPhoto model={m} width="100%" style={{ maxWidth: 560, margin: '0 auto' }} />
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
