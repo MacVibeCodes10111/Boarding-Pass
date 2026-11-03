@@ -12,6 +12,7 @@ from psd_tools import PSDImage
 from psd_tools.constants import BlendMode
 from kit import *
 from builds import BUILDS
+from builds2 import BUILDS2
 from config import C, HIDE_EXTRA, BY
 
 OUT = os.environ.get('ART_OUT', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'out'))
@@ -103,6 +104,8 @@ def diff(a, b):
 
 
 def get(i):
+    if i in BUILDS2:
+        return BUILDS2[i]()
     v = C[i]
     if 'build' in v:
         fn = BUILDS[v['build']]
@@ -183,7 +186,7 @@ def standardise(i, name, psd_path, img_path, width=640):
 if __name__ == '__main__':
     sys.path.insert(0, '.')
     names = dict(l.split('\t') for l in open('ours.tsv').read().strip().split('\n'))
-    ids = sys.argv[1:] or list(C)
+    ids = sys.argv[1:] or list(C) + list(BUILDS2)
     rep = []
     for i in ids:
         try:

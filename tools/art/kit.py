@@ -74,7 +74,8 @@ def load(fname, show=(), hide=(), keep_gear=False):
     def walk(group, path, parent_visible, forced=False):
         base = None  # clipping base alpha
         for i, l in enumerate(group):
-            p = (path + '/' if path else '') + l.name
+            nm = l.name.replace('\x00', '').strip()
+            p = (path + '/' if path else '') + nm
             shown = any(re.search(r, p, re.I) for r in show)
             vis = want(p, True if (forced and not re.search(r'option', l.name, re.I)) else l.visible) and parent_visible
             if not path and i in top_hide:
@@ -106,7 +107,14 @@ def load(fname, show=(), hide=(), keep_gear=False):
             if raw and l.opacity != 255:
                 a = np.asarray(pil.getchannel('A'), dtype=np.uint16) * l.opacity // 255
                 pil.putalpha(Image.fromarray(a.astype(np.uint8)))
+            al = np.asarray(pil.getchannel('A'))
+            if (al < 4).any() and (al > 0).any():
+                pil.putalpha(Image.fromarray(np.where(al < 4, 0, al).astype(np.uint8)))  # stray near-invisible pixels
             x, y = l.left + PAD, l.top + PAD
+            cb = pil.getbbox()
+            if cb and (cb[2] - cb[0] < pil.width or cb[3] - cb[1] < pil.height):
+                pil = pil.crop(cb)
+                x, y = x + cb[0], y + cb[1]
             if l.clipping and base is not None:
                 bx, by, ba = base
                 m = Image.new('L', pil.size, 0)
@@ -120,7 +128,7 @@ def load(fname, show=(), hide=(), keep_gear=False):
                 if (a > 200).mean() > 0.95:
                     vis = False  # a solid background panel, not part of the plane
             if vis and bb:
-                out.append(L(l.name, p, pil, l.blend_mode.name, True, x, y))
+                out.append(L(nm, p, pil, l.blend_mode.name, True, x, y))
 
     walk(psd, '', True)
     return W, H, out
