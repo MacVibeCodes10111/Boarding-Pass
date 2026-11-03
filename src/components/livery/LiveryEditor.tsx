@@ -33,7 +33,7 @@ import {
   type ShapeKind,
   DEFAULT_LIVERY,
 } from '../../game/livery';
-import { aircraftGeometry, fromPx, layerOutline, loadLogos, renderLivery, titlesPosition, unitPx, type Geometry } from '../../game/liveryPaint';
+import { aircraftGeometry, freeCanvas, fromPx, layerOutline, loadLogos, renderLivery, titlesPosition, unitPx, type Geometry } from '../../game/liveryPaint';
 import { Button, C, DISPLAY, Segmented } from '../../ui/kit';
 import { useLayout } from '../../ui/layout';
 import { ColourPicker } from './ColourPicker';
@@ -342,7 +342,19 @@ export function LiveryEditor(props: {
     if (!geo || !canvasRef.current) return;
     const raf = requestAnimationFrame(() => {
       const c = canvasRef.current?.getContext('2d');
-      if (c) renderLivery(geo, doc, name, logoImgs, c, reg);
+      if (!c) return;
+      try {
+        renderLivery(geo, doc, name, logoImgs, c, reg);
+        // a browser out of canvas memory draws nothing without saying so: check the middle of the cabin
+        const x = Math.round(geo.body.nose + geo.body.len * 0.5), y = Math.round(geo.body.c0 + geo.body.slope * x + geo.body.hc * 0.5);
+        if (c.getImageData(x, y, 1, 1).data[3] === 0) throw new Error('blank picture');
+      } catch (e) {
+        // never leave the aircraft blank: at worst the plain picture
+        console.error('livery preview', e);
+        c.canvas.width = geo.w;
+        c.canvas.height = geo.h;
+        c.drawImage(geo.base, 0, 0, geo.w, geo.h);
+      }
     });
     return () => cancelAnimationFrame(raf);
   }, [geo, doc, name, logoImgs, reg]);
@@ -974,6 +986,8 @@ export function LiveryEditor(props: {
         sctx.drawImage(big, 0, 0, small.width, small.height);
         out[st.id] = small.toDataURL('image/webp', 0.85);
       }
+      freeCanvas(big);
+      freeCanvas(small);
       if (ok) setStylePics(out);
     }, 150);
     return () => {

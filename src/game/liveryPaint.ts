@@ -28,6 +28,28 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+/**
+ * Browsers cap the memory all canvases may use (Safari tightly): past it a
+ * canvas silently draws nothing. So the painter keeps few canvases: two
+ * reused for drawing, masks made only when a layer needs them, a short cache
+ * of measured aircraft, and every other canvas emptied as soon as it's done.
+ */
+export const freeCanvas = (c: HTMLCanvasElement | null | undefined) => {
+  if (c) c.width = c.height = 0;
+};
+const scratch: [HTMLCanvasElement, CanvasRenderingContext2D][] = [];
+function reused(i: number, w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
+  if (!scratch[i]) scratch[i] = canvas(w, h);
+  const [c, g] = scratch[i];
+  if (c.width !== w || c.height !== h) {
+    c.width = w;
+    c.height = h;
+  } else g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalAlpha = 1;
+  g.globalCompositeOperation = 'source-over';
+  return [c, g];
+}
+
 function canvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
   const c = document.createElement('canvas');
   c.width = w;
@@ -231,7 +253,9 @@ export interface Geometry {
   parts: Region[];
   body: Body;
   fin: Fin;
-  masks: Record<Region, HTMLCanvasElement>;
+  /** A part's mask as a canvas, made the first time a layer needs it. */
+  mask: (r: Region) => HTMLCanvasElement;
+  made: Partial<Record<Region, HTMLCanvasElement>>;
 }
 
 const geoCache = new Map<string, Promise<Geometry | null>>();
@@ -241,24 +265,30 @@ export function aircraftGeometry(id: string): Promise<Geometry | null> {
   if (!p) {
     p = measure(id).catch(() => null);
     geoCache.set(id, p);
-    if (geoCache.size > 24) geoCache.delete(geoCache.keys().next().value as string);
+    if (geoCache.size > 4) {
+      const first = geoCache.keys().next().value as string;
+      geoCache.get(first)?.then((g) => g && Object.values(g.made).forEach(freeCanvas));
+      geoCache.delete(first);
+    }
   }
   return p;
 }
 
 async function measure(id: string): Promise<Geometry | null> {
-  const [base, mask] = await Promise.all([loadImage(`/aircraft/${id}.webp`), loadImage(`/aircraft/${id}.mask.png`)]);
+  const [base, maskImg] = await Promise.all([loadImage(`/aircraft/${id}.webp`), loadImage(`/aircraft/${id}.mask.png`)]);
   const w = base.naturalWidth;
   const h = base.naturalHeight;
-  const [, bg] = canvas(w, h);
+  const [bc, bg] = canvas(w, h);
   bg.drawImage(base, 0, 0, w, h);
   const B = bg.getImageData(0, 0, w, h).data;
+  freeCanvas(bc);
   // since v2.66 the mask is twice the picture's height: the top half tail, fuselage, engines; the bottom half wings, wingtips, tailplanes
-  const atlas = mask.naturalHeight >= base.naturalHeight * 1.9;
-  const [, mg] = canvas(w, atlas ? h * 2 : h);
-  mg.drawImage(mask, 0, 0, w, atlas ? h * 2 : h);
+  const atlas = maskImg.naturalHeight >= base.naturalHeight * 1.9;
+  const [mc, mg] = canvas(w, atlas ? h * 2 : h);
+  mg.drawImage(maskImg, 0, 0, w, atlas ? h * 2 : h);
   const M = mg.getImageData(0, 0, w, h).data;
   const M2 = atlas ? mg.getImageData(0, h, w, h).data : new Uint8ClampedArray(M.length);
+  freeCanvas(mc);
   const body = measureBody(M, w, h);
   if (!body) return null;
   // no fin found (very rare): a box over the rear fuselage
@@ -273,18 +303,12 @@ async function measure(id: string): Promise<Geometry | null> {
       if (M2[i + k] > 128) seen[k + 3]++;
     }
   }
-  const masks: Record<Region, HTMLCanvasElement> = {
-    tail: channel(M, w, h, 0),
-    fuselage: channel(M, w, h, 1),
-    engines: channel(M, w, h, 2),
-    wings: channel(M2, w, h, 0),
-    winglets: channel(M2, w, h, 1),
-    stabiliser: channel(M2, w, h, 2),
-    all: channel(all, w, h, 0),
-  };
+  const src: Record<Region, [Uint8ClampedArray, number]> = { tail: [M, 0], fuselage: [M, 1], engines: [M, 2], wings: [M2, 0], winglets: [M2, 1], stabiliser: [M2, 2], all: [all, 0] };
+  const made: Partial<Record<Region, HTMLCanvasElement>> = {};
+  const mask = (r: Region) => (made[r] ??= channel(src[r][0], w, h, src[r][1]));
   const order: Region[] = ['tail', 'fuselage', 'engines', 'wings', 'winglets', 'stabiliser'];
   const parts = order.filter((_, k) => seen[k] > 20);
-  return { id, w, h, base, B, M, M2, parts, body, fin, masks };
+  return { id, w, h, base, B, M, M2, parts, body, fin, mask, made };
 }
 
 function fakeFin(b: Body): Fin {
@@ -552,17 +576,17 @@ function drawLayer(c: CanvasRenderingContext2D, g: Geometry, l: Layer, name: str
 /** The livery drawn on the aircraft, into `out` (the picture's size). */
 export function renderLivery(g: Geometry, livery: Livery, name: string, logos: Map<string, HTMLImageElement>, out: CanvasRenderingContext2D, reg = '') {
   const { w, h } = g;
-  const [, pg] = canvas(w, h);
+  const [, pg] = reused(0, w, h);
   pg.fillStyle = '#ffffff';
   pg.fillRect(0, 0, w, h);
-  const [sc, sg] = canvas(w, h);
+  const [sc, sg] = reused(1, w, h);
   for (const l of livery.layers) {
     if (l.hidden || l.opacity <= 0) continue;
     sg.globalCompositeOperation = 'source-over';
     sg.clearRect(0, 0, w, h);
     drawLayer(sg, g, l, name, logos, reg);
     sg.globalCompositeOperation = 'destination-in';
-    sg.drawImage(g.masks[l.region], 0, 0);
+    sg.drawImage(g.mask(l.region), 0, 0);
     pg.globalAlpha = l.opacity;
     pg.drawImage(sc, 0, 0);
     pg.globalAlpha = 1;
@@ -589,6 +613,7 @@ async function paint(id: string, L: Livery, name: string, reg: string): Promise<
   const [oc, og] = canvas(g.w, g.h);
   renderLivery(g, L, name, logos, og, reg);
   const blob: Blob | null = await new Promise((r) => oc.toBlob(r, 'image/webp', 0.92));
+  freeCanvas(oc);
   return blob ? URL.createObjectURL(blob) : null;
 }
 
