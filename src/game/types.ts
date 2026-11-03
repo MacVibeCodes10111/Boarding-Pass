@@ -1,3 +1,4 @@
+import type { Livery } from './livery';
 // ============================================================================
 // BOARDING PASS — shared types
 // ============================================================================
@@ -266,6 +267,9 @@ export interface SaveGameState {
   // --- v2.49+ ---
   /** Revision for cloud sync: bigger is newer, always above the previous save's. */
   rev?: number;
+  // --- v2.64+ ---
+  /** The airline's livery (see game/livery.ts); none means plain white. */
+  livery?: Livery;
 }
 
 /** Minimal leg description used by the conflict checker. */
