@@ -4912,3 +4912,217 @@
   - [pixel] 'DETAIL' 451x71 at 3417,270 blend=NORMAL
   - [pixel] 'EFFECT' 451x71 at 3417,270 blend=NORMAL
 - [pixel] 'NOTICE' 3940x1422 at 32,22 blend=NORMAL
+
+## Fokker F27-500 (Fokker27.psd, 9825 kB, 3000x1125, RGB)
+- [pixel] 'ANTENNA\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel] 'COCKPIT WINDOW\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel] 'TAIL\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel] 'TAIL_DETAILS\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel] 'TAIL_EFFECTS\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel] 'HORIZONTAL_STABILAZIER\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel] 'FUSELAGE\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel] 'FUSELAGE_DETAILS\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel] 'WINDOWS &#38;#38; DOORS\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel] 'FUSELAGE_EFFECTS\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel] 'SPINNER\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel] 'PROPS\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel] '</Layer group>\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel] 'ENGINE\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel] 'ENGINE_DETAILS\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel] 'ENGINE_EFFECTS\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel] 'ENGINE OPTION 1\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel] '</Layer group>\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel] 'ENGINE\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel] 'ENGINE_DETAILS\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel] 'ENGINE_EFFECTS\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel, hidden] 'ENGINE OPTION 2\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel, hidden] '</Layer group>\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel, hidden] 'ENGINE_METAL\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel, hidden] 'ENGINE_DETAILS\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel, hidden] 'ENGINE BARE-METAL OPTION\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel] 'ENGINE EXHAUST\x00' 3000x1125 at 0,0 blend=NORMAL
+- [pixel] 'WING\x00' 3000x1125 at 0,0 blend=NORMAL
+
+## Dash 7 (DHC_DASH_7.psd, 12501 kB, 3500x1313, RGB)
+- [pixel] 'TAIL_BASE' 3500x1313 at 0,0 blend=NORMAL
+- [pixel] 'TAIL_DETAILS' 3500x1313 at 0,0 blend=NORMAL
+- [pixel] 'TAIL_EFFECTS' 3500x1313 at 0,0 blend=NORMAL
+- [pixel] 'STATIC_OPTION' 3500x1313 at 0,0 blend=NORMAL
+- [pixel] 'Cockpit Window' 3500x1313 at 0,0 blend=NORMAL
+- [pixel] 'FUSELAGE_BASE' 3500x1313 at 0,0 blend=NORMAL
+- [pixel] 'FUSELAGE_DETAILS' 3500x1313 at 0,0 blend=NORMAL
+- [pixel] 'DOORS' 3500x1313 at 0,0 blend=NORMAL
+- [pixel] 'WINDOWS' 3500x1313 at 0,0 blend=NORMAL
+- [pixel] 'FUSELAGE_EFFECTS' 3500x1313 at 0,0 blend=NORMAL
+- [pixel] 'Antenna 2' 2181x967 at 792,135 blend=NORMAL
+- [group] 'Engines' 3500x1313 at 0,0 blend=PASS_THROUGH
+  - [pixel] 'SPINNER 1' 3500x1313 at 0,0 blend=NORMAL
+  - [pixel] 'PROP 1' 3500x1313 at 0,0 blend=NORMAL
+  - [pixel] 'ENGINE_1_BASE' 3500x1313 at 0,0 blend=NORMAL
+  - [pixel] 'ENGINE_1_DETAILS' 3500x1313 at 0,0 blend=NORMAL
+  - [pixel] 'ENGINE_EFFECTS' 3500x1313 at 0,0 blend=NORMAL
+  - [pixel] 'SPINNER 2' 3500x1313 at 0,0 blend=NORMAL
+  - [pixel] 'PROP 2' 3500x1313 at 0,0 blend=NORMAL
+  - [pixel] 'ENGINE_2_BASE' 3500x1313 at 0,0 blend=NORMAL
+  - [pixel] 'ENGINE_2_DETAILS' 3500x1313 at 0,0 blend=NORMAL
+  - [pixel] 'ENGINE_2_EFFECTS' 3500x1313 at 0,0 blend=NORMAL
+  - [pixel] 'EXHAUST_BASE' 75x60 at 1230,598 blend=NORMAL
+  - [pixel] 'EXHAUST_EFFECTS ' 91x81 at 1230,598 blend=NORMAL
+- [group] 'Wings' 3500x1313 at 0,0 blend=PASS_THROUGH
+  - [pixel] 'WING_BASE' 3500x1313 at 0,0 blend=NORMAL
+  - [pixel] 'WING_DETAIL' 3500x1313 at 0,0 blend=NORMAL
+  - [pixel] 'WING_EFFECTS' 3500x1313 at 0,0 blend=NORMAL
+  - [pixel] 'FLAP_1_BASE' 253x52 at 1518,668 blend=NORMAL
+  - [pixel] 'FLAP_1_DETAILS' 184x44 at 1517,677 blend=NORMAL
+  - [pixel] 'FLAP_1_EFFECTS' 246x144 at 1519,575 blend=NORMAL
+  - [pixel] 'FLAP_2_BASE' 117x14 at 1557,636 blend=NORMAL
+  - [pixel] 'FLAP_2_EFFECT' 114x31 at 1557,618 blend=NORMAL
+  - [pixel] 'H-STAB_BASE' 3500x1313 at 0,0 blend=NORMAL
+  - [pixel] 'H-STAB_EFFECTS' 3500x1313 at 0,0 blend=NORMAL
+
+## CN-235 (CASA IPTN CN-235.psd, 6356 kB, 3000x1170, RGB)
+- [pixel] 'Antenna' 463x443 at 127,668 blend=NORMAL
+- [pixel] 'OTHER_DETAILS' 2085x1055 at 669,39 blend=NORMAL
+- [group] 'TAIL' 1136x696 at 1815,33 blend=PASS_THROUGH
+  - [pixel] 'TAIL_BASE' 1136x696 at 1815,33 blend=NORMAL
+  - [pixel] 'DETAILS' 785x670 at 2141,35 blend=NORMAL
+  - [pixel] 'TAIL EFFECT' 1077x692 at 1874,33 blend=NORMAL
+  - [pixel] 'SHADOW' 600x672 at 2351,33 blend=NORMAL
+- [group] 'FUSELAGE' 3000x571 at 0,660 blend=PASS_THROUGH
+  - [pixel] 'FIN' 373x83 at 2413,715 blend=NORMAL
+  - [pixel] 'FUSELAGE_BASE' 2919x443 at 31,670 blend=NORMAL
+  - [group] 'DOORS AND WINDOW' 1492x211 at 182,773 blend=PASS_THROUGH
+    - [pixel] 'WINDOWS' 1030x46 at 515,854 blend=NORMAL
+    - [pixel] 'DOORS' 1053x211 at 621,773 blend=NORMAL
+    - [pixel] 'COCKPIT_WINDOW' 215x81 at 182,784 blend=NORMAL
+  - [pixel] 'FUSELAGE_EFFECTS' 2919x444 at 31,670 blend=NORMAL
+  - [pixel] 'DETAILS' 2449x443 at 41,671 blend=NORMAL
+  - [pixel] 'SHADOW' 3000x571 at 0,660 blend=NORMAL
+- [group] 'ENGINE' 550x349 at 768,544 blend=PASS_THROUGH
+  - [pixel] 'ENGINE_BASE' 453x169 at 859,648 blend=NORMAL
+  - [pixel] 'DETAILS_ENGINE' 464x169 at 848,648 blend=NORMAL
+  - [pixel] 'EFFECT_ENGINE' 537x169 at 769,648 blend=NORMAL
+  - [pixel] 'PROPELLERS' 120x348 at 768,544 blend=NORMAL
+  - [pixel] 'ENGINE_SHADOW' 546x347 at 772,546 blend=NORMAL
+- [group] 'WING' 1791x142 at 1089,607 blend=PASS_THROUGH
+  - [shape] 'WING_BASE' 386x98 at 1089,612 blend=NORMAL
+  - [pixel] 'DETAILS' 365x87 at 1089,613 blend=NORMAL
+  - [pixel] 'FLAPS' 194x61 at 1303,680 blend=NORMAL
+  - [pixel] 'SHADOWS' 408x134 at 1089,607 blend=NORMAL
+  - [group, hidden] 'WINGLET_OPTION' 0x0 at 0,0 blend=PASS_THROUGH
+    - [pixel] 'WINGLET_BASE' 197x140 at 1215,493 blend=NORMAL
+    - [pixel] 'EFFECT' 197x140 at 1215,493 blend=NORMAL
+  - [pixel] 'ELEVATOR' 448x68 at 2432,681 blend=NORMAL
+
+## PC-24 (Pilatus PC-24.psd, 4059 kB, 2000x592, RGB)
+- [pixel] 'BG' 2000x592 at 0,0 blend=NORMAL
+- [group] 'ANTENNAS' 723x283 at 312,243 blend=PASS_THROUGH
+  - [pixel] 'ANTENNAS' 723x283 at 312,243 blend=NORMAL
+  - [pixel] 'ANT_EFFECTS' 723x283 at 312,243 blend=NORMAL
+- [group] 'TAIL' 791x381 at 1247,-53 blend=PASS_THROUGH
+  - [pixel] 'TAIL' 737x312 at 1247,16 blend=NORMAL
+  - [pixel] 'TRIM' 139x59 at 1709,33 blend=NORMAL
+  - [pixel] 'TAIL_REFLECTION' 791x381 at 1247,-53 blend=NORMAL
+  - [pixel] 'TAIL_EFFECTS' 737x312 at 1247,16 blend=NORMAL
+  - [pixel] 'TAIL_DETAILS' 632x282 at 1352,16 blend=NORMAL
+  - [group] 'ELEVATOR' 282x206 at 1696,47 blend=PASS_THROUGH
+    - [pixel] 'ELEV_SHADOW' 165x190 at 1697,63 blend=NORMAL opacity=107
+    - [pixel] 'ELEVATOR' 282x28 at 1696,47 blend=NORMAL
+    - [pixel] 'ELEV_DETAILS' 272x28 at 1704,47 blend=NORMAL
+    - [pixel] 'ELEV_EFFECTS' 281x28 at 1696,47 blend=NORMAL
+- [group] 'FUSELAGE' 1787x277 at 14,281 blend=PASS_THROUGH
+  - [pixel] 'FUSELAGE' 1787x277 at 14,281 blend=NORMAL
+  - [pixel] 'DOORS' 1162x234 at 95,305 blend=NORMAL
+  - [pixel] 'BODY_DETAILS' 1590x237 at 26,306 blend=NORMAL
+  - [group] 'EXTRA DETAILS' 176x56 at 292,329 blend=PASS_THROUGH
+    - [pixel] 'CRYSTAL CLASS' 17x34 at 451,329 blend=NORMAL
+    - [pixel] 'PILATUS_LOGO' 116x15 at 292,370 blend=NORMAL
+  - [pixel] 'BODY_REFLECTION' 1781x277 at 14,281 blend=NORMAL
+  - [pixel] 'BODY_EFFECTS' 1787x249 at 14,309 blend=NORMAL
+  - [pixel] 'WINDOWS' 454x51 at 626,328 blend=NORMAL
+  - [pixel] 'COCKPIT' 220x61 at 208,308 blend=NORMAL
+- [group] 'WING' 373x109 at 767,432 blend=PASS_THROUGH
+  - [pixel] 'WING' 372x109 at 767,432 blend=NORMAL
+  - [pixel] 'WING_DETAILS' 373x94 at 767,432 blend=NORMAL
+  - [pixel] 'WING_REFLECTION' 372x107 at 767,433 blend=NORMAL opacity=23
+  - [group] 'FLAPS' 131x59 at 984,474 blend=PASS_THROUGH
+    - [pixel] 'FLAPS' 131x59 at 984,474 blend=NORMAL
+    - [pixel] 'FLAPS_DETAILS' 51x59 at 1064,474 blend=NORMAL
+  - [pixel] 'WING_EFFECTS' 371x109 at 768,432 blend=NORMAL
+- [group] 'ENGINE' 336x118 at 1268,277 blend=PASS_THROUGH
+  - [pixel] 'ENGINE_RIM' 323x109 at 1281,281 blend=NORMAL
+  - [pixel] 'ENGINE' 331x118 at 1268,277 blend=NORMAL
+  - [pixel] 'ENG_DETAILS' 302x112 at 1268,279 blend=NORMAL
+  - [pixel] 'ENG_REFLECTION' 331x118 at 1268,277 blend=MULTIPLY
+  - [pixel] 'ENG_EFFECTS' 331x96 at 1268,299 blend=NORMAL
+- [type] 'REMOVE BEFORE USE' 454x70 at 24,31 blend=NORMAL
+
+## Cessna 172 Skyhawk (Cessna 172 Skyhawk.psd, 3003 kB, 2000x750, RGB)
+- [pixel] 'BELLY DETAILS' 399x44 at 374,524 blend=NORMAL
+- [pixel] 'COCKPIT INTERIOR' 524x92 at 525,345 blend=NORMAL
+- [pixel] 'WINDOWS' 560x201 at 502,277 blend=NORMAL opacity=99
+- [pixel] 'COCKPIT SHADING' 1491x460 at 541,12 blend=NORMAL opacity=181
+- [pixel] 'BODY' 1559x385 at 300,185 blend=NORMAL
+- [group] 'Body Details' 1567x386 at 303,179 blend=PASS_THROUGH
+  - [pixel] 'Lines' 1371x357 at 474,208 blend=NORMAL
+  - [pixel] 'Dots' 176x52 at 327,370 blend=NORMAL opacity=82
+  - [pixel] 'Rivets' 1432x226 at 314,332 blend=NORMAL opacity=143
+  - [pixel] 'Engine Intake' 12x49 at 303,378 blend=NORMAL
+  - [pixel] 'Tail Lights' 119x30 at 1741,179 blend=NORMAL
+  - [pixel] 'Door Handle' 43x14 at 747,412 blend=NORMAL
+  - [pixel] 'Fuselage Detail' 12x12 at 522,443 blend=NORMAL
+  - [pixel] 'Layer 31' 170x162 at 513,371 blend=NORMAL opacity=105
+  - [pixel] 'Layer 32' 27x8 at 548,516 blend=NORMAL opacity=156
+  - [pixel] 'Tie Down Hook' 14x14 at 1612,519 blend=NORMAL
+  - [pixel] 'Tail Antennas' 180x232 at 1690,273 blend=NORMAL
+  - [pixel] 'Layer 34' 59x12 at 1581,487 blend=NORMAL
+- [group] 'Body Effects' 2203x608 at -8,157 blend=PASS_THROUGH
+  - [pixel] 'Layer 26' 63x31 at 580,518 blend=NORMAL opacity=61
+  - [pixel] 'Layer 27' 53x28 at 582,521 blend=NORMAL opacity=59
+  - [pixel] 'Layer 2' 1457x287 at 300,277 blend=NORMAL opacity=163
+  - [pixel] 'Layer 30' 1322x411 at 873,157 blend=NORMAL opacity=18
+  - [pixel] 'Layer 7' 1783x302 at -8,361 blend=NORMAL opacity=196
+  - [pixel] 'Layer 9' 1770x580 at 26,185 blend=NORMAL opacity=59
+  - [pixel] 'Layer 24' 495x287 at 511,277 blend=NORMAL opacity=194
+  - [pixel] 'Layer 29' 270x68 at 1485,470 blend=NORMAL opacity=161
+  - [pixel] 'Layer 34 copy' 275x24 at 876,546 blend=NORMAL opacity=196
+- [pixel] 'PITOT TUBE' 91x27 at 605,303 blend=NORMAL
+- [group] 'LANDING GEAR' 2027x753 at -30,-1 blend=PASS_THROUGH
+  - [pixel] 'Main Gear Shaft' 76x85 at 756,536 blend=NORMAL
+  - [pixel] 'Layer 35' 28x14 at 767,572 blend=NORMAL
+  - [pixel] 'Layer 36' 36x15 at 764,577 blend=NORMAL opacity=168
+  - [pixel] 'Layer 16' 42x10 at 777,546 blend=NORMAL opacity=28
+  - [pixel] 'Layer 17' 43x17 at 775,537 blend=NORMAL opacity=36
+  - [pixel] 'Layer 18' 76x85 at 756,536 blend=NORMAL opacity=31
+  - [pixel] 'Layer 19' 2000x595 at -30,-1 blend=NORMAL opacity=59
+  - [pixel] 'Main Gear Wheel' 73x73 at 724,597 blend=NORMAL
+  - [group, hidden] 'MAIN FAIRING' 0x0 at 0,0 blend=PASS_THROUGH
+    - [pixel] 'Main Gear Fearing' 182x70 at 691,580 blend=NORMAL
+    - [pixel] 'Layer 12' 182x70 at 691,580 blend=NORMAL opacity=28
+    - [pixel] 'Layer 11' 182x41 at 691,609 blend=NORMAL opacity=117
+    - [pixel] 'Layer 13' 176x29 at 697,621 blend=NORMAL opacity=166
+    - [pixel] 'Layer 14' 166x27 at 701,580 blend=NORMAL opacity=61
+  - [pixel] 'Nose Gear Wheel' 65x65 at 399,597 blend=NORMAL
+  - [pixel] 'Nose Gear Shaft' 2000x750 at -3,2 blend=NORMAL
+  - [group, hidden] 'NOSE FAIRING' 0x0 at 0,0 blend=PASS_THROUGH
+    - [pixel] 'Nose Gear Fairing' 162x67 at 365,578 blend=NORMAL
+    - [pixel] 'Layer 12 copy' 162x67 at 365,578 blend=NORMAL opacity=28
+    - [pixel] 'Layer 11 copy' 162x45 at 365,600 blend=NORMAL opacity=117
+    - [pixel] 'Layer 13 copy' 159x30 at 367,615 blend=NORMAL opacity=166
+    - [pixel] 'Layer 14 copy' 149x26 at 374,583 blend=NORMAL opacity=117
+    - [pixel] 'Layer 15' 7x7 at 445,581 blend=NORMAL
+- [group] 'WING' 366x278 at 597,254 blend=NORMAL
+  - [pixel] 'Wing Base' 354x278 at 597,254 blend=NORMAL
+  - [pixel] 'Wing Details' 88x37 at 642,255 blend=NORMAL
+  - [pixel] 'Wing Antennas' 123x49 at 840,256 blend=NORMAL
+  - [pixel] 'Wing Effects' 354x278 at 597,254 blend=NORMAL
+- [group] 'ELEVATOR' 245x25 at 1493,461 blend=PASS_THROUGH
+  - [pixel] 'Elevator Base' 245x25 at 1493,461 blend=NORMAL
+  - [pixel] 'Elevator Detail' 245x25 at 1493,461 blend=NORMAL
+  - [pixel] 'Elevator Effects' 245x25 at 1493,461 blend=NORMAL
+- [group] 'PROP' 347x515 at -40,243 blend=NORMAL
+  - [pixel] 'Prop Engine Internals' 19x54 at 285,376 blend=NORMAL
+  - [pixel] 'Prop Cone' 76x56 at 227,374 blend=NORMAL
+  - [pixel] 'Prop Cone Effects' 76x56 at 227,374 blend=NORMAL opacity=97
+  - [pixel] 'Layer 4' 340x472 at -40,286 blend=NORMAL opacity=179
+  - [pixel] 'Prop Blades' 56x325 at 251,243 blend=NORMAL
