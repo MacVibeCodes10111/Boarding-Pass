@@ -57,6 +57,7 @@ import { airportGateCode, gateRank } from '../game/gateCode';
 import { AIRCRAFT_PHOTOS } from '../game/aircraftPhotos';
 import { cloudSkyCss } from '../game/cloudSky';
 import { paintedPhoto } from '../game/liveryPaint';
+import { airlineBadge } from '../game/livery';
 import { LiveryContext } from './AircraftPhoto';
 
 const EMPTY_FC = { type: 'FeatureCollection', features: [] as any[] };
@@ -392,6 +393,7 @@ function planeHeroHtml(raw: Record<string, any>): string {
   if (!size) return '';
   const sky = cloudSkyCss(String(raw.tailNumber ?? id)).replace(/"/g, "'");
   return `<div class="bp-pop-hero" style="position:relative;margin:-2px 0 10px;border-radius:10px;overflow:hidden;aspect-ratio:2.8;background:${sky} center/cover;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)">
+    <img class="bp-pop-badge" alt="" draggable="false" style="display:none;position:absolute;left:8px;top:8px;width:34px;height:34px;padding:3px;border-radius:9px;background:#fff;object-fit:contain;box-shadow:0 2px 6px rgba(0,0,0,.3);z-index:1" />
     <img alt="" draggable="false" data-model="${escapeHtml(id)}" src="/aircraft/${escapeHtml(id)}.webp" style="position:absolute;left:6%;width:88%;top:50%;transform:translateY(-50%);height:auto;aspect-ratio:${size[0]}/${size[1]};filter:drop-shadow(0 8px 10px rgba(10,20,40,.28));pointer-events:none" />
   </div>`;
 }
@@ -1320,7 +1322,13 @@ export function LiveMap(props: LiveMapProps) {
               .setHTML(`${plane ? planeHeroHtml(plane) : ''}<div class="bp-live-popup-body">${html}</div>`)
               .addTo(map);
             // paint the picture in the airline's livery once it's ready
-            const heroImg = popup.getElement?.()?.querySelector('.bp-pop-hero img') as HTMLImageElement | null;
+            const heroImg = popup.getElement?.()?.querySelector('.bp-pop-hero img[data-model]') as HTMLImageElement | null;
+            const badgeImg = popup.getElement?.()?.querySelector('.bp-pop-badge') as HTMLImageElement | null;
+            const badge = liveryRef.current ? airlineBadge(liveryRef.current.liveries) : undefined;
+            if (badgeImg && badge) {
+              badgeImg.src = badge;
+              badgeImg.style.display = 'block';
+            }
             const lv = liveryRef.current;
             const ac = plane && latest.current.fleet.find((a) => a.tailNumber === plane.tailNumber);
             const lvy = lv ? lv.liveries[ac?.livery ?? 0] ?? lv.liveries[0] : undefined;

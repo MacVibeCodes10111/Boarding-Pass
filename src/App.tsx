@@ -118,7 +118,8 @@ import { RouteFromBar } from './components/RouteFromBar';
 import { WelcomeTour, tourWantedForNewCareer } from './components/WelcomeTour';
 import { C, PanelTabsContext, applyThemeToDocument, useThemeVersion } from './ui/kit';
 import { initLayout } from './ui/layout';
-import { normaliseLiveries, type Livery } from './game/livery';
+import { DEFAULT_AIRLINE_COLOURS, airlineBadge, normaliseAirlineColours, normaliseLiveries, type AirlineColours, type Livery } from './game/livery';
+import { applyAirlineTheme } from './ui/airlineTheme';
 import { LiveryContext } from './components/AircraftPhoto';
 
 const STANDARD_START_CASH = 150_000_000;
@@ -238,6 +239,11 @@ export default function App() {
 
   const [airlineName, setAirlineName] = useState(LAUNCH.name ?? 'Jetstream Airlines');
   const [liveries, setLiveries] = useState<Livery[]>([]);
+  const [airlineColours, setAirlineColours] = useState<AirlineColours | undefined>(undefined);
+  // the game's look follows the airline's colours while its career is open, if the player chose that
+  useEffect(() => applyAirlineTheme(screen === 'home' ? undefined : airlineColours), [airlineColours, screen]);
+  /** The airline's logo, from its livery (the logo picked to show in the corner). */
+  const airlineLogo = useMemo(() => airlineBadge(liveries), [liveries]);
   const liveryCtx = useMemo(() => (liveries.length ? { liveries, name: airlineName } : null), [liveries, airlineName]);
   const [liveryStart, setLiveryStart] = useState(0);
   const [airlineIata, setAirlineIata] = useState(LAUNCH.code ?? 'JT');
@@ -737,6 +743,7 @@ export default function App() {
   const currentSaveState = (isAutosave = false): SaveGameState => ({
     saveId: activeSaveId,
     liveries: liveries.length ? liveries : undefined,
+    airlineColours,
     airlineName,
     airlineIata,
     airlineCallsign,
@@ -851,6 +858,7 @@ export default function App() {
     setFleet([]);
     setSchedule([]);
     setLiveries([]);
+    setAirlineColours(undefined);
     setCareer(gameMode === 'sandbox' ? freshCareer() : { ...freshCareer(), letters: [welcomeLetter(airlineName, airlineIata, hubIata, 0)] });
     setBankTab('programme');
     setDraft(makeDraft(hubIata, airlineIata));
@@ -865,6 +873,7 @@ export default function App() {
     setActiveSaveId(s.saveId);
     setAirlineName(s.airlineName);
     setLiveries(normaliseLiveries(s.liveries, s.livery));
+    setAirlineColours(normaliseAirlineColours(s.airlineColours));
     setAirlineIata(s.airlineIata);
     setAirlineCallsign(s.airlineCallsign);
     setHubIata(s.hubIata);
@@ -1614,6 +1623,7 @@ export default function App() {
       <TopBar
         airlineName={airlineName}
         airlineIata={airlineIata}
+        airlineLogo={airlineLogo}
         hubs={hubs}
         gameMode={gameMode}
         cash={cash}
@@ -1684,6 +1694,7 @@ export default function App() {
           airlineName={airlineName}
           models={[...new Set(fleet.map((a) => a.model.id))]}
           sampleReg={fleet[0]?.tailNumber}
+          airlineColours={airlineColours ?? DEFAULT_AIRLINE_COLOURS}
           onSave={(l) => {
             const kept = l.filter((x) => x.layers.length || Object.keys(x.logos).length);
             setLiveries(kept);
@@ -1717,6 +1728,8 @@ export default function App() {
             return null;
           }}
           airlineName={airlineName}
+          airlineColours={airlineColours ?? DEFAULT_AIRLINE_COLOURS}
+          onAirlineColours={setAirlineColours}
           version={APP_VERSION}
           onClose={() => setMenuOpen(false)}
           onSave={saveCareer}
@@ -1928,6 +1941,7 @@ export default function App() {
             onDeleteFlight={deleteFlightWithPair}
             onSellOrReturnAircraft={sellOrReturnAircraft}
             liveryNames={liveries.map((l, i) => l.name || (i ? 'Second livery' : 'Main livery'))}
+            airlineLogo={airlineLogo}
             onSetLivery={(tail, i) => setFleet((f) => f.map((a) => (a.tailNumber === tail ? { ...a, livery: i || undefined } : a)))}
             onEditLivery={(i) => {
               setLiveryStart(i);

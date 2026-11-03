@@ -28,6 +28,8 @@ export interface AircraftScheduleModalProps {
   onSetLivery?: (tailNumber: string, index: number) => void;
   /** Opens the livery editor on this aircraft's livery. */
   onEditLivery?: (index: number) => void;
+  /** The airline's logo, shown beside the registration. */
+  airlineLogo?: string;
 }
 
 export function AircraftScheduleModal({
@@ -44,6 +46,7 @@ export function AircraftScheduleModal({
   liveryNames = [],
   onSetLivery,
   onEditLivery,
+  airlineLogo,
 }: AircraftScheduleModalProps) {
   const acFlights = useMemo(() => flightsForTail(allSchedule, aircraft.tailNumber), [allSchedule, aircraft.tailNumber]);
   const [selectedFlId, setSelectedFlId] = useState<string | null>(initialSelectedFlightId ?? null);
@@ -122,7 +125,7 @@ export function AircraftScheduleModal({
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 14, borderBottom: `1px solid ${C.line}`, marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <img src={radarIconUrl} alt="" style={{ width: 40, height: 40 }} />
+          {airlineLogo ? <img src={airlineLogo} alt="" style={{ width: 40, height: 40, borderRadius: 9, background: '#fff', padding: 3, objectFit: 'contain', boxSizing: 'border-box' }} /> : <img src={radarIconUrl} alt="" style={{ width: 40, height: 40 }} />}
           <div>
             <h2 style={{ margin: 0, fontSize: 19, fontWeight: 650 }}>
               {aircraft.tailNumber} <span style={{ color: C.muted, fontWeight: 500 }}>{aircraft.model.name}</span>

@@ -1,4 +1,4 @@
-import type { Livery } from './livery';
+import type { AirlineColours, Livery } from './livery';
 // ============================================================================
 // BOARDING PASS — shared types
 // ============================================================================
@@ -274,6 +274,8 @@ export interface SaveGameState {
   livery?: unknown;
   /** The airline's liveries (up to two; see game/livery.ts); none means plain white. */
   liveries?: Livery[];
+  /** The airline's two colours, and whether the game takes its look from them (v2.67). */
+  airlineColours?: AirlineColours;
 }
 
 /** Minimal leg description used by the conflict checker. */

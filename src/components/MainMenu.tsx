@@ -1,6 +1,8 @@
 // ============================================================================
 // MAIN MENU (v2.38+): save, export, the tour, and back to the home screen
 // ============================================================================
+import type { AirlineColours } from '../game/livery';
+import { ColourPicker } from './livery/ColourPicker';
 import { useState } from 'react';
 import { IS_DEV } from '../game/channel';
 import { Icon, type IconName } from '../ui/icons';
@@ -22,6 +24,8 @@ export function MainMenu(props: {
   onLeave: () => void;
   /** True when the airline has a livery. */
   hasLivery: boolean;
+  airlineColours: AirlineColours;
+  onAirlineColours: (c: AirlineColours) => void;
   /** Opens the livery editor. */
   onOpenLivery: () => void;
 }) {
@@ -67,7 +71,7 @@ export function MainMenu(props: {
             })}
             {row('download', 'Export save file', 'A protected copy to keep or move to another computer', props.onExport)}
             {row('swap', 'Cloud saves', 'Sign in to play your careers on all your devices', props.onCloud)}
-            {row('edit', 'Airline name and callsign', `${props.airlineName}, callsign ${props.airlineCallsign}`, () => setDetails(true))}
+            {row('edit', 'Airline name, callsign and colours', `${props.airlineName}, callsign ${props.airlineCallsign}`, () => setDetails(true))}
             {row('layers', 'Livery', props.hasLivery ? 'Your airline\'s colours on its aircraft' : 'Paint your aircraft in your airline\'s colours', () => {
               props.onClose();
               props.onOpenLivery();
@@ -100,23 +104,34 @@ export function MainMenu(props: {
         </div>
       </ModalShell>
       {credits && <CreditsModal onClose={() => setCredits(false)} />}
-      {details && <AirlineDetailsModal name={props.airlineName} callsign={props.airlineCallsign} onSave={props.onAirlineDetails} onClose={() => setDetails(false)} />}
+      {details && <AirlineDetailsModal name={props.airlineName} callsign={props.airlineCallsign} colours={props.airlineColours} onSave={props.onAirlineDetails} onColours={props.onAirlineColours} onClose={() => setDetails(false)} />}
     </>
   );
 }
 
 /** Rename the airline or change its radio callsign (v2.52). The code stays: flight numbers use it. */
-function AirlineDetailsModal(props: { name: string; callsign: string; onSave: (name: string, callsign: string) => string | null; onClose: () => void }) {
+function AirlineDetailsModal(props: {
+  name: string;
+  callsign: string;
+  colours: AirlineColours;
+  onSave: (name: string, callsign: string) => string | null;
+  onColours: (c: AirlineColours) => void;
+  onClose: () => void;
+}) {
   const [name, setName] = useState(props.name);
   const [callsign, setCallsign] = useState(props.callsign);
+  const [colours, setColours] = useState(props.colours);
   const [err, setErr] = useState<string | null>(null);
   const save = () => {
     const e = props.onSave(name, callsign);
     setErr(e);
-    if (!e) props.onClose();
+    if (!e) {
+      props.onColours(colours);
+      props.onClose();
+    }
   };
   return (
-    <ModalShell onClose={props.onClose} maxWidth={420} zIndex={260} label="Airline name and callsign">
+    <ModalShell onClose={props.onClose} maxWidth={420} zIndex={260} label="Airline details">
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -124,13 +139,23 @@ function AirlineDetailsModal(props: { name: string; callsign: string; onSave: (n
         }}
         style={{ display: 'grid', gap: 12 }}
       >
-        <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: 24 }}>Airline name and callsign</h2>
+        <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: 24 }}>Airline details</h2>
         <Field label="Airline name">
           <input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} style={inputStyle} />
         </Field>
         <Field label="Radio callsign" hint="What controllers call your flights on the map, like SPEEDBIRD or JETSTREAM. Letters, digits and spaces.">
           <input value={callsign} onChange={(e) => setCallsign(e.target.value.toUpperCase())} maxLength={20} autoCapitalize="characters" spellCheck={false} style={inputStyle} />
         </Field>
+        <div style={{ display: 'grid', gap: 10, padding: 12, borderRadius: 10, border: `1px solid ${C.line}` }}>
+          <div style={{ fontSize: 13, fontWeight: 650 }}>Airline colours</div>
+          <div style={{ fontSize: 12, color: C.muted, marginTop: -6 }}>Used by the ready-made liveries and logos.</div>
+          <ColourPicker label="Main colour" value={colours.a} onChange={(a) => setColours((c) => ({ ...c, a }))} />
+          <ColourPicker label="Second colour" value={colours.b} onChange={(b) => setColours((c) => ({ ...c, b }))} />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+            <input type="checkbox" checked={Boolean(colours.theme)} onChange={(e) => setColours((c) => ({ ...c, theme: e.target.checked || undefined }))} />
+            Use them for the game’s look while I play this airline
+          </label>
+        </div>
         <div role="alert" style={{ minHeight: 16, fontSize: 12.5, color: C.red }}>
           {err}
         </div>

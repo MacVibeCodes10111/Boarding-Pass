@@ -272,6 +272,8 @@ function ClockButton(props: {
 export function TopBar(props: {
   airlineName: string;
   airlineIata: string;
+  /** The airline's logo (from its livery), shown in place of its code. */
+  airlineLogo?: string;
   hubs: string[];
   gameMode: GameMode;
   cash: number;
@@ -332,8 +334,9 @@ export function TopBar(props: {
             width: phone ? 32 : 38,
             height: phone ? 32 : 38,
             borderRadius: 9,
-            background: C.brand,
+            background: props.airlineLogo ? '#ffffff' : C.brand,
             color: C.brandInk,
+            overflow: 'hidden',
             display: 'grid',
             placeItems: 'center',
             fontFamily: DISPLAY,
@@ -344,7 +347,7 @@ export function TopBar(props: {
             boxShadow: 'inset 0 1px 0 rgba(255,255,255,.3), 0 2px 0 rgba(0,0,0,.3)',
           }}
         >
-          {props.airlineIata || 'BP'}
+          {props.airlineLogo ? <img src={props.airlineLogo} alt="" style={{ width: '86%', height: '86%', objectFit: 'contain' }} /> : props.airlineIata || 'BP'}
         </div>
         {phone ? <DevTag onBadge /> : <DevTag />}
         <div className="bp-hide-phone bp-hide-tablet" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>

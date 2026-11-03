@@ -79,6 +79,8 @@ export interface Livery {
   layers: Layer[];
   /** Uploaded logos: id → 128×128 WebP or PNG data URL. */
   logos: Record<string, string>;
+  /** The logo shown as the airline's logo (in the corner of the screen and beside its flights), v2.67. */
+  badge?: string;
 }
 
 export const MAX_LAYERS = 40;
@@ -265,6 +267,49 @@ export const LIVERY_STYLES: LiveryStyle[] = [
     ],
   },
   {
+    id: 'twin',
+    label: 'Twin stripes',
+    make: (a, b) => [
+      fillLayer('Fuselage', 'all', '#ffffff'),
+      bandLayer('Stripe 1', a, 0.56, 0.61),
+      bandLayer('Stripe 2', b, 0.635, 0.665),
+      fillLayer('Tail', 'tail', a),
+      ...[0.3, 0.55].map((r, i) => pathLayer(`Tail stripe ${i + 1}`, 'fin', b, finStripe(r))),
+      fillLayer('Engines', 'engines', a),
+      titlesLayer(a),
+      registrationLayer('#3a3f45'),
+    ],
+  },
+  {
+    id: 'window',
+    label: 'Window line',
+    make: (a, b) => [
+      fillLayer('Fuselage', 'all', '#ffffff'),
+      bandLayer('Belly', '#c9ced4', 0.68, 3),
+      bandLayer('Window line', a, 0.3, 0.5),
+      bandLayer('Pinstripe', b, 0.52, 0.545),
+      fillLayer('Tail', 'tail', '#ffffff'),
+      tailLetter(a),
+      fillLayer('Engines', 'engines', a),
+      registrationLayer('#3a3f45'),
+    ],
+  },
+  {
+    id: 'darkbelly',
+    label: 'Dark belly',
+    make: (a, b) => [
+      fillLayer('Fuselage', 'all', '#ffffff'),
+      bandLayer('Pinstripe', b, 0.5, 0.535),
+      bandLayer('Belly', a, 0.535, 3),
+      fillLayer('Tail', 'tail', a),
+      shapeLayer('Tail star', 'fin', 'star', b, 0.52, 0.46, 0.36),
+      fillLayer('Tailplane', 'stabiliser', a),
+      fillLayer('Engines', 'engines', b),
+      titlesLayer(a),
+      registrationLayer('#3a3f45'),
+    ],
+  },
+  {
     id: 'full',
     label: 'Full colour',
     make: (a, b) => [fillLayer('Fuselage', 'all', a), tailLetter(b), fillLayer('Engines', 'engines', a), titlesLayer('#ffffff'), registrationLayer('#ffffff')],
@@ -411,7 +456,8 @@ export function normaliseLivery(x: unknown): Livery | undefined {
     if (seen.has(l.id)) l.id = newId();
     seen.add(l.id);
   }
-  return { v: 2, name: typeof o.name === 'string' ? o.name.slice(0, 30) : undefined, layers, logos };
+  const badge = typeof o.badge === 'string' && logos[o.badge] ? o.badge : undefined;
+  return { v: 2, name: typeof o.name === 'string' ? o.name.slice(0, 30) : undefined, layers, logos, badge };
 }
 
 /** The airline's liveries from saved data: the v2.66 list, or the single livery of earlier versions. */
@@ -419,6 +465,16 @@ export function normaliseLiveries(list: unknown, single?: unknown): Livery[] {
   const raw = Array.isArray(list) ? list : single ? [single] : [];
   return raw.slice(0, MAX_LIVERIES).map(normaliseLivery).filter((l): l is Livery => Boolean(l));
 }
+
+/** The airline's logo: the one picked in the main livery, else in the second (a data URL). */
+export function airlineBadge(liveries: Livery[]): string | undefined {
+  for (const l of liveries) if (l.badge && l.logos[l.badge]) return l.logos[l.badge];
+  return undefined;
+}
+
+/** A logo picture from saved data (a small WebP or PNG data URL), or undefined. */
+export const normaliseLogo = (v: unknown): string | undefined =>
+  typeof v === 'string' && /^data:image\/(webp|png);base64,[A-Za-z0-9+/=]+$/.test(v) && v.length <= MAX_LOGO_CHARS ? v : undefined;
 
 /** A short key for caching painted pictures. */
 export function liveryKey(l: Livery, name: string, reg = ''): string {
@@ -433,3 +489,22 @@ export const layerText = (l: Extract<Layer, { kind: 'text' }>, airlineName: stri
   l.registration ? reg : l.airlineName ? (l.frame === 'fin' ? airlineName.trim().charAt(0).toUpperCase() : airlineName.trim()) : l.text;
 
 
+
+// ----------------------------------------------------------------------------
+// The airline's colours (v2.67)
+// ----------------------------------------------------------------------------
+export interface AirlineColours {
+  /** Main and second colour: used by the ready-made liveries and logos. */
+  a: string;
+  b: string;
+  /** Use them for the game's own look while playing this airline. */
+  theme?: boolean;
+}
+
+export const DEFAULT_AIRLINE_COLOURS: AirlineColours = { a: '#1d4e89', b: '#f5a623' };
+
+export function normaliseAirlineColours(x: unknown): AirlineColours | undefined {
+  if (!x || typeof x !== 'object') return undefined;
+  const o = x as Record<string, unknown>;
+  return { a: hex(o.a, DEFAULT_AIRLINE_COLOURS.a), b: hex(o.b, DEFAULT_AIRLINE_COLOURS.b), theme: o.theme === true || undefined };
+}

@@ -38,6 +38,7 @@ import { Button, C, DISPLAY, Segmented } from '../../ui/kit';
 import { useLayout } from '../../ui/layout';
 import { ColourPicker } from './ColourPicker';
 import { LOGO_TYPES, makeLogo } from './logoUpload';
+import { PRESET_LOGOS, presetLogo } from './presetLogos';
 
 type Tool = 'move' | 'hand' | 'brush' | 'eraser' | 'line' | 'fill' | 'shape' | 'text' | 'logo';
 const TOOL_LABEL: Record<Tool, string> = {
@@ -216,6 +217,8 @@ export function LiveryEditor(props: {
   sampleReg?: string;
   /** Which livery to open (0 or 1). */
   start?: number;
+  /** The airline's colours: where the ready-made styles and logos start. */
+  airlineColours?: { a: string; b: string };
   onSave: (l: Livery[]) => void;
   onClose: () => void;
 }) {
@@ -302,8 +305,8 @@ export function LiveryEditor(props: {
   const [note, setNote] = useState<string | null>(null);
   const [tab, setTab] = useState<'layers' | 'props' | 'styles'>('layers');
   const [stylesOpen, setStylesOpen] = useState(false);
-  const [styleA, setStyleA] = useState('#1d4e89');
-  const [styleB, setStyleB] = useState('#f5a623');
+  const [styleA, setStyleA] = useState(props.airlineColours?.a ?? '#1d4e89');
+  const [styleB, setStyleB] = useState(props.airlineColours?.b ?? '#f5a623');
   const [zoom, setZoom] = useState(1);
   const [colourOpen, setColourOpen] = useState(false);
 
@@ -668,19 +671,32 @@ export function LiveryEditor(props: {
       flash(r.error);
       return;
     }
-    const id = `logo${Date.now().toString(36)}`;
-    commit({ ...docRef.current, logos: { ...docRef.current.logos, [id]: r.url } });
-    setLogoPick(id);
-    setTool('logo');
-    flash('Logo added. Click the aircraft to place it.');
+    if (addLogo(r.url)) flash('Logo added. Click the aircraft to place it.');
   };
   const deleteLogo = (id: string) => {
     const d = docRef.current;
     const logos = { ...d.logos };
     delete logos[id];
-    commit({ ...d, logos, layers: d.layers.filter((l) => !(l.kind === 'logo' && l.logo === id)) });
+    commit({ ...d, logos, badge: d.badge === id ? undefined : d.badge, layers: d.layers.filter((l) => !(l.kind === 'logo' && l.logo === id)) });
     if (logoPick === id) setLogoPick(Object.keys(logos)[0] ?? null);
   };
+  /** A logo added to this livery (uploaded or a preset); the first one also becomes the airline's logo. */
+  const addLogo = (url: string) => {
+    const d = docRef.current;
+    if (Object.keys(d.logos).length >= MAX_LOGOS) {
+      flash(`A livery can have up to ${MAX_LOGOS} logos. Delete one first.`);
+      return null;
+    }
+    const id = `logo${Date.now().toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`;
+    const anyBadge = docsRef.current.some((x) => x.badge && x.logos[x.badge]);
+    commit({ ...d, logos: { ...d.logos, [id]: url }, badge: d.badge ?? (anyBadge ? undefined : id) });
+    setLogoPick(id);
+    setTool('logo');
+    return id;
+  };
+  const [presetA, setPresetA] = useState(props.airlineColours?.a ?? '#1d4e89');
+  const [presetB, setPresetB] = useState(props.airlineColours?.b ?? '#f5a623');
+  const presets = useMemo(() => PRESET_LOGOS.map((p) => ({ ...p, url: presetLogo(p.id, presetA, presetB, name) })), [presetA, presetB, name]);
 
   // ---------------------------------------------------------------- parts of the screen
   const recent = docColours(doc);
@@ -782,6 +798,16 @@ export function LiveryEditor(props: {
             <button type="button" aria-label="Delete this logo" title="Delete this logo (and its layers)" onClick={() => deleteLogo(id)} style={{ ...smallBtn, position: 'absolute', top: -6, right: -6, background: C.raised, borderRadius: 99, border: `1px solid ${C.border}`, width: 20, height: 20, padding: 0 }}>
               ×
             </button>
+            <button
+              type="button"
+              aria-pressed={doc.badge === id}
+              aria-label={doc.badge === id ? 'This is the airline logo' : 'Use as the airline logo'}
+              title={doc.badge === id ? 'Your airline logo (shown in the corner and beside your flights)' : 'Use as the airline logo (shown in the corner and beside your flights)'}
+              onClick={() => commit({ ...docRef.current, badge: docRef.current.badge === id ? undefined : id })}
+              style={{ ...smallBtn, position: 'absolute', bottom: -6, right: -6, background: doc.badge === id ? C.brand : C.raised, color: doc.badge === id ? C.brandInk : C.muted, borderRadius: 99, border: `1px solid ${C.border}`, width: 20, height: 20, padding: 0, fontSize: 11 }}
+            >
+              ★
+            </button>
           </div>
         ))}
         {Object.keys(doc.logos).length < MAX_LOGOS && (
@@ -801,7 +827,30 @@ export function LiveryEditor(props: {
           Take out a white background
         </label>
       </div>
-      <div style={{ fontSize: 11.5, color: C.muted }}>PNG, JPG or WebP, made into a 128×128 logo. Only upload pictures you own or have the right to use. Up to {MAX_LOGOS}.</div>
+      <div style={{ fontSize: 11.5, color: C.muted }}>PNG, JPG or WebP, made into a 128×128 logo. Only upload pictures you own or have the right to use. Up to {MAX_LOGOS}. The ★ logo is your airline logo, shown in the corner.</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+        <span style={{ fontSize: 12, fontWeight: 650, color: C.textSoft }}>Ready-made logos</span>
+        <input type="color" aria-label="Preset main colour" value={presetA} onChange={(e) => setPresetA(e.target.value)} style={{ width: 26, height: 22, padding: 0, border: `1px solid ${C.border}`, borderRadius: 5 }} />
+        <input type="color" aria-label="Preset second colour" value={presetB} onChange={(e) => setPresetB(e.target.value)} style={{ width: 26, height: 22, padding: 0, border: `1px solid ${C.border}`, borderRadius: 5 }} />
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {presets.map((p) =>
+          p.url ? (
+            <button
+              key={p.id}
+              type="button"
+              title={`${p.label}: add it to this livery`}
+              aria-label={`Add the ${p.label} logo`}
+              onClick={() => {
+                if (addLogo(p.url!)) flash(`${p.label} logo added. Click the aircraft to place it.`);
+              }}
+              style={{ width: 44, height: 44, borderRadius: 8, border: `1px solid ${C.line}`, background: C.bg, padding: 3, cursor: 'pointer' }}
+            >
+              <img src={p.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            </button>
+          ) : null
+        )}
+      </div>
     </div>
   );
 
@@ -823,7 +872,8 @@ export function LiveryEditor(props: {
           {toolSettings}
         </div>
       )}
-      {(tool === 'logo' || selLayer?.kind === 'logo') && (
+      {(
+
         <div style={section}>
           {head('Logos')}
           {logosPanel}
@@ -902,6 +952,36 @@ export function LiveryEditor(props: {
     </div>
   );
 
+  // previews of the ready-made styles on the aircraft being shown, in the chosen colours
+  const stylesShown = phone ? tab === 'styles' : stylesOpen;
+  const [stylePics, setStylePics] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!geo || !stylesShown) return;
+    let ok = true;
+    const t = window.setTimeout(() => {
+      const [big, bg] = [document.createElement('canvas'), null as CanvasRenderingContext2D | null];
+      const bctx = bg ?? big.getContext('2d')!;
+      const small = document.createElement('canvas');
+      small.width = 320;
+      small.height = Math.round((320 * geo.h) / geo.w);
+      const sctx = small.getContext('2d')!;
+      const out: Record<string, string> = {};
+      for (const st of LIVERY_STYLES) {
+        if (!ok) return;
+        renderLivery(geo, { v: 2, layers: st.make(styleA, styleB), logos: {} }, name, new Map(), bctx, reg);
+        sctx.clearRect(0, 0, small.width, small.height);
+        sctx.imageSmoothingQuality = 'high';
+        sctx.drawImage(big, 0, 0, small.width, small.height);
+        out[st.id] = small.toDataURL('image/webp', 0.85);
+      }
+      if (ok) setStylePics(out);
+    }, 150);
+    return () => {
+      ok = false;
+      window.clearTimeout(t);
+    };
+  }, [geo, stylesShown, styleA, styleB, name, reg]);
+
   const stylesPanel = (
     <div style={section}>
       {head('Start from a style')}
@@ -913,11 +993,12 @@ export function LiveryEditor(props: {
           <input type="color" value={styleB} onChange={(e) => setStyleB(e.target.value)} aria-label="Second colour" style={{ width: 30, height: 24, padding: 0, border: `1px solid ${C.border}`, borderRadius: 5 }} /> Second
         </label>
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8 }}>
         {LIVERY_STYLES.map((s) => (
-          <Button
+          <button
             key={s.id}
-            size="sm"
+            type="button"
+            aria-label={s.label}
             onClick={() => {
               const layers = s.make(styleA, styleB);
               setLayers(layers);
@@ -925,9 +1006,11 @@ export function LiveryEditor(props: {
               setStylesOpen(false);
               flash(`${s.label}: every part is a layer you can change. Undo brings back what you had.`);
             }}
+            style={{ display: 'grid', gap: 4, padding: 6, borderRadius: 9, border: `1px solid ${C.border}`, background: `${cloudSkyCss(`style-${s.id}`)} center / cover`, cursor: 'pointer', textAlign: 'left' }}
           >
-            {s.label}
-          </Button>
+            <span style={{ display: 'block', aspectRatio: geo ? `${geo.w} / ${geo.h}` : '10 / 3', background: stylePics[s.id] ? `url(${stylePics[s.id]}) center / contain no-repeat` : 'none' }} />
+            <span style={{ fontSize: 12, fontWeight: 650, color: '#fff', textShadow: '0 1px 3px rgba(0,0,0,.6)' }}>{s.label}</span>
+          </button>
         ))}
       </div>
       <div style={{ fontSize: 11.5, color: C.muted }}>Replaces your layers (logos stay). Undo to go back.</div>
@@ -1073,7 +1156,7 @@ export function LiveryEditor(props: {
           <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8, position: 'relative' }}>
             {stage}
             {status}
-            {stylesOpen && <div style={{ position: 'absolute', top: 10, left: 10, width: 'min(420px, 90%)', zIndex: 3, boxShadow: '0 12px 30px rgba(0,0,0,.45)', borderRadius: 10 }}>{stylesPanel}</div>}
+            {stylesOpen && <div style={{ position: 'absolute', top: 10, left: 10, width: 'min(560px, 94%)', maxHeight: '90%', overflowY: 'auto', zIndex: 3, boxShadow: '0 12px 30px rgba(0,0,0,.45)', borderRadius: 10 }}>{stylesPanel}</div>}
           </div>
           <div style={{ minHeight: 0, minWidth: 0, overflowY: 'auto', overflowX: 'hidden', display: 'grid', gap: 10, alignContent: 'start' }}>
             {layersPanel}
