@@ -1,4 +1,5 @@
-import { AircraftPhoto } from './AircraftPhoto';
+import { AircraftPhoto, SpecialTag } from './AircraftPhoto';
+import { MAX_SPECIAL } from '../game/livery';
 import { useMemo, useState } from 'react';
 import type { CabinPreset } from '../game/economics';
 import { leaseStatus, weeksText } from '../game/leasing';
@@ -28,6 +29,9 @@ export interface FleetPanelProps {
   onRefit: (tails: string[], fit: { cabin: CabinConfig } | { preset: CabinPreset }) => void;
   /** Opens the livery editor. */
   onLivery?: () => void;
+  /** The airline's liveries by name: with two, aircraft can wear the second (special) one. */
+  liveryNames?: string[];
+  onSetLivery?: (tails: string[], index: number) => void;
   onReplace: (tails: string[], model: AircraftModel, mode: 'owned' | 'leased', leaseWeeks: number, dropClashing: boolean) => void;
   onBuy: () => void;
   iconForModel: (m: AircraftModel) => string;
@@ -237,6 +241,18 @@ export function FleetPanel(props: FleetPanelProps) {
                 <Button size="sm" onClick={() => setDialog({ kind: 'reregister', tails: pickedTails })}>
                   Re-register
                 </Button>
+                {props.onSetLivery && (props.liveryNames?.length ?? 0) > 1 && (
+                  <>
+                    <Button size="sm" title={`Paint them in ${props.liveryNames![1]} (up to ${MAX_SPECIAL} aircraft)`} onClick={() => props.onSetLivery!(pickedTails, 1)}>
+                      Special livery
+                    </Button>
+                    {picked.some((a) => a.livery === 1) && (
+                      <Button size="sm" onClick={() => props.onSetLivery!(pickedTails, 0)}>
+                        Main livery
+                      </Button>
+                    )}
+                  </>
+                )}
                 <Button size="sm" variant="ghost" onClick={() => props.onSellOrReturn(pickedTails)}>
                   Sell or return
                 </Button>
@@ -278,6 +294,7 @@ export function FleetPanel(props: FleetPanelProps) {
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 650 }}>
                     {ac.tailNumber}
+                    {ac.livery === 1 && (props.liveryNames?.length ?? 0) > 1 && <SpecialTag name={props.liveryNames![1]} />}
                     {ac.acquisition === 'leased' && (
                       <span style={{ fontSize: 11.5, color: C.muted, fontWeight: 500 }}>
                         {' '}

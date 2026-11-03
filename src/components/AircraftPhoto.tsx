@@ -7,7 +7,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { AIRCRAFT_PHOTOS } from '../game/aircraftPhotos';
 import { cloudSkyCss } from '../game/cloudSky';
-import type { Livery } from '../game/livery';
+import { specialLabel, type Livery } from '../game/livery';
 import { paintedPhoto } from '../game/liveryPaint';
 import type { AircraftModel } from '../game/types';
 
@@ -50,18 +50,21 @@ export function AircraftPhoto(props: {
   /** One of the player's aircraft: its registration, and which livery it wears. */
   tailNumber?: string;
   liveryIndex?: number;
+  /** No "Special Livery" tag (where it's shown beside the picture already). */
+  noTag?: boolean;
 }) {
   const size = AIRCRAFT_PHOTOS[props.model.id];
   const [failed, setFailed] = useState(false);
   const ctx = useContext(LiveryContext);
-  const livery = ctx ? ctx.liveries[props.liveryIndex ?? 0] ?? ctx.liveries[0] : undefined;
+  const special = Boolean(ctx && props.liveryIndex === 1 && ctx.liveries.length > 1);
+  const livery = ctx ? ctx.liveries[special ? 1 : 0] : undefined;
   const src = usePaintedPhoto(props.model.id, livery, ctx?.name ?? '', props.tailNumber || SAMPLE_REG);
   if (!size || failed) {
     if (!props.fallback) return null;
     const s = props.iconSize ?? 24;
     return <img src={props.fallback} alt="" style={{ width: s, height: s, flex: 'none', ...props.style }} />;
   }
-  return (
+  const img = (
     <img
       src={src}
       alt=""
@@ -69,8 +72,39 @@ export function AircraftPhoto(props: {
       decoding="async"
       draggable={false}
       onError={() => setFailed(true)}
-      style={{ display: 'block', width: props.width, maxWidth: '100%', height: 'auto', aspectRatio: `${size[0]} / ${size[1]}`, objectFit: 'contain', flex: 'none', ...props.style }}
+      style={{ display: 'block', width: special ? '100%' : props.width, maxWidth: '100%', height: 'auto', aspectRatio: `${size[0]} / ${size[1]}`, objectFit: 'contain', flex: 'none', ...(special ? {} : props.style) }}
     />
+  );
+  if (!special || props.noTag) return img;
+  // the special livery is tagged on its picture, as flight trackers do
+  const small = typeof props.width === 'number' && props.width < 120;
+  return (
+    <span style={{ position: 'relative', display: 'block', width: props.width, maxWidth: '100%', flex: 'none', ...props.style }} title={specialLabel(ctx!.liveries[1])}>
+      {img}
+      {small ? (
+        <span aria-label={specialLabel(ctx!.liveries[1])} style={{ position: 'absolute', top: -3, right: -3, width: 14, height: 14, borderRadius: 99, background: SPECIAL_COLOUR, color: '#fff', fontSize: 9, display: 'grid', placeItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,.4)' }}>
+          ★
+        </span>
+      ) : (
+        <span style={{ position: 'absolute', left: 6, top: 4 }}>
+          <SpecialTag name={ctx!.liveries[1].name} />
+        </span>
+      )}
+    </span>
+  );
+}
+
+const SPECIAL_COLOUR = '#a8326e';
+
+/** "Retro · Special Livery", the tag on aircraft in the second livery. */
+export function SpecialTag({ name }: { name?: string }) {
+  return (
+    <span
+      className="bp-special-tag"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 6, padding: '1px 7px', borderRadius: 99, background: SPECIAL_COLOUR, color: '#fff', fontSize: 10.5, fontWeight: 700, letterSpacing: 0.2, verticalAlign: 'middle', whiteSpace: 'nowrap', boxShadow: '0 1px 3px rgba(0,0,0,.35)' }}
+    >
+      ★ {specialLabel({ v: 2, layers: [], logos: {}, name })}
+    </span>
   );
 }
 

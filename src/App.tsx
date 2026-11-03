@@ -118,7 +118,7 @@ import { RouteFromBar } from './components/RouteFromBar';
 import { WelcomeTour, tourWantedForNewCareer } from './components/WelcomeTour';
 import { C, PanelTabsContext, applyThemeToDocument, useThemeVersion } from './ui/kit';
 import { initLayout } from './ui/layout';
-import { DEFAULT_AIRLINE_COLOURS, airlineBadge, normaliseAirlineColours, normaliseLiveries, type AirlineColours, type Livery } from './game/livery';
+import { DEFAULT_AIRLINE_COLOURS, MAX_SPECIAL, airlineBadge, specialLabel, tidyFleetLiveries, normaliseAirlineColours, normaliseLiveries, type AirlineColours, type Livery } from './game/livery';
 import { applyAirlineTheme } from './ui/airlineTheme';
 import { LiveryContext } from './components/AircraftPhoto';
 
@@ -867,19 +867,42 @@ export default function App() {
     setScreen('dashboard');
   };
 
+  /** Put aircraft in the main livery (0) or the special one (1, on up to 50 aircraft). */
+  const setAircraftLivery = (tails: string[], index: number) => {
+    const set = new Set(tails);
+    if (index === 1) {
+      if (liveries.length < 2) return;
+      const already = fleet.filter((a) => a.livery === 1 && !set.has(a.tailNumber)).length;
+      const room = MAX_SPECIAL - already;
+      if (room <= 0) {
+        flashToast(`The special livery is on ${MAX_SPECIAL} aircraft already, the most it can be.`);
+        return;
+      }
+      const take = tails.filter((t) => fleet.some((a) => a.tailNumber === t)).slice(0, room);
+      const ok = new Set(take);
+      setFleet((f) => f.map((a) => (ok.has(a.tailNumber) ? { ...a, livery: 1 } : a)));
+      const name = liveries[1].name?.trim() || 'Second';
+      flashToast(take.length < tails.length ? `${take.length} of ${tails.length} aircraft now wear ${name}: the special livery can be on ${MAX_SPECIAL} at most.` : `${take.length === 1 ? take[0] : `${take.length} aircraft`} now ${take.length === 1 ? 'wears' : 'wear'} ${name}, the special livery.`);
+      return;
+    }
+    setFleet((f) => f.map((a) => (set.has(a.tailNumber) ? { ...a, livery: undefined } : a)));
+    flashToast(`${tails.length === 1 ? tails[0] : `${tails.length} aircraft`} back in the main livery.`);
+  };
+
   const loadCareer = (raw: SaveGameState) => {
     setTourOpen(false);
     const s = hydrateSave(raw, airportByIata);
     setActiveSaveId(s.saveId);
     setAirlineName(s.airlineName);
-    setLiveries(normaliseLiveries(s.liveries, s.livery));
+    const loadedLiveries = normaliseLiveries(s.liveries, s.livery);
+    setLiveries(loadedLiveries);
     setAirlineColours(normaliseAirlineColours(s.airlineColours));
     setAirlineIata(s.airlineIata);
     setAirlineCallsign(s.airlineCallsign);
     setHubIata(s.hubIata);
     setHubs(s.hubs!);
     setGameMode(s.gameMode as GameMode);
-    setFleet(s.fleet);
+    setFleet(tidyFleetLiveries(s.fleet, loadedLiveries));
     setSchedule(s.schedule);
     setLedgerHistory(s.ledgerHistory ?? []);
     setEconSpeed(s.econPaused ? 'paused' : 'normal');
@@ -1696,7 +1719,8 @@ export default function App() {
           sampleReg={fleet[0]?.tailNumber}
           airlineColours={airlineColours ?? DEFAULT_AIRLINE_COLOURS}
           onSave={(l) => {
-            const kept = l.filter((x) => x.layers.length || Object.keys(x.logos).length);
+            // nothing left at all: plain white; otherwise both stay, so aircraft keep the livery they wear
+            const kept = l.every((x) => !x.layers.length && !Object.keys(x.logos).length) ? [] : l;
             setLiveries(kept);
             // aircraft on a livery that's gone go back to the main one
             if (kept.length < 2) setFleet((f) => (f.some((a) => a.livery) ? f.map((a) => (a.livery ? { ...a, livery: undefined } : a)) : f));
@@ -1825,6 +1849,8 @@ export default function App() {
             setLiveryStart(0);
             setLiveryOpen(true);
           }}
+          liveryNames={liveries.map((l, i) => l.name || (i ? 'Second livery' : 'Main livery'))}
+          onSetLivery={setAircraftLivery}
           onReplace={replaceAircraft}
           onBuy={() => setPanel('buy')}
           iconForModel={iconForModel}
@@ -1940,9 +1966,9 @@ export default function App() {
             onUpdateFlight={updateFlight}
             onDeleteFlight={deleteFlightWithPair}
             onSellOrReturnAircraft={sellOrReturnAircraft}
-            liveryNames={liveries.map((l, i) => l.name || (i ? 'Second livery' : 'Main livery'))}
+            liveryNames={liveries.map((l, i) => (i ? specialLabel(l) : l.name || 'Main livery'))}
             airlineLogo={airlineLogo}
-            onSetLivery={(tail, i) => setFleet((f) => f.map((a) => (a.tailNumber === tail ? { ...a, livery: i || undefined } : a)))}
+            onSetLivery={(tail, i) => setAircraftLivery([tail], i)}
             onEditLivery={(i) => {
               setLiveryStart(i);
               setLiveryOpen(true);

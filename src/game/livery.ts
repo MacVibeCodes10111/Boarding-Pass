@@ -88,6 +88,33 @@ export const MAX_STROKES = 400;
 export const MAX_LOGOS = 5;
 /** Liveries an airline can have; each aircraft wears one of them. */
 export const MAX_LIVERIES = 2;
+/** Aircraft that can wear the second (special) livery. */
+export const MAX_SPECIAL = 50;
+/** Brush points kept per livery (keeps saves small). */
+export const MAX_POINTS = 60_000;
+
+/** "Retro · Special Livery": how the second livery is labelled on an aircraft's picture. */
+export const specialLabel = (l: Livery | undefined) => `${l?.name?.trim() || 'Second'} · Special Livery`;
+
+/** Which livery an aircraft wears: 1 for the special one (when there is one), else 0. */
+export const liveryIndexOf = (ac: { livery?: number }, liveries: Livery[]) => (ac.livery === 1 && liveries.length > 1 ? 1 : 0);
+
+/** An aircraft list with livery choices that still make sense: the special one only while it exists, and on 50 at most. */
+export function tidyFleetLiveries<T extends { livery?: number }>(fleet: T[], liveries: Livery[]): T[] {
+  let n = 0;
+  let changed = false;
+  const out = fleet.map((a) => {
+    if (a.livery === undefined) return a;
+    const keep = a.livery === 1 && liveries.length > 1 && n < MAX_SPECIAL;
+    if (keep) {
+      n++;
+      return a;
+    }
+    changed = true;
+    return { ...a, livery: undefined };
+  });
+  return changed ? out : fleet;
+}
 export const LOGO_PX = 128;
 /** Biggest logo data URL kept (characters, about 16 KB of image). */
 export const MAX_LOGO_CHARS = 22_000;
@@ -446,6 +473,14 @@ export function normaliseLivery(x: unknown): Livery | undefined {
   if (o.v === 1) return fromV1(o);
   if (o.v !== 2 || !Array.isArray(o.layers)) return undefined;
   const layers = o.layers.slice(0, MAX_LAYERS).map(layerFrom).filter((l): l is Layer => Boolean(l));
+  // brush strokes beyond the budget are dropped (the oldest kept)
+  let points = 0;
+  for (const l of layers)
+    if (l.kind === 'paint')
+      l.strokes = l.strokes.filter((s) => {
+        points += s.pts.length;
+        return points <= MAX_POINTS;
+      });
   const logos: Record<string, string> = {};
   if (o.logos && typeof o.logos === 'object')
     for (const [k, v] of Object.entries(o.logos as Record<string, unknown>).slice(0, MAX_LOGOS))

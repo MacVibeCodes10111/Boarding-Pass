@@ -19,6 +19,7 @@ import {
   REGION_LABEL,
   REGIONS,
   MAX_LIVERIES,
+  MAX_POINTS,
   registrationLayer,
   fillLayer,
   layerText,
@@ -498,8 +499,9 @@ export function LiveryEditor(props: {
     if (tool === 'brush' || tool === 'eraser' || tool === 'line') {
       const t = paintTarget(px, py, tool === 'eraser');
       if (!t) return;
-      if (docRef.current.layers.reduce((n, l) => n + (l.kind === 'paint' ? l.strokes.length : 0), 0) >= MAX_STROKES) {
-        flash(`That's the most brush strokes a livery can keep (${MAX_STROKES}).`);
+      const used = docRef.current.layers.reduce((n, l) => n + (l.kind === 'paint' ? l.strokes.reduce((m, s) => m + s.pts.length, 0) : 0), 0);
+      if (docRef.current.layers.reduce((n, l) => n + (l.kind === 'paint' ? l.strokes.length : 0), 0) >= MAX_STROKES || used >= MAX_POINTS) {
+        flash('That’s as much brushwork as a livery can keep. Clear or delete a paint layer to draw more.');
         return;
       }
       const [fx, fy] = fromPx(geo, t.frame, px, py);

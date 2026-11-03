@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 2.67.1. Free to play. See [Credits and licences](#credits-and-licences).
+Version 2.68. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -20,6 +20,12 @@ Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 2.68:
+
+- **The special livery.** Your main livery is on every aircraft, new ones included. Put the second livery on up to 50 aircraft: select them in the fleet and choose Special livery, or pick it in an aircraft's window. Those aircraft are tagged "<name> · Special Livery" wherever they appear, as on flight trackers.
+- **Airports are easier to see and to click.** Bigger badges and labels, drawn above the traffic, and a click on an airport opens it even with aircraft on top of it (zoomed right in, the aircraft at the gates get the click).
+- **Sturdier liveries:** liveries and aircraft choices are checked when a career loads, and brushwork is capped so saves stay small.
 
 Version 2.67.1:
 

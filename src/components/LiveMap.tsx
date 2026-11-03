@@ -57,7 +57,7 @@ import { airportGateCode, gateRank } from '../game/gateCode';
 import { AIRCRAFT_PHOTOS } from '../game/aircraftPhotos';
 import { cloudSkyCss } from '../game/cloudSky';
 import { paintedPhoto } from '../game/liveryPaint';
-import { airlineBadge } from '../game/livery';
+import { airlineBadge, liveryIndexOf, specialLabel } from '../game/livery';
 import { LiveryContext } from './AircraftPhoto';
 
 const EMPTY_FC = { type: 'FeatureCollection', features: [] as any[] };
@@ -393,6 +393,7 @@ function planeHeroHtml(raw: Record<string, any>): string {
   if (!size) return '';
   const sky = cloudSkyCss(String(raw.tailNumber ?? id)).replace(/"/g, "'");
   return `<div class="bp-pop-hero" style="position:relative;margin:-2px 0 10px;border-radius:10px;overflow:hidden;aspect-ratio:2.8;background:${sky} center/cover;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)">
+    <span class="bp-pop-special" style="display:none;position:absolute;left:8px;bottom:8px;z-index:1;padding:1px 8px;border-radius:99px;background:#a8326e;color:#fff;font-size:11px;font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.35)"></span>
     <img class="bp-pop-badge" alt="" draggable="false" style="display:none;position:absolute;left:8px;top:8px;width:34px;height:34px;padding:3px;border-radius:9px;background:#fff;object-fit:contain;box-shadow:0 2px 6px rgba(0,0,0,.3);z-index:1" />
     <img alt="" draggable="false" data-model="${escapeHtml(id)}" src="/aircraft/${escapeHtml(id)}.webp" style="position:absolute;left:6%;width:88%;top:50%;transform:translateY(-50%);height:auto;aspect-ratio:${size[0]}/${size[1]};filter:drop-shadow(0 8px 10px rgba(10,20,40,.28));pointer-events:none" />
   </div>`;
@@ -568,6 +569,14 @@ function addLayers(map: any) {
       'circle-stroke-opacity': 0.9,
     },
   });
+  // The airports' click targets: a little bigger than the badges, so they're easy to hit
+  map.addLayer({
+    id: 'airports-hit',
+    type: 'circle',
+    source: 'airports',
+    filter: AIRPORT_LOD_FILTER,
+    paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, 10, 5, 13, 8, 16, 11, 19], 'circle-opacity': 0, 'circle-stroke-width': 0, 'circle-pitch-scale': 'viewport' },
+  });
   map.addLayer({
     id: 'airports-circle',
     type: 'symbol',
@@ -576,7 +585,7 @@ function addLayers(map: any) {
     layout: {
       'icon-image': ['get', 'ap_icon'],
       'symbol-sort-key': ['-', 10, ['get', 'ac_tier']],
-      'icon-size': ['interpolate', ['linear'], ['zoom'], 2, 0.36, 4, 0.46, 6, 0.58, 8, 0.72, 10, 0.84],
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 2, 0.46, 4, 0.6, 6, 0.74, 8, 0.9, 10, 1],
       'icon-allow-overlap': true,
       'icon-ignore-placement': true,
     },
@@ -606,12 +615,12 @@ function addLayers(map: any) {
     id: 'airports-labels',
     type: 'symbol',
     source: 'airports',
-    minzoom: 4.5,
+    minzoom: 4,
     filter: AIRPORT_LOD_FILTER,
     layout: {
       'text-field': ['concat', ['get', 'iata'], ' • ', ['get', 'gate']],
-      'text-size': ['interpolate', ['linear'], ['zoom'], 4.5, 9.5, 7, 11],
-      'text-offset': [0, 1.05],
+      'text-size': ['interpolate', ['linear'], ['zoom'], 4, 10.5, 7, 12],
+      'text-offset': [0, 1.25],
       'text-anchor': 'top',
       'text-optional': true,
     },
@@ -1150,6 +1159,8 @@ function installMapContent(map: any, styleId: MapStyleId, threeD: boolean) {
   (Object.keys(WX_TAG_COLORS) as (keyof typeof WX_TAG_COLORS)[]).forEach((c) => putImage(map, `wx-${c}`, createWxTagImageData(c), 2));
   addBuildings(map, styleId); // first, so the game's layers draw over them
   addLayers(map);
+  // Airports draw over the aircraft, so a busy airport's badge is never hidden under its traffic
+  for (const id of ['airports-hit', 'airports-linked', 'airports-circle', 'airports-wx', 'airports-labels']) if (map.getLayer(id)) map.moveLayer(id);
   applyMapTheme(map, styleId);
   if (threeD) apply3dLook(map, true);
 }
@@ -1278,9 +1289,16 @@ export function LiveMap(props: LiveMapProps) {
           installMapContent(map, shownStyle.current, latest.current.threeD);
           if (latest.current.globe) setMapProjection(map, true);
 
+          /**
+           * A click on an airport's badge opens the airport, even with aircraft on
+           * top of it. Zoomed right in (the badge has faded), the aircraft at the
+           * gates get the click.
+           */
+          const airportFirst = (e: any) => map.getZoom() < 12.5 && map.queryRenderedFeatures(e.point, { layers: ['airports-hit'] }).length > 0;
+
           // Runs before the layer handlers below; marks the event so they stand down
           map.on('click', (e: any) => {
-            if (!latest.current.threeD) return;
+            if (!latest.current.threeD || airportFirst(e)) return;
             const hit = pick3dAt(picks3d.current, e.point.x, e.point.y);
             if (!hit) return;
             e.picked3d = true;
@@ -1294,13 +1312,12 @@ export function LiveMap(props: LiveMapProps) {
             if (!latest.current.threeD) return;
             const over = pick3dAt(picks3d.current, e.point.x, e.point.y);
             if (over) map.getCanvas().style.cursor = 'pointer';
-            else if (map.getCanvas().style.cursor === 'pointer' && !map.queryRenderedFeatures(e.point, { layers: ['airports-circle', 'live-planes-symbol', 'ai-planes-symbol', 'ground-planes-symbol'] }).length) map.getCanvas().style.cursor = '';
+            else if (map.getCanvas().style.cursor === 'pointer' && !map.queryRenderedFeatures(e.point, { layers: ['airports-hit', 'live-planes-symbol', 'ai-planes-symbol', 'ground-planes-symbol'] }).length) map.getCanvas().style.cursor = '';
           });
 
-          map.on('click', 'airports-circle', (e: any) => {
+          map.on('click', 'airports-hit', (e: any) => {
             if (e.picked3d || e.originalEvent?.picked3d) return;
-            // An aircraft parked or taxiing on top of the airport badge gets the click
-            if (map.queryRenderedFeatures(e.point, { layers: ['live-planes-symbol', 'ground-planes-symbol', 'ai-planes-symbol', 'labels-3d-hit'] }).length > 0) return;
+            if (!airportFirst(e)) return;
             const iata = e.features?.[0]?.properties?.iata;
             const found = latest.current.airportByIata.get(iata);
             if (found) latest.current.onInspectAirport(found);
@@ -1331,7 +1348,13 @@ export function LiveMap(props: LiveMapProps) {
             }
             const lv = liveryRef.current;
             const ac = plane && latest.current.fleet.find((a) => a.tailNumber === plane.tailNumber);
-            const lvy = lv ? lv.liveries[ac?.livery ?? 0] ?? lv.liveries[0] : undefined;
+            const li = lv && ac ? liveryIndexOf(ac, lv.liveries) : 0;
+            const lvy = lv ? lv.liveries[li] : undefined;
+            const tag = popup.getElement?.()?.querySelector('.bp-pop-special') as HTMLElement | null;
+            if (tag && li === 1 && lvy) {
+              tag.textContent = `★ ${specialLabel(lvy)}`;
+              tag.style.display = 'block';
+            }
             if (heroImg && lvy) paintedPhoto(String(plane?.modelId), lvy, lv!.name, String(plane?.tailNumber ?? '')).then((u) => u && (heroImg.src = u));
             attachOrbit(map, popup);
             popup.on('close', () => {
@@ -1355,7 +1378,7 @@ export function LiveMap(props: LiveMapProps) {
           map.on('click', 'live-planes-symbol', (e: any) => {
             if (e.picked3d || e.originalEvent?.picked3d) return;
             const feat = e.features?.[0];
-            if (!feat || (latest.current.threeD && map.queryRenderedFeatures(e.point, { layers: ['labels-3d-hit'] }).length > 0) || planeClickBlocked()) return;
+            if (!feat || airportFirst(e) || (latest.current.threeD && map.queryRenderedFeatures(e.point, { layers: ['labels-3d-hit'] }).length > 0) || planeClickBlocked()) return;
             openTrackedPopup(feat.geometry.coordinates.slice(), buildPlanePopupHtml(feat.properties), feat.properties.flightId, feat.properties);
           });
 
@@ -1370,7 +1393,7 @@ export function LiveMap(props: LiveMapProps) {
             if (!e.fromHit3d && (e.picked3d || e.originalEvent?.picked3d)) return;
             const feat = e.features?.[0];
             const traffic = latest.current.aiTraffic;
-            if (!feat || !traffic) return;
+            if (!feat || !traffic || airportFirst(e)) return;
             // Your own planes sit on top — don't steal their clicks (nor the 3D targets)
             if (!e.fromHit3d && map.queryRenderedFeatures(e.point, { layers: ['live-planes-symbol', 'planes-3d'] }).length > 0) return;
             if (!e.fromHit3d && latest.current.threeD && map.queryRenderedFeatures(e.point, { layers: ['labels-3d-hit'] }).length > 0) return;
@@ -1385,7 +1408,7 @@ export function LiveMap(props: LiveMapProps) {
           // 3D: the floating aircraft are picked by where they are drawn on screen
           const hit3d = (e: any) => Boolean(e.picked3d) || (latest.current.threeD && map.queryRenderedFeatures(e.point, { layers: ['labels-3d-hit'] }).length > 0);
           map.on('click', 'labels-3d-hit', (e: any) => {
-            if (e.picked3d) return; // already handled by the screen picker
+            if (e.picked3d || airportFirst(e)) return; // already handled by the screen picker, or an airport's
             // Your aircraft first, then the nearest target to the click
             const feats = (e.features ?? []) as any[];
             const p = (feats.find((f) => f.properties?.kind === 'player') ?? feats[0])?.properties;
@@ -1396,11 +1419,11 @@ export function LiveMap(props: LiveMapProps) {
           map.on('click', 'planes-3d', (e: any) => {
             if (e.picked3d || e.originalEvent?.picked3d) return;
             const p = e.features?.[0]?.properties;
-            if (!p || hit3d(e) || planeClickBlocked()) return;
+            if (!p || hit3d(e) || airportFirst(e) || planeClickBlocked()) return;
             openTrackedPopup([Number(p.at_lng), Number(p.at_lat)], buildPlanePopupHtml(p), p.flightId, p);
           });
           map.on('click', 'ai-3d', (e: any) => {
-            if (e.picked3d || e.originalEvent?.picked3d || hit3d(e) || map.queryRenderedFeatures(e.point, { layers: ['planes-3d'] }).length > 0) return;
+            if (e.picked3d || e.originalEvent?.picked3d || hit3d(e) || airportFirst(e) || map.queryRenderedFeatures(e.point, { layers: ['planes-3d'] }).length > 0) return;
             onAiClick(e);
           });
 
@@ -1408,7 +1431,7 @@ export function LiveMap(props: LiveMapProps) {
             if (e.picked3d || e.originalEvent?.picked3d) return;
             const feat = e.features?.[0];
             if (!feat) return;
-            if (map.queryRenderedFeatures(e.point, { layers: ['live-planes-symbol'] }).length > 0) return;
+            if (map.queryRenderedFeatures(e.point, { layers: ['live-planes-symbol'] }).length > 0 || airportFirst(e)) return;
             if (planeClickBlocked()) return;
             const p = feat.properties;
             if (p.kind === 'player') {
@@ -1422,7 +1445,7 @@ export function LiveMap(props: LiveMapProps) {
 
           map.on('click', (e: any) => {
             if (e.picked3d || e.originalEvent?.picked3d) return;
-            const hits = map.queryRenderedFeatures(e.point, { layers: ['airports-circle', 'live-planes-symbol', 'ai-planes-symbol', 'ai-planes-dot', 'ground-planes-symbol', 'planes-3d', 'ai-3d', 'labels-3d-hit'] });
+            const hits = map.queryRenderedFeatures(e.point, { layers: ['airports-hit', 'live-planes-symbol', 'ai-planes-symbol', 'ai-planes-dot', 'ground-planes-symbol', 'planes-3d', 'ai-3d', 'labels-3d-hit'] });
             if (hits.length === 0) {
               latest.current.onInspectAirport(null);
               closePopup();
@@ -1430,7 +1453,7 @@ export function LiveMap(props: LiveMapProps) {
             }
           });
 
-          ['airports-circle', 'live-planes-symbol', 'ai-planes-symbol', 'ai-planes-dot', 'ground-planes-symbol', 'planes-3d', 'ai-3d', 'labels-3d-hit'].forEach((layer) => {
+          ['airports-hit', 'live-planes-symbol', 'ai-planes-symbol', 'ai-planes-dot', 'ground-planes-symbol', 'planes-3d', 'ai-3d', 'labels-3d-hit'].forEach((layer) => {
             map.on('mouseenter', layer, () => (map.getCanvas().style.cursor = 'pointer'));
             map.on('mouseleave', layer, () => (map.getCanvas().style.cursor = ''));
           });
