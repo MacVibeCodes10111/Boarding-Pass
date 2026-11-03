@@ -282,13 +282,7 @@ function ModelView(props: BuyAircraftPanelProps) {
           <AircraftPhoto model={m} width="100%" style={{ maxWidth: 560, margin: '0 auto' }} />
         </div>
       )}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        {!hasAircraftPhoto(m) && <img src={props.iconForModel(m)} alt="" style={{ width: 44, height: 44 }} />}
-        <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.4 }}>
-          {tier.sizeLabel}
-          {m.is_cargo ? ' freighter' : ''}, type code <b style={{ color: C.textSoft }}>{m.icao_code}</b>. ICAO size <b style={{ color: C.textSoft }}>Code {aircraftGateCode(m)}</b>{WINGSPAN_M[m.id] ? ` (${WINGSPAN_M[m.id]} m wingspan)` : ''}: flies to airports with Code {aircraftGateCode(m)} gates or bigger.
-        </div>
-      </div>
+      {!hasAircraftPhoto(m) && <img src={props.iconForModel(m)} alt="" style={{ width: 44, height: 44 }} />}
 
       {/* Key numbers */}
       <div style={{ ...box, display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
@@ -296,6 +290,10 @@ function ModelView(props: BuyAircraftPanelProps) {
         {stat(m.is_cargo ? 'Payload' : 'Seats', m.is_cargo ? `${m.cargo_cap_tons} t` : `${seats} of ${m.max_exit_limit}`)}
         {stat('Cruise', `${m.cruise_speed_kts} kt`)}
         {stat('Turnaround', `${m.turnaround_min} min`)}
+        {stat('Size', `${tier.sizeLabel}${m.is_cargo ? ' freighter' : ''}`)}
+        {stat('Type code', m.icao_code)}
+        {stat('ICAO size', `Code ${aircraftGateCode(m)}`)}
+        {stat('Wingspan', WINGSPAN_M[m.id] ? `${WINGSPAN_M[m.id]} m` : '—')}
       </div>
 
       {/* Order */}
