@@ -136,6 +136,8 @@ export interface PlayerAircraft {
   acquiredMin?: number;
   /** The lease (v2.38+); leased aircraft from older saves have none and pay day by day. */
   lease?: LeaseTerms;
+  /** Which of the airline's liveries it wears (v2.66; 0 or none = the main one). */
+  livery?: number;
 }
 
 export interface Fares {
@@ -268,8 +270,10 @@ export interface SaveGameState {
   /** Revision for cloud sync: bigger is newer, always above the previous save's. */
   rev?: number;
   // --- v2.64+ ---
-  /** The airline's livery (see game/livery.ts); none means plain white. */
-  livery?: Livery;
+  /** Before v2.66: the airline's one livery (read on load, no longer written). */
+  livery?: unknown;
+  /** The airline's liveries (up to two; see game/livery.ts); none means plain white. */
+  liveries?: Livery[];
 }
 
 /** Minimal leg description used by the conflict checker. */

@@ -7,8 +7,6 @@ import { Icon, type IconName } from '../ui/icons';
 import { Button, C, DISPLAY, Field, ModalShell, inputStyle } from '../ui/kit';
 import { openAppearance } from './Appearance';
 import { CreditsModal } from './Credits';
-import { LiveryEditor } from './LiveryEditor';
-import type { Livery } from '../game/livery';
 
 export function MainMenu(props: {
   airlineName: string;
@@ -22,15 +20,14 @@ export function MainMenu(props: {
   onAirlineDetails: (name: string, callsign: string) => string | null;
   onTour: () => void;
   onLeave: () => void;
-  livery?: Livery;
-  /** Model ids in the fleet, for the livery preview. */
-  fleetModels: string[];
-  onLivery: (l: Livery | undefined) => void;
+  /** True when the airline has a livery. */
+  hasLivery: boolean;
+  /** Opens the livery editor. */
+  onOpenLivery: () => void;
 }) {
   const [saved, setSaved] = useState(false);
   const [credits, setCredits] = useState(false);
   const [details, setDetails] = useState(false);
-  const [livery, setLivery] = useState(false);
   const row = (icon: IconName, label: string, hint: string, onClick: () => void) => (
     <button
       type="button"
@@ -71,7 +68,10 @@ export function MainMenu(props: {
             {row('download', 'Export save file', 'A protected copy to keep or move to another computer', props.onExport)}
             {row('swap', 'Cloud saves', 'Sign in to play your careers on all your devices', props.onCloud)}
             {row('edit', 'Airline name and callsign', `${props.airlineName}, callsign ${props.airlineCallsign}`, () => setDetails(true))}
-            {row('layers', 'Livery', props.livery ? 'Your airline\'s colours on its aircraft' : 'Paint your aircraft in your airline\'s colours', () => setLivery(true))}
+            {row('layers', 'Livery', props.hasLivery ? 'Your airline\'s colours on its aircraft' : 'Paint your aircraft in your airline\'s colours', () => {
+              props.onClose();
+              props.onOpenLivery();
+            })}
             {row('help', 'Welcome tour', 'How to play, in a minute', () => {
               props.onClose();
               props.onTour();
@@ -100,7 +100,6 @@ export function MainMenu(props: {
         </div>
       </ModalShell>
       {credits && <CreditsModal onClose={() => setCredits(false)} />}
-      {livery && <LiveryEditor livery={props.livery} airlineName={props.airlineName} models={props.fleetModels} onSave={props.onLivery} onClose={() => setLivery(false)} />}
       {details && <AirlineDetailsModal name={props.airlineName} callsign={props.airlineCallsign} onSave={props.onAirlineDetails} onClose={() => setDetails(false)} />}
     </>
   );

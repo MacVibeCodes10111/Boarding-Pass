@@ -11,11 +11,14 @@ import type { Livery } from '../game/livery';
 import { paintedPhoto } from '../game/liveryPaint';
 import type { AircraftModel } from '../game/types';
 
-/** The player's livery, so every picture of their aircraft is painted in it. */
-export const LiveryContext = createContext<{ livery: Livery; name: string } | null>(null);
+/** The player's liveries (up to two), so every picture of their aircraft is painted in its livery. */
+export const LiveryContext = createContext<{ liveries: Livery[]; name: string } | null>(null);
+
+/** A made-up registration for pictures of a type rather than of one aircraft. */
+export const SAMPLE_REG = 'P4-ABC';
 
 /** The picture of a model in a livery (plain white until it's painted). */
-export function usePaintedPhoto(id: string, livery: Livery | null | undefined, name: string): string {
+export function usePaintedPhoto(id: string, livery: Livery | null | undefined, name: string, reg = SAMPLE_REG): string {
   const plain = `/aircraft/${id}.webp`;
   const [url, setUrl] = useState(plain);
   useEffect(() => {
@@ -24,11 +27,11 @@ export function usePaintedPhoto(id: string, livery: Livery | null | undefined, n
       setUrl(plain);
       return;
     }
-    paintedPhoto(id, livery, name).then((u) => live && setUrl(u ?? plain));
+    paintedPhoto(id, livery, name, reg).then((u) => live && setUrl(u ?? plain));
     return () => {
       live = false;
     };
-  }, [id, livery, name, plain]);
+  }, [id, livery, name, reg, plain]);
   return url;
 }
 
@@ -44,11 +47,15 @@ export function AircraftPhoto(props: {
   fallback?: string;
   iconSize?: number;
   style?: React.CSSProperties;
+  /** One of the player's aircraft: its registration, and which livery it wears. */
+  tailNumber?: string;
+  liveryIndex?: number;
 }) {
   const size = AIRCRAFT_PHOTOS[props.model.id];
   const [failed, setFailed] = useState(false);
   const ctx = useContext(LiveryContext);
-  const src = usePaintedPhoto(props.model.id, ctx?.livery, ctx?.name ?? '');
+  const livery = ctx ? ctx.liveries[props.liveryIndex ?? 0] ?? ctx.liveries[0] : undefined;
+  const src = usePaintedPhoto(props.model.id, livery, ctx?.name ?? '', props.tailNumber || SAMPLE_REG);
   if (!size || failed) {
     if (!props.fallback) return null;
     const s = props.iconSize ?? 24;
@@ -68,7 +75,7 @@ export function AircraftPhoto(props: {
 }
 
 /** One of the player's aircraft in the airline's livery, on a sky of its own (picked by its tail number). */
-export function AircraftHero(props: { model: AircraftModel; tailNumber: string; photoWidth?: string; style?: React.CSSProperties }) {
+export function AircraftHero(props: { model: AircraftModel; tailNumber: string; liveryIndex?: number; photoWidth?: string; style?: React.CSSProperties }) {
   if (!AIRCRAFT_PHOTOS[props.model.id]) return null;
   return (
     <div
@@ -88,6 +95,8 @@ export function AircraftHero(props: { model: AircraftModel; tailNumber: string; 
       {/* pinned to the middle, whatever the card's size */}
       <AircraftPhoto
         model={props.model}
+        tailNumber={props.tailNumber}
+        liveryIndex={props.liveryIndex}
         width={props.photoWidth ?? 'min(86%, 720px)'}
         style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', maxWidth: '92%', maxHeight: '86%', filter: 'drop-shadow(0 10px 12px rgba(10,20,40,.28))' }}
       />

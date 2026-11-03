@@ -1,7 +1,8 @@
-# Paint masks for liveries: for each aircraft, where the tail, the fuselage and
-# the engines can be seen (what lies in front of them is taken out), aligned
-# with its game picture. Saved as one PNG: red = tail, green = fuselage,
-# blue = engines.
+# Paint masks for liveries: for each aircraft, where each paintable part can be
+# seen (what lies in front of it is taken out), aligned with its game picture.
+# Saved as one PNG twice the picture's height: the top half red = tail (fin),
+# green = fuselage, blue = engines; the bottom half red = wings, green =
+# winglets / wingtips, blue = horizontal stabilisers.
 import sys, os, json, re
 sys.path.insert(0, '.')
 import numpy as np
@@ -11,7 +12,22 @@ from kit import render
 
 OUT = 'out/mask'
 os.makedirs(OUT, exist_ok=True)
-PAINT = {'TAIL': 0, 'FUSELAGE': 1, 'ENGINES': 2}
+PAINT = {'TAIL': 0, 'FUSELAGE': 1, 'ENGINES': 2, 'WINGS': 3, 'WINGLETS': 4, 'STAB': 5}
+R_WINGLET = re.compile(r'winglet|sharklet|scimitar|wing ?tip|wingtip|raked|blended', re.I)
+R_STAB = re.compile(r'stab|horizontal|elevator|tailplane', re.I)
+
+
+def part_of(l, g, rear=False, cw=1):
+    if g != 'WINGS':
+        return g
+    name = l.path.split('/')[-1]
+    # a winglet by its own name, and small (a whole wing in a 'winglets' group isn't one)
+    if R_WINGLET.search(name) and l.part.width < 0.12 * cw:
+        return 'WINGLETS'
+    # tailplanes: by name, or any wing part on the last quarter of the aircraft
+    if R_STAB.search(name) or R_STAB.search(l.path) or rear:
+        return 'STAB'
+    return 'WINGS'
 
 
 def masks(i, width=640, out=None, ret=None):
@@ -19,7 +35,7 @@ def masks(i, width=640, out=None, ret=None):
     im = render(W, H, ls)
     tb = tight(im)
     cw, ch = tb[2] - tb[0], tb[3] - tb[1]
-    cov = np.zeros((3, ch, cw), np.float32)
+    cov = np.zeros((6, ch, cw), np.float32)
     for l in ls:
         if l.part is None or not l.visible:
             continue
@@ -36,14 +52,40 @@ def masks(i, width=640, out=None, ret=None):
         a[dy0:dy0 + h, dx0:dx0 + w] = pa[sy0:sy0 + h, sx0:sx0 + w]
         if r == 'BASE':
             # a paintable surface covers whatever was painted below it
-            for k in range(3):
+            for k in range(6):
                 cov[k] *= (1 - a)
-            if g in PAINT and not re.search(r'prop|blade|spinner|exhaust|nozzle|core|cone', l.path, re.I):
-                cov[PAINT[g]] = np.maximum(cov[PAINT[g]], a)
-    rgb = (np.clip(cov, 0, 1) * 255).astype(np.uint8).transpose(1, 2, 0)
-    m = Image.fromarray(rgb, 'RGB')
+            p = part_of(l, g, cw=cw)
+            if p in PAINT and not re.search(r'prop|blade|spinner|exhaust|nozzle|core|cone', l.path, re.I):
+                cov[PAINT[p]] = np.maximum(cov[PAINT[p]], a)
+    # wing layers often hold the tailplane too: wing paint on the last quarter is the tailplane
+    rear = int(cw * 0.76)
+    for k in (3, 4):
+        cov[5][:, rear:] = np.maximum(cov[5][:, rear:], cov[k][:, rear:])
+        cov[k][:, rear:] = 0
+    # some templates draw the tailplane in the tail layer: tail paint below the fuselage's top edge is the tailplane
+    if (cov[5] > 0.5).sum() < 20:
+        top = np.full(cw, -1)
+        fus = cov[1] > 0.5
+        cols = np.where(fus.any(axis=0))[0]
+        for x in cols:
+            top[x] = np.argmax(fus[:, x])
+        if len(cols):
+            last = cols[-1]
+            top[last + 1:] = top[last]
+            ys = np.arange(ch)[:, None]
+            low = (ys > top[None, :] + 3) & (top[None, :] >= 0)
+            low[:, : int(cw * 0.6)] = False
+            moved = np.where(low, cov[0], 0)
+            cov[5] = np.maximum(cov[5], moved)
+            cov[0] = np.where(low, 0, cov[0])
     h = round(ch * width / cw)
-    m = m.resize((width, h), Image.LANCZOS)
+    halves = []
+    for k in (0, 3):
+        rgb = (np.clip(cov[k:k + 3], 0, 1) * 255).astype(np.uint8).transpose(1, 2, 0)
+        halves.append(Image.fromarray(rgb, 'RGB').resize((width, h), Image.LANCZOS))
+    m = Image.new('RGB', (width, h * 2))
+    m.paste(halves[0], (0, 0))
+    m.paste(halves[1], (0, h))
     o = out or OUT
     m.save(f'{o}/{i}.png', optimize=True)
     return dict(id=i, h=h, kb=os.path.getsize(f'{o}/{i}.png') // 1024)

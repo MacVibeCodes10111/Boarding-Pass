@@ -1,0 +1,8 @@
+{
+  "name": "bp-logos-worker",
+  "private": true,
+  "type": "module",
+  "scripts": { "deploy": "wrangler deploy", "dev": "wrangler dev" },
+  "dependencies": { "jose": "5.9.6" },
+  "devDependencies": { "wrangler": "4.42.0", "@cloudflare/workers-types": "4.20251001.0", "typescript": "5.6.3" }
+}

@@ -433,7 +433,7 @@ function LiveryCard({ fleet, onEdit }: { fleet: PlayerAircraft[]; onEdit: () => 
   if (!model) return null;
   return (
     <section aria-label="Livery" style={{ marginBottom: 12, borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.line}`, background: C.panelAlt }}>
-      <AircraftHero model={model} tailNumber={pick?.tailNumber ?? 'livery'} photoWidth="min(72%, 620px)" style={{ borderRadius: 0, aspectRatio: '4 / 1' }} />
+      <AircraftHero model={model} tailNumber={pick?.tailNumber ?? ''} liveryIndex={pick?.livery} photoWidth="min(72%, 620px)" style={{ borderRadius: 0, aspectRatio: '4 / 1' }} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 14px', flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 13.5, fontWeight: 650 }}>{ctx ? 'Your livery' : 'Plain white for now'}</div>

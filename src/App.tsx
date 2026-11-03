@@ -118,7 +118,7 @@ import { RouteFromBar } from './components/RouteFromBar';
 import { WelcomeTour, tourWantedForNewCareer } from './components/WelcomeTour';
 import { C, PanelTabsContext, applyThemeToDocument, useThemeVersion } from './ui/kit';
 import { initLayout } from './ui/layout';
-import { normaliseLivery, type Livery } from './game/livery';
+import { normaliseLiveries, type Livery } from './game/livery';
 import { LiveryContext } from './components/AircraftPhoto';
 
 const STANDARD_START_CASH = 150_000_000;
@@ -237,8 +237,9 @@ export default function App() {
   const openGroup = (g: 'airline' | 'buy') => setPanel(groupTab[g]);
 
   const [airlineName, setAirlineName] = useState(LAUNCH.name ?? 'Jetstream Airlines');
-  const [livery, setLivery] = useState<Livery | undefined>(undefined);
-  const liveryCtx = useMemo(() => (livery ? { livery, name: airlineName } : null), [livery, airlineName]);
+  const [liveries, setLiveries] = useState<Livery[]>([]);
+  const liveryCtx = useMemo(() => (liveries.length ? { liveries, name: airlineName } : null), [liveries, airlineName]);
+  const [liveryStart, setLiveryStart] = useState(0);
   const [airlineIata, setAirlineIata] = useState(LAUNCH.code ?? 'JT');
   const [airlineCallsign, setAirlineCallsign] = useState(LAUNCH.callsign ?? (LAUNCH.name ? LAUNCH.name.split(/\s+/)[0].toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 20) || 'JETSTREAM' : 'JETSTREAM'));
   const [hubIata, setHubIata] = useState(LAUNCH.hub ?? 'BOS');
@@ -735,7 +736,7 @@ export default function App() {
   // ---------------------------------------------------------------------------
   const currentSaveState = (isAutosave = false): SaveGameState => ({
     saveId: activeSaveId,
-    livery,
+    liveries: liveries.length ? liveries : undefined,
     airlineName,
     airlineIata,
     airlineCallsign,
@@ -849,7 +850,7 @@ export default function App() {
     setAwayReport(null);
     setFleet([]);
     setSchedule([]);
-    setLivery(undefined);
+    setLiveries([]);
     setCareer(gameMode === 'sandbox' ? freshCareer() : { ...freshCareer(), letters: [welcomeLetter(airlineName, airlineIata, hubIata, 0)] });
     setBankTab('programme');
     setDraft(makeDraft(hubIata, airlineIata));
@@ -863,7 +864,7 @@ export default function App() {
     const s = hydrateSave(raw, airportByIata);
     setActiveSaveId(s.saveId);
     setAirlineName(s.airlineName);
-    setLivery(normaliseLivery(s.livery));
+    setLiveries(normaliseLiveries(s.liveries, s.livery));
     setAirlineIata(s.airlineIata);
     setAirlineCallsign(s.airlineCallsign);
     setHubIata(s.hubIata);
@@ -1678,12 +1679,17 @@ export default function App() {
       <CloudHost openSaveId={activeSaveId} onSlotsChanged={() => setSavedGames(readSaveSlots())} toast={flashToast} />
       {liveryOpen && (
         <LiveryEditor
-          livery={livery}
+          liveries={liveries}
+          start={liveryStart}
           airlineName={airlineName}
           models={[...new Set(fleet.map((a) => a.model.id))]}
+          sampleReg={fleet[0]?.tailNumber}
           onSave={(l) => {
-            setLivery(l);
-            flashToast(l ? 'Livery saved' : 'Back to plain white');
+            const kept = l.filter((x) => x.layers.length || Object.keys(x.logos).length);
+            setLiveries(kept);
+            // aircraft on a livery that's gone go back to the main one
+            if (kept.length < 2) setFleet((f) => (f.some((a) => a.livery) ? f.map((a) => (a.livery ? { ...a, livery: undefined } : a)) : f));
+            flashToast(kept.length ? (kept.length > 1 ? 'Liveries saved' : 'Livery saved') : 'Back to plain white');
           }}
           onClose={() => setLiveryOpen(false)}
         />
@@ -1695,11 +1701,10 @@ export default function App() {
             openCloud();
           }}
           airlineCallsign={airlineCallsign}
-          livery={livery}
-          fleetModels={[...new Set(fleet.map((a) => a.model.id))]}
-          onLivery={(l) => {
-            setLivery(l);
-            flashToast(l ? 'Livery saved' : 'Back to plain white');
+          hasLivery={liveries.length > 0}
+          onOpenLivery={() => {
+            setLiveryStart(0);
+            setLiveryOpen(true);
           }}
           onAirlineDetails={(nameRaw, callRaw) => {
             const name = nameRaw.trim().replace(/\s+/g, ' ');
@@ -1803,7 +1808,10 @@ export default function App() {
           onRename={renameAircraft}
           onReRegister={reRegisterAircraft}
           onRefit={refitAircraft}
-          onLivery={() => setLiveryOpen(true)}
+          onLivery={() => {
+            setLiveryStart(0);
+            setLiveryOpen(true);
+          }}
           onReplace={replaceAircraft}
           onBuy={() => setPanel('buy')}
           iconForModel={iconForModel}
@@ -1894,7 +1902,10 @@ export default function App() {
           sandbox={gameMode === 'sandbox'}
           onClose={closePanel}
           onOpenAirports={() => setPanel('airports')}
-          onLivery={() => setLiveryOpen(true)}
+          onLivery={() => {
+            setLiveryStart(0);
+            setLiveryOpen(true);
+          }}
         />
       )}
       {panel === 'airports' && (
@@ -1916,6 +1927,12 @@ export default function App() {
             onUpdateFlight={updateFlight}
             onDeleteFlight={deleteFlightWithPair}
             onSellOrReturnAircraft={sellOrReturnAircraft}
+            liveryNames={liveries.map((l, i) => l.name || (i ? 'Second livery' : 'Main livery'))}
+            onSetLivery={(tail, i) => setFleet((f) => f.map((a) => (a.tailNumber === tail ? { ...a, livery: i || undefined } : a)))}
+            onEditLivery={(i) => {
+              setLiveryStart(i);
+              setLiveryOpen(true);
+            }}
           />
         )}
 

@@ -1322,7 +1322,9 @@ export function LiveMap(props: LiveMapProps) {
             // paint the picture in the airline's livery once it's ready
             const heroImg = popup.getElement?.()?.querySelector('.bp-pop-hero img') as HTMLImageElement | null;
             const lv = liveryRef.current;
-            if (heroImg && lv) paintedPhoto(String(plane?.modelId), lv.livery, lv.name).then((u) => u && (heroImg.src = u));
+            const ac = plane && latest.current.fleet.find((a) => a.tailNumber === plane.tailNumber);
+            const lvy = lv ? lv.liveries[ac?.livery ?? 0] ?? lv.liveries[0] : undefined;
+            if (heroImg && lvy) paintedPhoto(String(plane?.modelId), lvy, lv!.name, String(plane?.tailNumber ?? '')).then((u) => u && (heroImg.src = u));
             attachOrbit(map, popup);
             popup.on('close', () => {
               if (popupRef.current === popup) {

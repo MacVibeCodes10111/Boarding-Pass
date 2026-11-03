@@ -274,7 +274,7 @@ export function FleetPanel(props: FleetPanelProps) {
                 }}
               >
                 <input type="checkbox" aria-label={`Select ${ac.tailNumber}`} checked={selected.has(ac.tailNumber)} onChange={() => toggle(ac.tailNumber)} />
-                <AircraftPhoto model={ac.model} width={64} fallback={iconForModel(ac.model)} style={{ justifySelf: 'center' }} />
+                <AircraftPhoto model={ac.model} width={64} fallback={iconForModel(ac.model)} tailNumber={ac.tailNumber} liveryIndex={ac.livery} style={{ justifySelf: 'center' }} />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 650 }}>
                     {ac.tailNumber}

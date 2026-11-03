@@ -1,21 +1,19 @@
 // ============================================================================
-// LIVERY PAINTING (v2.65)
-//   Paints a livery onto an aircraft picture. Each picture has a mask
-//   (public/aircraft/<id>.mask.png: red = tail, green = fuselage, blue =
-//   engines, only where they can be seen).
+// LIVERY PAINTING (v2.66: layers)
+//   Paints a layered livery (livery.ts) onto an aircraft picture. Each picture
+//   has a mask (public/aircraft/<id>.mask.png: red = tail, green = fuselage,
+//   blue = engines, only where they can be seen).
 //
-//   The design is drawn as vector shapes, not pixel by pixel: the fuselage is
-//   measured once (a straight crown line and its height along the cabin) and
-//   the fin's leading and trailing edges are fitted as straight lines. The
-//   belly, cheatlines, swoosh, tail sweep and tail designs are then smooth
-//   anti-aliased paths in those frames, so lines run straight through the
-//   wing root and the tail designs sit in the middle of the fin. Each part is
-//   cut to its mask, and the paint is multiplied into the white picture so
-//   the template's shading, panel lines and windows show through. Results
-//   are cached as object URLs.
+//   The aircraft is measured once (aircraftGeometry): a straight crown line
+//   and the cabin height along the fuselage, and the fin's leading and
+//   trailing edges as straight lines. Those give the two frames layers are
+//   placed in (body and fin), so one design fits every type. Each layer is
+//   drawn as smooth anti-aliased shapes, cut to its region's mask and laid
+//   over white; the paint is then multiplied into the white picture so the
+//   template's shading, panel lines and windows show through. Painted
+//   pictures are cached as object URLs.
 // ============================================================================
-import type { Livery } from './livery';
-import { liveryKey } from './livery';
+import { FONT_CSS, layerText, liveryKey, type Frame, type Layer, type Livery, type PathCmd, type Region } from './livery';
 
 const cache = new Map<string, Promise<string | null>>();
 const MAX = 120;
@@ -38,11 +36,11 @@ function canvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContex
 }
 
 /** The painted picture for an aircraft (an object URL), or null if it has no mask. */
-export function paintedPhoto(id: string, livery: Livery, airlineName: string): Promise<string | null> {
-  const key = `${id}|${liveryKey(livery, airlineName)}`;
+export function paintedPhoto(id: string, livery: Livery, airlineName: string, reg = ''): Promise<string | null> {
+  const key = `${id}|${liveryKey(livery, airlineName, reg)}`;
   let p = cache.get(key);
   if (!p) {
-    p = paint(id, livery, airlineName).catch(() => null);
+    p = paint(id, livery, airlineName, reg).catch(() => null);
     cache.set(key, p);
     if (cache.size > MAX) {
       const first = cache.keys().next().value as string;
@@ -217,202 +215,454 @@ function channel(M: Uint8ClampedArray, w: number, h: number, k: number): HTMLCan
   return c;
 }
 
-const FONT = { sans: 'Barlow, "Segoe UI", system-ui, sans-serif', serif: 'Georgia, "Times New Roman", serif', italic: 'Barlow, "Segoe UI", system-ui, sans-serif' };
+// ----------------------------------------------------------------------------
+// The aircraft, measured once
+// ----------------------------------------------------------------------------
+export interface Geometry {
+  id: string;
+  w: number;
+  h: number;
+  base: HTMLImageElement;
+  /** Base and mask pixels (M: tail, fuselage, engines; M2: wings, wingtips, tailplanes). */
+  B: Uint8ClampedArray;
+  M: Uint8ClampedArray;
+  M2: Uint8ClampedArray;
+  /** The parts this aircraft has (no wingtips on some types). */
+  parts: Region[];
+  body: Body;
+  fin: Fin;
+  masks: Record<Region, HTMLCanvasElement>;
+}
 
-async function paint(id: string, L: Livery, name: string): Promise<string | null> {
+const geoCache = new Map<string, Promise<Geometry | null>>();
+
+export function aircraftGeometry(id: string): Promise<Geometry | null> {
+  let p = geoCache.get(id);
+  if (!p) {
+    p = measure(id).catch(() => null);
+    geoCache.set(id, p);
+    if (geoCache.size > 24) geoCache.delete(geoCache.keys().next().value as string);
+  }
+  return p;
+}
+
+async function measure(id: string): Promise<Geometry | null> {
   const [base, mask] = await Promise.all([loadImage(`/aircraft/${id}.webp`), loadImage(`/aircraft/${id}.mask.png`)]);
   const w = base.naturalWidth;
   const h = base.naturalHeight;
-  const [, mg] = canvas(w, h);
-  mg.drawImage(mask, 0, 0, w, h);
-  const M = mg.getImageData(0, 0, w, h).data;
   const [, bg] = canvas(w, h);
   bg.drawImage(base, 0, 0, w, h);
   const B = bg.getImageData(0, 0, w, h).data;
+  // since v2.66 the mask is twice the picture's height: the top half tail, fuselage, engines; the bottom half wings, wingtips, tailplanes
+  const atlas = mask.naturalHeight >= base.naturalHeight * 1.9;
+  const [, mg] = canvas(w, atlas ? h * 2 : h);
+  mg.drawImage(mask, 0, 0, w, atlas ? h * 2 : h);
+  const M = mg.getImageData(0, 0, w, h).data;
+  const M2 = atlas ? mg.getImageData(0, h, w, h).data : new Uint8ClampedArray(M.length);
   const body = measureBody(M, w, h);
   if (!body) return null;
-  const fin = measureFin(M, w, h);
-  const title = name.trim();
-
-  // --- the fuselage, drawn in its own frame (u along, v down the cabin)
-  const [fc, fg] = canvas(w, h);
-  fg.fillStyle = L.body;
-  fg.fillRect(0, 0, w, h);
-  fg.save();
-  // x = nose + u·len, y = crown(x) + v·hc
-  fg.setTransform(body.len, body.slope * body.len, 0, body.hc, body.nose, body.c0 + body.slope * body.nose);
-  const U0 = -0.2, U1 = 1.2; // past the nose and the tail, the mask cuts it off
-  const band = (v0: number, v1: number, colour: string) => {
-    fg.fillStyle = colour;
-    fg.fillRect(U0, v0, U1 - U0, v1 - v0);
+  // no fin found (very rare): a box over the rear fuselage
+  const fin = measureFin(M, w, h) ?? fakeFin(body);
+  // the whole paintable aircraft: the strongest of the three channels
+  const all = new Uint8ClampedArray(M.length);
+  const seen = [0, 0, 0, 0, 0, 0];
+  for (let i = 0; i < M.length; i += 4) {
+    all[i] = all[i + 1] = all[i + 2] = Math.max(M[i], M[i + 1], M[i + 2], M2[i], M2[i + 1], M2[i + 2]);
+    for (let k = 0; k < 3; k++) {
+      if (M[i + k] > 128) seen[k]++;
+      if (M2[i + k] > 128) seen[k + 3]++;
+    }
+  }
+  const masks: Record<Region, HTMLCanvasElement> = {
+    tail: channel(M, w, h, 0),
+    fuselage: channel(M, w, h, 1),
+    engines: channel(M, w, h, 2),
+    wings: channel(M2, w, h, 0),
+    winglets: channel(M2, w, h, 1),
+    stabiliser: channel(M2, w, h, 2),
+    all: channel(all, w, h, 0),
   };
-  if (L.bellyTo > 0) band(1 - L.bellyTo, 3, L.belly);
-  if (L.cheat === 'stripe') {
-    band(0.55, 0.63, L.cheat1);
-    band(0.655, 0.685, L.cheat2);
-  } else if (L.cheat === 'double') {
-    band(0.52, 0.58, L.cheat1);
-    band(0.62, 0.68, L.cheat2);
-  } else if (L.cheat === 'swoosh') {
-    // a band that starts thin under the cockpit and sweeps up and widens to the tail
-    fg.beginPath();
-    fg.moveTo(0.1, 1.05);
-    fg.bezierCurveTo(0.45, 0.98, 0.72, 0.62, 1.15, -0.25);
-    fg.lineTo(1.25, 1.6);
-    fg.lineTo(0.1, 1.6);
-    fg.closePath();
-    fg.fillStyle = L.cheat2;
-    fg.fill();
-    fg.beginPath();
-    fg.moveTo(0.14, 1.12);
-    fg.bezierCurveTo(0.48, 1.0, 0.76, 0.7, 1.2, -0.12);
-    fg.lineTo(1.25, 1.6);
-    fg.lineTo(0.14, 1.6);
-    fg.closePath();
-    fg.fillStyle = L.cheat1;
-    fg.fill();
-  } else if (L.cheat === 'tailsweep') {
-    // the rear fuselage in colour, behind a curve that rises from the belly to the crown
-    const sweep = (du: number, colour: string) => {
-      fg.beginPath();
-      fg.moveTo(0.6 + du, 1.3);
-      fg.bezierCurveTo(0.7 + du, 0.95, 0.74 + du, 0.35, 0.86 + du, -0.3);
-      fg.lineTo(1.3, -0.3);
-      fg.lineTo(1.3, 1.3);
-      fg.closePath();
-      fg.fillStyle = colour;
-      fg.fill();
-    };
-    sweep(0, L.cheat2);
-    sweep(0.025, L.cheat1);
-  }
-  fg.restore();
-  if (L.titles && title) {
-    // on the forward cabin, just above the (top) row of windows
-    const x0 = Math.round(body.nose + body.len * 0.2);
-    const room = body.len * 0.3;
-    const x1 = Math.min(w - 1, Math.round(x0 + room * 0.6));
-    let crown = Infinity;
-    for (let x = x0; x <= x1; x++) if (body.top[x] >= 0) crown = Math.min(crown, body.top[x] - body.slope * (x - x0));
-    if (!Number.isFinite(crown)) crown = body.c0 + body.slope * x0;
-    const [win, winEnd] = windowRow(B, M, w, body, x0, x1, crown);
-    const gap = body.hc * 0.05;
-    let size = Math.min(body.hc * 0.17, (win - gap - body.hc * 0.05) / 0.74);
-    // no room above the windows (an upper deck close to the top): below them instead
-    let baseline = win - gap;
-    if (size < body.hc * 0.12) {
-      size = body.hc * 0.15;
-      baseline = winEnd + gap + size * 0.74;
-    }
-    const style = `${L.titleFont === 'italic' ? 'italic ' : ''}700`;
-    fg.font = `${style} ${size}px ${FONT[L.titleFont]}`;
-    const tw = fg.measureText(title).width;
-    if (tw > room) size *= room / tw;
-    fg.save();
-    fg.translate(x0, crown + baseline);
-    fg.rotate(Math.atan(body.slope));
-    fg.font = `${style} ${size}px ${FONT[L.titleFont]}`;
-    fg.fillStyle = L.titleColour;
-    fg.textBaseline = 'alphabetic';
-    fg.fillText(title, 0, 0);
-    fg.restore();
-  }
+  const order: Region[] = ['tail', 'fuselage', 'engines', 'wings', 'winglets', 'stabiliser'];
+  const parts = order.filter((_, k) => seen[k] > 20);
+  return { id, w, h, base, B, M, M2, parts, body, fin, masks };
+}
 
-  fg.globalCompositeOperation = 'destination-in';
-  fg.drawImage(channel(M, w, h, 1), 0, 0);
+function fakeFin(b: Body): Fin {
+  const x = b.nose + b.len * 0.9;
+  const root = Math.round(b.c0 + b.slope * x);
+  return { root, tip: Math.round(root - b.hc * 1.3), le: { a: b.nose + b.len * 0.82, b: 0 }, te: { a: b.nose + b.len, b: 0 } };
+}
 
-  // --- the fin, drawn in its own frame (r leading to trailing edge, s root to tip)
-  const [tc, tg] = canvas(w, h);
-  tg.fillStyle = L.tail;
-  tg.fillRect(0, 0, w, h);
-  if (fin && L.tailArt !== 'solid') {
-    const fh = fin.root - fin.tip;
-    const at = (r: number, s: number): [number, number] => {
-      const y = fin.root - s * fh;
-      const le = fin.le.a + fin.le.b * y;
-      const te = fin.te.a + fin.te.b * y;
-      return [le + r * (te - le), y];
-    };
-    const chord = (s: number) => {
-      const y = fin.root - s * fh;
-      return fin.te.a + fin.te.b * y - (fin.le.a + fin.le.b * y);
-    };
-    /** A region of the fin as a polygon, from samples of its outline in (r, s). */
-    const region = (pts: [number, number][], colour: string) => {
-      tg.beginPath();
-      pts.forEach(([r, s], i) => {
-        const [x, y] = at(r, s);
-        if (i) tg.lineTo(x, y);
-        else tg.moveTo(x, y);
-      });
-      tg.closePath();
-      tg.fillStyle = colour;
-      tg.fill();
-    };
-    const curve = (n: number, f: (t: number) => [number, number]) => Array.from({ length: n + 1 }, (_, i) => f(i / n));
-    if (L.tailArt === 'split') {
-      // the upper forward part, below a gentle curve from low on the leading edge to high on the trailing edge
-      const edge = curve(24, (t) => [-0.4 + t * 1.8, 0.22 + 0.6 * Math.pow(t, 1.4)]);
-      region([...edge, [1.4, 1.4], [-0.4, 1.4]], L.tail2);
-    } else if (L.tailArt === 'band') {
-      region([[-0.5, 0.42], [1.5, 0.42], [1.5, 0.6], [-0.5, 0.6]], L.tail2);
-    } else if (L.tailArt === 'stripes') {
-      // three stripes along the leading edge
-      for (const r0 of [0.14, 0.4, 0.66]) region([[r0, -0.2], [r0 + 0.13, -0.2], [r0 + 0.13, 1.3], [r0, 1.3]], L.tail2);
-    } else if (L.tailArt === 'disc' || L.tailArt === 'letter') {
-      const s = 0.46;
-      const [cx, cy] = at(0.52, s);
-      const room = Math.min(chord(s) * 0.36, fh * 0.26);
-      if (L.tailArt === 'disc') {
-        tg.beginPath();
-        tg.arc(cx, cy, room, 0, Math.PI * 2);
-        tg.fillStyle = L.tail2;
-        tg.fill();
-      } else if (title) {
-        const size = room * 1.9;
-        tg.save();
-        tg.translate(cx, cy);
-        tg.font = `800 ${size}px ${FONT[L.titleFont]}`;
-        tg.fillStyle = L.tail2;
-        tg.textAlign = 'center';
-        tg.textBaseline = 'alphabetic';
-        // centre the letter by its own outline, not the font's line box
-        const ch = title[0].toUpperCase();
-        const m = tg.measureText(ch);
-        tg.fillText(ch, 0, (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2);
-        tg.restore();
+// ----------------------------------------------------------------------------
+// Frames: aircraft coordinates ⇄ picture pixels
+// ----------------------------------------------------------------------------
+export function toPx(g: Geometry, frame: Frame, x: number, y: number): [number, number] {
+  if (frame === 'body') {
+    const X = g.body.nose + x * g.body.len;
+    return [X, g.body.c0 + g.body.slope * X + y * g.body.hc];
+  }
+  const f = g.fin;
+  const Y = f.root - y * (f.root - f.tip);
+  const le = f.le.a + f.le.b * Y;
+  const te = f.te.a + f.te.b * Y;
+  return [le + x * (te - le), Y];
+}
+
+export function fromPx(g: Geometry, frame: Frame, px: number, py: number): [number, number] {
+  if (frame === 'body') return [(px - g.body.nose) / g.body.len, (py - g.body.c0 - g.body.slope * px) / g.body.hc];
+  const f = g.fin;
+  const le = f.le.a + f.le.b * py;
+  const te = f.te.a + f.te.b * py;
+  return [(px - le) / Math.max(1, te - le), (f.root - py) / Math.max(1, f.root - f.tip)];
+}
+
+/** Pixels in one size unit: a cabin height (body) or a fin height (fin). */
+export const unitPx = (g: Geometry, frame: Frame) => (frame === 'body' ? g.body.hc : g.fin.root - g.fin.tip);
+/** The frame's angle: along the crown line for the body, upright for the fin. */
+export const frameAngle = (g: Geometry, frame: Frame) => (frame === 'body' ? Math.atan(g.body.slope) : 0);
+
+// ----------------------------------------------------------------------------
+// Drawing the layers
+// ----------------------------------------------------------------------------
+const logoImages = new Map<string, Promise<HTMLImageElement | null>>();
+/** The livery's logos as images, ready to draw. */
+export async function loadLogos(l: Livery): Promise<Map<string, HTMLImageElement>> {
+  const out = new Map<string, HTMLImageElement>();
+  await Promise.all(
+    Object.entries(l.logos).map(async ([k, src]) => {
+      let p = logoImages.get(src);
+      if (!p) {
+        p = loadImage(src).catch(() => null);
+        logoImages.set(src, p);
+        if (logoImages.size > 30) logoImages.delete(logoImages.keys().next().value as string);
       }
+      const im = await p;
+      if (im) out.set(k, im);
+    })
+  );
+  return out;
+}
+
+const fontOf = (l: Extract<Layer, { kind: 'text' }>, px: number) => {
+  const f = FONT_CSS[l.font];
+  return `${f.style === 'italic' ? 'italic ' : ''}${f.weight} ${Math.max(1, px)}px ${f.family}`;
+};
+
+function shapePath(c: CanvasRenderingContext2D, shape: Extract<Layer, { kind: 'shape' }>['shape'], w: number, h: number) {
+  c.beginPath();
+  if (shape === 'rect') c.rect(-w / 2, -h / 2, w, h);
+  else if (shape === 'ellipse') c.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
+  else if (shape === 'triangle') {
+    c.moveTo(-w / 2, h / 2);
+    c.lineTo(0, -h / 2);
+    c.lineTo(w / 2, h / 2);
+  } else if (shape === 'star') {
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + (i * Math.PI) / 5;
+      const r = i % 2 ? 0.4 : 1;
+      const x = (Math.cos(a) * r * w) / 2;
+      const y = (Math.sin(a) * r * h) / 2;
+      if (i) c.lineTo(x, y);
+      else c.moveTo(x, y);
+    }
+  } else {
+    // chevron pointing forward (to the nose)
+    c.moveTo(w / 2, -h / 2);
+    c.lineTo(0, -h / 2);
+    c.lineTo(-w / 2, 0);
+    c.lineTo(0, h / 2);
+    c.lineTo(w / 2, h / 2);
+    c.lineTo(0, 0);
+  }
+  c.closePath();
+}
+
+/** A path's points in pixels (curves sampled), for the fin frame and for outlines. */
+function pathPoints(g: Geometry, frame: Frame, d: PathCmd[], dx: number, dy: number): [number, number][] {
+  const out: [number, number][] = [];
+  let cx = 0, cy = 0;
+  for (const c of d) {
+    if (c[0] === 'C') {
+      for (let k = 1; k <= 16; k++) {
+        const t = k / 16, u = 1 - t;
+        const x = u * u * u * cx + 3 * u * u * t * c[1] + 3 * u * t * t * c[3] + t * t * t * c[5];
+        const y = u * u * u * cy + 3 * u * u * t * c[2] + 3 * u * t * t * c[4] + t * t * t * c[6];
+        out.push(toPx(g, frame, x + dx, y + dy));
+      }
+      cx = c[5];
+      cy = c[6];
+    } else {
+      out.push(toPx(g, frame, c[1] + dx, c[2] + dy));
+      cx = c[1];
+      cy = c[2];
     }
   }
-  tg.globalCompositeOperation = 'destination-in';
-  tg.drawImage(channel(M, w, h, 0), 0, 0);
+  return out;
+}
 
-  // --- engines
-  const [ec, eg] = canvas(w, h);
-  eg.fillStyle = L.engines;
-  eg.fillRect(0, 0, w, h);
-  eg.globalCompositeOperation = 'destination-in';
-  eg.drawImage(channel(M, w, h, 2), 0, 0);
+/** Where titles go on this aircraft: just above the top row of windows on the forward cabin (or below it if there's no room). */
+function titlesPlace(g: Geometry, l: Extract<Layer, { kind: 'text' }>, text: string, c: CanvasRenderingContext2D): { x: number; y: number; size: number } {
+  const { body } = g;
+  const x0 = Math.round(body.nose + body.len * l.x);
+  const room = body.len * 0.3;
+  const x1 = Math.min(g.w - 1, Math.round(x0 + room * 0.6));
+  let crown = Infinity;
+  for (let x = x0; x <= x1; x++) if (body.top[x] >= 0) crown = Math.min(crown, body.top[x] - body.slope * (x - x0));
+  if (!Number.isFinite(crown)) crown = body.c0 + body.slope * x0;
+  const [win, winEnd] = windowRow(g.B, g.M, g.w, body, x0, x1, crown);
+  const gap = body.hc * 0.05;
+  // the size the player picked (in cabin heights), if it fits above the windows
+  let size = Math.min(body.hc * l.size, (win - gap - body.hc * 0.05) / 0.74);
+  let baseline = win - gap;
+  if (size < body.hc * 0.12) {
+    size = body.hc * Math.min(l.size, 0.15);
+    baseline = winEnd + gap + size * 0.74;
+  }
+  c.font = fontOf(l, size);
+  const tw = c.measureText(text).width;
+  if (tw > room) size *= room / tw;
+  return { x: x0, y: crown + baseline, size };
+}
 
-  // --- the paint over white, then multiplied into the picture
+/** Where a registration goes: on the rear fuselage, just ahead of the fin. */
+function registrationPlace(g: Geometry, l: Extract<Layer, { kind: 'text' }>, text: string, c: CanvasRenderingContext2D): { x: number; y: number; size: number } {
+  const { body, fin } = g;
+  const size = body.hc * l.size;
+  c.font = fontOf(l, size);
+  const tw = c.measureText(text).width;
+  const finRoot = fin.le.a + fin.le.b * fin.root;
+  const x = Math.max(body.nose + body.len * 0.6, finRoot - body.hc * 0.25 - tw);
+  return { x, y: body.c0 + body.slope * x + body.hc * 0.32, size };
+}
+
+function autoPlace(g: Geometry, l: Extract<Layer, { kind: 'text' }>, text: string, c: CanvasRenderingContext2D) {
+  return l.auto === 'registration' ? registrationPlace(g, l, text, c) : titlesPlace(g, l, text, c);
+}
+
+function drawLayer(c: CanvasRenderingContext2D, g: Geometry, l: Layer, name: string, logos: Map<string, HTMLImageElement>, reg: string) {
+  c.save();
+  switch (l.kind) {
+    case 'fill':
+      c.fillStyle = l.colour;
+      c.fillRect(0, 0, g.w, g.h);
+      break;
+    case 'band': {
+      const b = g.body;
+      c.setTransform(b.len, b.slope * b.len, 0, b.hc, b.nose, b.c0 + b.slope * b.nose);
+      c.fillStyle = l.colour;
+      c.fillRect(-0.3, Math.min(l.v0, l.v1), 1.6, Math.abs(l.v1 - l.v0));
+      break;
+    }
+    case 'shape': {
+      const [x, y] = toPx(g, l.frame, l.x, l.y);
+      const u = unitPx(g, l.frame);
+      c.translate(x, y);
+      c.rotate(frameAngle(g, l.frame) + (l.rot * Math.PI) / 180);
+      shapePath(c, l.shape, l.w * u, l.h * u);
+      c.fillStyle = l.colour;
+      c.fill();
+      break;
+    }
+    case 'path': {
+      c.fillStyle = l.colour;
+      if (l.frame === 'body') {
+        // the body frame is a straight-line transform, so curves stay exact
+        const b = g.body;
+        c.setTransform(b.len, b.slope * b.len, 0, b.hc, b.nose, b.c0 + b.slope * b.nose);
+        c.translate(l.dx, l.dy);
+        c.beginPath();
+        for (const p of l.d) {
+          if (p[0] === 'M') c.moveTo(p[1], p[2]);
+          else if (p[0] === 'L') c.lineTo(p[1], p[2]);
+          else c.bezierCurveTo(p[1], p[2], p[3], p[4], p[5], p[6]);
+        }
+      } else {
+        c.beginPath();
+        pathPoints(g, l.frame, l.d, l.dx, l.dy).forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y)));
+      }
+      c.closePath();
+      c.fill();
+      break;
+    }
+    case 'text': {
+      const text = layerText(l, name, reg);
+      if (!text) break;
+      c.fillStyle = l.colour;
+      if (l.frame === 'body' && l.auto) {
+        const t = autoPlace(g, l, text, c);
+        c.translate(t.x, t.y);
+        c.rotate(frameAngle(g, 'body'));
+        c.font = fontOf(l, t.size);
+        c.textBaseline = 'alphabetic';
+        c.fillText(text, 0, 0);
+        break;
+      }
+      const [x, y] = toPx(g, l.frame, l.x, l.y);
+      c.translate(x, y);
+      c.rotate(frameAngle(g, l.frame) + (l.rot * Math.PI) / 180);
+      c.font = fontOf(l, l.size * unitPx(g, l.frame));
+      c.textAlign = 'center';
+      c.textBaseline = 'alphabetic';
+      // centred on its own outline
+      const m = c.measureText(text);
+      c.fillText(text, 0, (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2);
+      break;
+    }
+    case 'paint': {
+      const u = unitPx(g, l.frame);
+      c.lineCap = 'round';
+      c.lineJoin = 'round';
+      for (const s of l.strokes) {
+        c.globalCompositeOperation = s.erase ? 'destination-out' : 'source-over';
+        c.strokeStyle = s.erase ? '#000' : s.colour;
+        c.fillStyle = c.strokeStyle;
+        c.lineWidth = Math.max(0.5, s.width * u);
+        if (s.pts.length === 2) {
+          const [x, y] = toPx(g, l.frame, s.pts[0], s.pts[1]);
+          c.beginPath();
+          c.arc(x, y, c.lineWidth / 2, 0, Math.PI * 2);
+          c.fill();
+          continue;
+        }
+        c.beginPath();
+        for (let i = 0; i < s.pts.length; i += 2) {
+          const [x, y] = toPx(g, l.frame, s.pts[i], s.pts[i + 1]);
+          if (i) c.lineTo(x, y);
+          else c.moveTo(x, y);
+        }
+        c.stroke();
+      }
+      break;
+    }
+    case 'logo': {
+      const im = logos.get(l.logo);
+      if (!im) break;
+      const [x, y] = toPx(g, l.frame, l.x, l.y);
+      const s = l.size * unitPx(g, l.frame);
+      c.translate(x, y);
+      c.rotate(frameAngle(g, l.frame) + (l.rot * Math.PI) / 180);
+      c.imageSmoothingQuality = 'high';
+      c.drawImage(im, -s / 2, -s / 2, s, s);
+      break;
+    }
+  }
+  c.restore();
+}
+
+/** The livery drawn on the aircraft, into `out` (the picture's size). */
+export function renderLivery(g: Geometry, livery: Livery, name: string, logos: Map<string, HTMLImageElement>, out: CanvasRenderingContext2D, reg = '') {
+  const { w, h } = g;
   const [, pg] = canvas(w, h);
   pg.fillStyle = '#ffffff';
   pg.fillRect(0, 0, w, h);
-  pg.drawImage(fc, 0, 0);
-  pg.drawImage(tc, 0, 0);
-  pg.drawImage(ec, 0, 0);
+  const [sc, sg] = canvas(w, h);
+  for (const l of livery.layers) {
+    if (l.hidden || l.opacity <= 0) continue;
+    sg.globalCompositeOperation = 'source-over';
+    sg.clearRect(0, 0, w, h);
+    drawLayer(sg, g, l, name, logos, reg);
+    sg.globalCompositeOperation = 'destination-in';
+    sg.drawImage(g.masks[l.region], 0, 0);
+    pg.globalAlpha = l.opacity;
+    pg.drawImage(sc, 0, 0);
+    pg.globalAlpha = 1;
+  }
+  // the paint multiplied into the picture
   const P = pg.getImageData(0, 0, w, h).data;
-  const [oc, og] = canvas(w, h);
-  og.drawImage(base, 0, 0, w, h);
-  const out = og.getImageData(0, 0, w, h);
-  const O = out.data;
+  const pic = new ImageData(new Uint8ClampedArray(g.B), w, h);
+  const O = pic.data;
   for (let i = 0; i < O.length; i += 4) {
     if (!O[i + 3]) continue;
     O[i] = (O[i] * P[i]) / 255;
     O[i + 1] = (O[i + 1] * P[i + 1]) / 255;
     O[i + 2] = (O[i + 2] * P[i + 2]) / 255;
   }
-  og.putImageData(out, 0, 0);
+  out.canvas.width = w;
+  out.canvas.height = h;
+  out.putImageData(pic, 0, 0);
+}
+
+async function paint(id: string, L: Livery, name: string, reg: string): Promise<string | null> {
+  const g = await aircraftGeometry(id);
+  if (!g) return null;
+  const logos = await loadLogos(L);
+  const [oc, og] = canvas(g.w, g.h);
+  renderLivery(g, L, name, logos, og, reg);
   const blob: Blob | null = await new Promise((r) => oc.toBlob(r, 'image/webp', 0.92));
   return blob ? URL.createObjectURL(blob) : null;
+}
+
+// ----------------------------------------------------------------------------
+// Outlines, for the editor
+// ----------------------------------------------------------------------------
+const [, measureCtx] = typeof document !== 'undefined' ? canvas(4, 4) : [null, null as unknown as CanvasRenderingContext2D];
+
+/** The layer's outline in picture pixels (a polygon), or null for a fill. */
+export function layerOutline(g: Geometry, l: Layer, name: string, reg = ''): [number, number][] | null {
+  const box = (cx: number, cy: number, w: number, h: number, ang: number, ox = 0, oy = 0): [number, number][] => {
+    const cs = Math.cos(ang), sn = Math.sin(ang);
+    return [
+      [-w / 2 + ox, -h / 2 + oy],
+      [w / 2 + ox, -h / 2 + oy],
+      [w / 2 + ox, h / 2 + oy],
+      [-w / 2 + ox, h / 2 + oy],
+    ].map(([x, y]) => [cx + x * cs - y * sn, cy + x * sn + y * cs] as [number, number]);
+  };
+  const bbox = (pts: [number, number][]): [number, number][] | null => {
+    if (!pts.length) return null;
+    const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+    const x0 = Math.max(0, Math.min(...xs)), x1 = Math.min(g.w, Math.max(...xs)), y0 = Math.max(0, Math.min(...ys)), y1 = Math.min(g.h, Math.max(...ys));
+    return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+  };
+  switch (l.kind) {
+    case 'fill':
+      return null;
+    case 'band': {
+      return [toPx(g, 'body', 0, l.v0), toPx(g, 'body', 1, l.v0), toPx(g, 'body', 1, Math.min(l.v1, 1.05)), toPx(g, 'body', 0, Math.min(l.v1, 1.05))].map(([x, y]) => [x, Math.max(0, Math.min(g.h, y))] as [number, number]);
+    }
+    case 'shape': {
+      const [x, y] = toPx(g, l.frame, l.x, l.y);
+      const u = unitPx(g, l.frame);
+      return box(x, y, l.w * u, l.h * u, frameAngle(g, l.frame) + (l.rot * Math.PI) / 180);
+    }
+    case 'path':
+      return bbox(pathPoints(g, l.frame, l.d, l.dx, l.dy));
+    case 'paint': {
+      const pts: [number, number][] = [];
+      for (const s of l.strokes) if (!s.erase) for (let i = 0; i < s.pts.length; i += 2) pts.push(toPx(g, l.frame, s.pts[i], s.pts[i + 1]));
+      return bbox(pts);
+    }
+    case 'logo': {
+      const [x, y] = toPx(g, l.frame, l.x, l.y);
+      const s = l.size * unitPx(g, l.frame);
+      return box(x, y, s, s, frameAngle(g, l.frame) + (l.rot * Math.PI) / 180);
+    }
+    case 'text': {
+      const text = layerText(l, name, reg) || ' ';
+      if (l.frame === 'body' && l.auto) {
+        const t = autoPlace(g, l, text, measureCtx);
+        measureCtx.font = fontOf(l, t.size);
+        const tw = measureCtx.measureText(text).width;
+        return box(t.x + tw / 2, t.y - t.size * 0.36, tw, t.size * 0.9, frameAngle(g, 'body'));
+      }
+      const [x, y] = toPx(g, l.frame, l.x, l.y);
+      const px = l.size * unitPx(g, l.frame);
+      measureCtx.font = fontOf(l, px);
+      const tw = measureCtx.measureText(text).width;
+      return box(x, y, tw, px * 0.85, frameAngle(g, l.frame) + (l.rot * Math.PI) / 180);
+    }
+  }
+}
+
+/** Where an auto-placed title or registration sits on this aircraft, as a position in the body frame (when the player starts moving it). */
+export function titlesPosition(g: Geometry, l: Extract<Layer, { kind: 'text' }>, name: string, reg = ''): { x: number; y: number; size: number } {
+  const text = layerText(l, name, reg) || ' ';
+  const t = autoPlace(g, l, text, measureCtx);
+  measureCtx.font = fontOf(l, t.size);
+  const m = measureCtx.measureText(text);
+  // centre of the text (the editor places text by its middle)
+  const cx = t.x + m.width / 2;
+  const cy = t.y - (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
+  const [x, y] = fromPx(g, 'body', cx, cy);
+  return { x, y, size: t.size / g.body.hc };
 }

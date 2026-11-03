@@ -23,6 +23,11 @@ export interface AircraftScheduleModalProps {
   onUpdateFlight: (updated: ScheduledFlight) => void;
   onDeleteFlight: (flightId: string) => void;
   onSellOrReturnAircraft: (tailNumber: string) => void;
+  /** The airline's liveries by name (v2.66): with two, the aircraft can wear either. */
+  liveryNames?: string[];
+  onSetLivery?: (tailNumber: string, index: number) => void;
+  /** Opens the livery editor on this aircraft's livery. */
+  onEditLivery?: (index: number) => void;
 }
 
 export function AircraftScheduleModal({
@@ -36,6 +41,9 @@ export function AircraftScheduleModal({
   onUpdateFlight,
   onDeleteFlight,
   onSellOrReturnAircraft,
+  liveryNames = [],
+  onSetLivery,
+  onEditLivery,
 }: AircraftScheduleModalProps) {
   const acFlights = useMemo(() => flightsForTail(allSchedule, aircraft.tailNumber), [allSchedule, aircraft.tailNumber]);
   const [selectedFlId, setSelectedFlId] = useState<string | null>(initialSelectedFlightId ?? null);
@@ -110,7 +118,7 @@ export function AircraftScheduleModal({
 
   return (
     <ModalShell onClose={onClose} closeButton={false}>
-      <AircraftHero model={aircraft.model} tailNumber={aircraft.tailNumber} style={{ marginBottom: 14 }} />
+      <AircraftHero model={aircraft.model} tailNumber={aircraft.tailNumber} liveryIndex={aircraft.livery} style={{ marginBottom: 14 }} />
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 14, borderBottom: `1px solid ${C.line}`, marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -126,7 +134,29 @@ export function AircraftScheduleModal({
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {liveryNames.length > 1 && onSetLivery && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: C.textSoft }}>
+              Livery
+              <select
+                aria-label="Livery this aircraft wears"
+                value={Math.min(aircraft.livery ?? 0, liveryNames.length - 1)}
+                onChange={(e) => onSetLivery(aircraft.tailNumber, Number(e.target.value))}
+                style={{ background: C.raised, color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, padding: '6px 8px', fontSize: 13 }}
+              >
+                {liveryNames.map((n, i) => (
+                  <option key={i} value={i}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {onEditLivery && (
+            <Button variant="ghost" onClick={() => onEditLivery(Math.min(aircraft.livery ?? 0, Math.max(0, liveryNames.length - 1)))}>
+              Edit livery
+            </Button>
+          )}
           <Button variant="ghost" onClick={() => onSellOrReturnAircraft(aircraft.tailNumber)}>
             {aircraft.acquisition === 'owned' ? `Sell for ${formatMoneyM(calcAircraftResaleUsd(aircraft.model))}` : 'Return to lessor'}
           </Button>
