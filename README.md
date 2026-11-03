@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 2.64. Free to play. See [Credits and licences](#credits-and-licences).
+Version 2.65. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -20,6 +20,13 @@ Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 2.65:
+
+- **Cleaner liveries.** Stripes, swooshes, bellies and tail designs are drawn as smooth shapes on sharper pictures (twice the size), titles sit above the windows, and tail designs sit in the middle of the fin.
+- **Your aircraft on a sky of its own.** Click one of your planes on the map, or open it from your fleet, to see it in your livery on clouds picked by its registration. My Airline has a Livery card and button too.
+- **ICAO size codes.** Aircraft are Code A to F by wingspan, and airports by the largest aircraft their gates take (shown on the map, e.g. AUA • E). An aircraft flies only to airports of its code or bigger, so no more A380s at small fields. Routes you already fly keep flying and are marked.
+- **Other airlines land on runways long enough for them.** Jumbos no longer use an airport's short crosswind runway.
 
 Version 2.64:
 
