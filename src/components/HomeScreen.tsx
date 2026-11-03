@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { getAirportMaxAircraftTier } from '../game/tiers';
+import { airportGateCode } from '../game/gateCode';
 import type { Airport, GameMode, SaveGameState } from '../game/types';
 import { CloudCareersOnHome, SaveLocation } from './CloudPanel';
 import { Icon } from '../ui/icons';
@@ -170,7 +170,7 @@ export function HomeScreen(props: HomeScreenProps) {
                         </span>
                         <span style={{ display: 'block', fontSize: 11.5, color: C.faint, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ap.name}</span>
                       </span>
-                      <span style={{ fontSize: 12, color: C.muted }}>up to {getAirportMaxAircraftTier(ap.max_runway_length_ft).sizeLabel.toLowerCase()}</span>
+                      <span style={{ fontSize: 12, color: C.muted }}>up to Code {airportGateCode(ap)}</span>
                     </button>
                   );
                 })}

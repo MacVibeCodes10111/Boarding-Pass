@@ -874,6 +874,16 @@ const popcount = (m: number) => {
 // ---------------------------------------------------------------------------
 // Runtime: who is airborne, and where
 // ---------------------------------------------------------------------------
+/**
+ * The runway an AI flight needs (feet), from its aircraft's size (v2.65), so a
+ * jumbo never lands on an airport's short crosswind runway.
+ */
+const RUNWAY_FT: Record<RadarIconGroup, number> = {
+  commuter: 2_600, prop: 3_900, rj_tail: 5_200, small_jet: 5_200, rear_jet: 5_800, medium_jet: 6_200, long_narrow: 6_800,
+  large_jet: 7_600, heavy_twin: 8_600, trijet: 8_800, a340: 9_500, b747: 9_500, a380: 9_500, high_quad: 9_000,
+};
+export const aiRunwayFt = (f: Pick<AiFlight, 'group'>) => RUNWAY_FT[f.group] ?? 6_000;
+
 /** Minutes spent taxiing at each end of an AI flight (not drawn on the map). */
 export const aiTaxiMin = (f: AiFlight) => f.taxiMin ?? Math.min(12, f.blockMin * 0.15);
 

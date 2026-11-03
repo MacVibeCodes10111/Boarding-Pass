@@ -14,7 +14,7 @@
 // first needed, and kept: the same flight always gets the same wait and
 // runway, at every zoom level and in every view.
 // ============================================================================
-import { aiTaxiMin, type AiFlight, type AiTraffic } from './aiTraffic';
+import { aiRunwayFt, aiTaxiMin, type AiFlight, type AiTraffic } from './aiTraffic';
 import { arrStop, depRunway, type AiAirportIndex } from './groundTraffic';
 import { NO_LANES, playerRollMinutes, playerTaxiMin, runwayAt, runwayLanes, runwayPairKey, type RunwayLaneChoice, type RunwaySlots } from './navdata';
 import { AI_ARR_ROLL_MIN, AI_DEP_ROLL_MIN, bookInterval, earliestFit, RUNWAY_BUFFER_MIN, runwayOccupancy, type RunwayInterval } from './runwayUse';
@@ -199,7 +199,7 @@ export class RunwaySequencer {
           if (!(f.daysMask & (1 << dayIndexOf(depDay)))) continue;
           const T = depDay * MIN_PER_DAY + f.depUtcMin + aiTaxiMin(f);
           if (T + dOcc[1] < from - 30 || T + dOcc[0] > to + 30 || !near(T)) continue;
-          strip(pair(depRunway(ap, depDay, f.depUtcMin + aiTaxiMin(f), f.depLane ?? 0).ident)).push({ from: T + dOcc[0], to: T + dOcc[1], ai: `${f.id}:${depDay}` });
+          strip(pair(depRunway(ap, depDay, f.depUtcMin + aiTaxiMin(f), f.depLane ?? 0, aiRunwayFt(f)).ident)).push({ from: T + dOcc[0], to: T + dOcc[1], ai: `${f.id}:${depDay}` });
         }
       }
       for (const f of ai.index.arrs[apIdx]) {
@@ -210,7 +210,7 @@ export class RunwaySequencer {
           const arrMin = f.depUtcMin + f.blockMin - aiTaxiMin(f);
           const R = depDay * MIN_PER_DAY + arrMin;
           if (R + aOcc[1] < from - 30 || R + aOcc[0] > to + 30 || !near(R)) continue;
-          strip(pair(arrStop(ap, depDay, arrMin, f.arrLane ?? 0).ident)).push({ from: R + aOcc[0], to: R + aOcc[1], ai: `${f.id}:${depDay}` });
+          strip(pair(arrStop(ap, depDay, arrMin, f.arrLane ?? 0, aiRunwayFt(f)).ident)).push({ from: R + aOcc[0], to: R + aOcc[1], ai: `${f.id}:${depDay}` });
         }
       }
       for (const list of strips.values()) list.sort((a, b) => a.from - b.from);

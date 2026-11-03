@@ -7,6 +7,7 @@
 //        and the cabin and full specs folded away until wanted.
 //   Works the same on phones (one column, everything a tap away).
 // ============================================================================
+import { WINGSPAN_M, aircraftGateCode } from '../game/gateCode';
 import { AircraftPhoto, hasAircraftPhoto } from './AircraftPhoto';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BRAND_ORDER } from '../game/aircraftCatalog';
@@ -285,7 +286,7 @@ function ModelView(props: BuyAircraftPanelProps) {
         {!hasAircraftPhoto(m) && <img src={props.iconForModel(m)} alt="" style={{ width: 44, height: 44 }} />}
         <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.4 }}>
           {tier.sizeLabel}
-          {m.is_cargo ? ' freighter' : ''}, type code <b style={{ color: C.textSoft }}>{m.icao_code}</b>. Needs {m.min_runway_ft.toLocaleString()} ft of runway.
+          {m.is_cargo ? ' freighter' : ''}, type code <b style={{ color: C.textSoft }}>{m.icao_code}</b>. ICAO size <b style={{ color: C.textSoft }}>Code {aircraftGateCode(m)}</b>{WINGSPAN_M[m.id] ? ` (${WINGSPAN_M[m.id]} m wingspan)` : ''}: flies to airports with Code {aircraftGateCode(m)} gates or bigger.
         </div>
       </div>
 

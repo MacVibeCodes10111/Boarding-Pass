@@ -5,6 +5,7 @@ import { flightNumberBand, registrationsForNewAircraft } from './registrations';
 import { getRouteDemandAndFares } from './economics';
 import { calcBlockTimeMin, calcDistanceNm } from './geo';
 import { airportRestrictionFor } from './tiers';
+import { aircraftGateCode } from './gateCode';
 import {
   DAY_NAMES_SHORT,
   MIN_PER_DAY,
@@ -491,8 +492,8 @@ export function planRouteDispatch(req: DispatchRequest): PlanResult {
   const restriction = airportRestrictionFor(ac.model, origin) ?? airportRestrictionFor(ac.model, destination);
   if (restriction) {
     return fail(
-      'Runway too short',
-      `The ${ac.model.name} needs ${ac.model.min_runway_ft.toLocaleString()} ft of runway.`,
+      'Too big for the airport',
+      `The ${ac.model.name} is ICAO Code ${aircraftGateCode(ac.model)}, wider than the gates there take.`,
       restriction
     );
   }

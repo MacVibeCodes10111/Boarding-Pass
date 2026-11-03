@@ -47,12 +47,13 @@ import {
   splitFlightPath,
 } from '../game/navdata';
 import { CAMERA_READOUT_TITLE, isHeightDragStart } from '../game/platform';
-import { TIERS, getAircraftTierInfo, getAirportMaxAircraftTier } from '../game/tiers';
+import { getAircraftTierInfo, getAirportMaxAircraftTier } from '../game/tiers';
 import { dayIndexOf, daysOrAll, formatClockShort, formatDurationHm, MIN_PER_DAY } from '../game/time';
 import type { Airport, PlayerAircraft, RadarIconGroup, ScheduledFlight } from '../game/types';
 import { C, MAP_C, useThemeVersion } from '../ui/kit';
 import { currentLayout, isTouchFirst } from '../ui/layout';
 import { loadCargoAprons } from '../game/cargoAprons';
+import { airportGateCode, gateRank } from '../game/gateCode';
 import { AIRCRAFT_PHOTOS } from '../game/aircraftPhotos';
 import { cloudSkyCss } from '../game/cloudSky';
 import { paintedPhoto } from '../game/liveryPaint';
@@ -606,7 +607,7 @@ function addLayers(map: any) {
     minzoom: 4.5,
     filter: AIRPORT_LOD_FILTER,
     layout: {
-      'text-field': ['concat', ['get', 'iata'], ' • T', ['to-string', ['get', 'ac_tier']]],
+      'text-field': ['concat', ['get', 'iata'], ' • ', ['get', 'gate']],
       'text-size': ['interpolate', ['linear'], ['zoom'], 4.5, 9.5, 7, 11],
       'text-offset': [0, 1.05],
       'text-anchor': 'top',
@@ -1137,7 +1138,7 @@ function createWxTagImageData(label: keyof typeof WX_TAG_COLORS): ImageData {
 
 /** The game's icons and layers, added to a freshly loaded map style. */
 function installMapContent(map: any, styleId: MapStyleId, threeD: boolean) {
-  TIERS.forEach((t) => {
+  [1, 2, 3, 4, 5, 6].forEach((t) => {
     putImage(map, `ap-icon-standard-${t}`, createAirportMapIconImageData('standard', t));
     putImage(map, `ap-icon-hub-${t}`, createAirportMapIconImageData('hub', t));
     putImage(map, `ap-icon-selected-${t}`, createAirportMapIconImageData('selected', t));
@@ -1715,7 +1716,10 @@ export function LiveMap(props: LiveMapProps) {
       const isHub = hubs.includes(a.iata_code);
       const isSelected = inspectedAirport?.iata_code === a.iata_code;
       const isLinked = linked.has(a.iata_code);
-      const tier = getAirportMaxAircraftTier(a.max_runway_length_ft).tier;
+      const gate = airportGateCode(a);
+      const rank = gateRank(gate);
+      // the size filters work on 1 to 5 (Code E and F airports count as the largest)
+      const tier = Math.min(5, rank);
       const status = isSelected ? 'selected' : isHub ? 'hub' : 'standard';
       return {
         type: 'Feature',
@@ -1730,7 +1734,8 @@ export function LiveMap(props: LiveMapProps) {
           dim: sel && !isLinked && !isSelected ? 1 : 0,
           ac_tier: tier,
           demand_weight: a.demand_weight || 25,
-          ap_icon: `ap-icon-${status}-${tier}`,
+          ap_icon: `ap-icon-${status}-${rank}`,
+          gate,
           ...(showWeatherRadar ? { wx: getAirportWeather(a, mapDay, wxHour * 60).flightCategory } : {}),
         },
       };

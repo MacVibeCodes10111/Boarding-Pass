@@ -8,7 +8,7 @@
 //   paths do, so taxiing hands over seamlessly to the takeoff roll and from
 //   the landing roll.
 // ============================================================================
-import { aiTaxiMin, type AiFlight, type AiTraffic } from './aiTraffic';
+import { aiRunwayFt, aiTaxiMin, type AiFlight, type AiTraffic } from './aiTraffic';
 import { getActiveRunwayForAirport, getFlightGeometryForDeparture, playerTaxiMin, rolloutEndPoint, type RunwaySlots } from './navdata';
 import { dayIndexOf, daysOrAll, MIN_PER_DAY } from './time';
 import type { Airport, RadarIconGroup, ScheduledFlight } from './types';
@@ -44,9 +44,9 @@ const norm = (day: number, min: number) => {
 
 // The runway in use only changes with the weather (3-hour blocks), so lookups are cached
 const rwyCache = new Map<string, RunwayPoint>();
-function cachedRunway(kind: 'd' | 'a', ap: Airport, day: number, min: number, lane: number, make: (d: number, m: number) => RunwayPoint): RunwayPoint {
+function cachedRunway(kind: 'd' | 'a', ap: Airport, day: number, min: number, lane: number, make: (d: number, m: number) => RunwayPoint, minFt = 0): RunwayPoint {
   const t = norm(day, min);
-  const key = `${kind}:${ap.iata_code}:${ap.id}:${t.day}:${Math.floor(t.min / 180)}:${lane}`;
+  const key = `${kind}:${ap.iata_code}:${ap.id}:${t.day}:${Math.floor(t.min / 180)}:${lane}:${minFt}`;
   let r = rwyCache.get(key);
   if (!r) {
     if (rwyCache.size > 20_000) rwyCache.clear();
@@ -56,19 +56,19 @@ function cachedRunway(kind: 'd' | 'a', ap: Airport, day: number, min: number, la
   return r;
 }
 
-export function depRunway(ap: Airport, day: number, min: number, lane = 0): RunwayPoint {
+export function depRunway(ap: Airport, day: number, min: number, lane = 0, minFt = 0): RunwayPoint {
   return cachedRunway('d', ap, day, min, lane, (d, m) => {
-    const r = getActiveRunwayForAirport(ap, d, m, 'departure', lane);
+    const r = getActiveRunwayForAirport(ap, d, m, 'departure', lane, minFt);
     return { ident: r.ident, lon: r.thresholdLon, lat: r.thresholdLat, hdg: r.headingDegT };
-  });
+  }, minFt);
 }
 
-export function arrStop(ap: Airport, day: number, min: number, lane = 0): RunwayPoint {
+export function arrStop(ap: Airport, day: number, min: number, lane = 0, minFt = 0): RunwayPoint {
   return cachedRunway('a', ap, day, min, lane, (d, m) => {
-    const r = getActiveRunwayForAirport(ap, d, m, 'arrival', lane);
+    const r = getActiveRunwayForAirport(ap, d, m, 'arrival', lane, minFt);
     const [lon, lat] = rolloutEndPoint(r);
     return { ident: r.ident, lon, lat, hdg: r.headingDegT };
-  });
+  }, minFt);
 }
 
 /** AI flights by airport index, built once per traffic set. */
@@ -100,7 +100,7 @@ export function aiDepartureMove(t: AiTraffic, f: AiFlight, depDay: number, airpo
     halfLen: GROUP_LENGTH_M[f.group] / 2,
     kind: 'dep',
     // The runway in use at takeoff
-    rwy: depRunway(airport, depDay, f.depUtcMin + aiTaxiMin(f), f.depLane ?? 0),
+    rwy: depRunway(airport, depDay, f.depUtcMin + aiTaxiMin(f), f.depLane ?? 0, aiRunwayFt(f)),
     parkFrom,
     pushAt: G,
     takeoffAt: T,
@@ -122,7 +122,7 @@ export function aiArrivalMove(t: AiTraffic, f: AiFlight, depDay: number, airport
     pref: t.airlines[f.airline]?.code ?? String(f.airline),
     halfLen: GROUP_LENGTH_M[f.group] / 2,
     kind: 'arr',
-    rwy: arrStop(airport, depDay, arrMin, f.arrLane ?? 0),
+    rwy: arrStop(airport, depDay, arrMin, f.arrLane ?? 0, aiRunwayFt(f)),
     flowRwy: depRunway(airport, depDay, arrMin),
     rollEndAt: R,
     parkUntil,

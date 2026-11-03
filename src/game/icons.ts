@@ -3,7 +3,7 @@
 // ============================================================================
 import { BUILTIN_AIRCRAFT } from './aircraftCatalog';
 import { SILHOUETTE_GROUPS, SILHOUETTE_LABELS, drawSilhouette } from './silhouettes';
-import type { AircraftModel, OperationalTier, RadarIconGroup } from './types';
+import type { AircraftModel, RadarIconGroup } from './types';
 
 export const RADAR_GROUPS: RadarIconGroup[] = SILHOUETTE_GROUPS;
 export const PLANE_TINT = '#f97316';
@@ -49,11 +49,13 @@ export function createRadarGroupImageData(group: RadarIconGroup, fillHex = PLANE
 // ----------------------------------------------------------------------------
 export type AirportIconStatus = 'hub' | 'selected' | 'standard';
 
-const STD_FILLS: Record<OperationalTier, string> = { 1: '#334155', 2: '#1e40af', 3: '#1d4ed8', 4: '#0369a1', 5: '#0284c7' };
-const STD_RINGS: Record<OperationalTier, string> = { 1: '#94a3b8', 2: '#60a5fa', 3: '#38bdf8', 4: '#7dd3fc', 5: '#bae6fd' };
-const RADIUS_BY_TIER: Record<OperationalTier, number> = { 1: 8.5, 2: 9.8, 3: 11.0, 4: 12.2, 5: 13.5 };
+// by ICAO gate code, 1 (A) to 6 (F)
+const STD_FILLS: Record<number, string> = { 1: '#334155', 2: '#334155', 3: '#1e40af', 4: '#1d4ed8', 5: '#0369a1', 6: '#0284c7' };
+const STD_RINGS: Record<number, string> = { 1: '#94a3b8', 2: '#94a3b8', 3: '#60a5fa', 4: '#38bdf8', 5: '#7dd3fc', 6: '#bae6fd' };
+const RADIUS_BY_TIER: Record<number, number> = { 1: 8.0, 2: 8.8, 3: 9.8, 4: 11.0, 5: 12.2, 6: 13.5 };
 
-export function createAirportMapIconImageData(status: AirportIconStatus, tier: OperationalTier = 3): ImageData {
+/** An airport badge for the map, showing its ICAO gate code letter (rank 1 = A to 6 = F). */
+export function createAirportMapIconImageData(status: AirportIconStatus, tier: number = 3): ImageData {
   const size = 44;
   const canvas = document.createElement('canvas');
   canvas.width = size;
@@ -100,7 +102,7 @@ export function createAirportMapIconImageData(status: AirportIconStatus, tier: O
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = palette.text;
-  ctx.fillText(String(tier), c, c + 0.5);
+  ctx.fillText('ABCDEF'[Math.min(6, Math.max(1, tier)) - 1], c, c + 0.5);
   return ctx.getImageData(0, 0, size, size);
 }
 

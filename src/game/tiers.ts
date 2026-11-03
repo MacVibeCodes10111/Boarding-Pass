@@ -1,6 +1,7 @@
 // ============================================================================
 // UNIFIED 5-TIER SYSTEM — shared by airports (runway length) and aircraft
 // ============================================================================
+import { gateRestriction } from './gateCode';
 import type { AircraftModel, Airport, OperationalTier } from './types';
 
 export interface TierInfo {
@@ -81,16 +82,13 @@ export function getAircraftTierInfo(tier: OperationalTier): TierInfo {
   return UNIFIED_TIER_CONFIG[tier] || UNIFIED_TIER_CONFIG[3];
 }
 
-/** Returns a reason string if the aircraft cannot use the airport, else null. */
+/**
+ * Returns a reason string if the aircraft cannot use the airport, else null.
+ * Since v2.65 this is the ICAO size code (wingspan against what the
+ * airport's gates take), not the runway length; see gateCode.ts.
+ */
 export function airportRestrictionFor(model: AircraftModel, airport: Airport): string | null {
-  const apTier = getAirportMaxAircraftTier(airport.max_runway_length_ft).tier;
-  if (airport.max_runway_length_ft < model.min_runway_ft) {
-    return `${airport.iata_code} runway ${airport.max_runway_length_ft.toLocaleString()} ft < ${model.min_runway_ft.toLocaleString()} ft required`;
-  }
-  if (model.tier > apTier) {
-    return `${airport.iata_code} is Max Tier ${apTier}, aircraft is Tier ${model.tier}`;
-  }
-  return null;
+  return gateRestriction(model, airport);
 }
 
 export function calcHubPurchasePriceUsd(airport: Airport): number {

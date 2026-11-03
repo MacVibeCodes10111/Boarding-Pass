@@ -1,20 +1,21 @@
 import { useMemo, useState } from 'react';
-import { UNIFIED_TIER_CONFIG, calcHubPurchasePriceUsd, calcHubSaleRefundUsd, tierForRunwayFt } from '../game/tiers';
+import { calcHubPurchasePriceUsd, calcHubSaleRefundUsd } from '../game/tiers';
+import { GATE_CODE_INFO, GATE_CODES, airportGateCode, type GateCode } from '../game/gateCode';
 import { formatMoneyM } from '../game/time';
-import type { Airport, OperationalTier } from '../game/types';
+import type { Airport } from '../game/types';
 import { Button, C, SearchInput, Segmented, SidePanel } from '../ui/kit';
 
-const TIERS_DESC: OperationalTier[] = [5, 4, 3, 2, 1];
+const CODES_DESC: GateCode[] = [...GATE_CODES].reverse();
 
-/** Filters airports by a free-text query and buckets them by max aircraft size. */
+/** Filters airports by a free-text query and buckets them by the ICAO size code of their gates. */
 export function groupAirportsByTier(airports: Airport[], query: string) {
   const q = query.trim().toLowerCase();
-  const groups = new Map<OperationalTier, Airport[]>(TIERS_DESC.map((t) => [t, []]));
+  const groups = new Map<GateCode, Airport[]>(CODES_DESC.map((t) => [t, []]));
   for (const a of airports) {
     if (q && ![a.iata_code, a.municipality, a.name, a.iso_country].some((s) => (s || '').toLowerCase().includes(q))) continue;
-    groups.get(tierForRunwayFt(a.max_runway_length_ft || 7000))!.push(a);
+    groups.get(airportGateCode(a))!.push(a);
   }
-  return TIERS_DESC.map((t) => ({ tier: t, info: UNIFIED_TIER_CONFIG[t], list: groups.get(t)! })).filter((g) => g.list.length > 0);
+  return CODES_DESC.map((t) => ({ tier: t, info: GATE_CODE_INFO[t], list: groups.get(t)! })).filter((g) => g.list.length > 0);
 }
 
 const PER_GROUP = 40;
@@ -44,7 +45,7 @@ export function AirportsPanel({
   return (
     <SidePanel
       title="Airports"
-      subtitle={`${airports.length.toLocaleString()} airports with scheduled service. Sized by the largest aircraft their runway takes.`}
+      subtitle={`${airports.length.toLocaleString()} airports with scheduled service, by the ICAO size code of the largest aircraft their gates take.`}
       width={720}
       onClose={onClose}
     >
@@ -65,7 +66,7 @@ export function AirportsPanel({
       {groups.map(({ tier, info, list }) => (
         <section key={tier} style={{ marginBottom: 18 }}>
           <div style={{ fontSize: 13, fontWeight: 650, color: C.textSoft, marginBottom: 6 }}>
-            Takes up to {info.sizeLabel.toLowerCase()} aircraft <span style={{ color: C.faint, fontWeight: 500 }}>{list.length}</span>
+            Code {tier}: up to {info.examples} <span style={{ color: C.faint, fontWeight: 500 }}>{list.length}</span>
           </div>
           <div style={{ border: `1px solid ${C.line}`, borderRadius: 8, overflow: 'hidden' }}>
             {list.slice(0, PER_GROUP).map((ap, i) => {

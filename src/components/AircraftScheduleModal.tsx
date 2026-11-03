@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { MAX_FARE_MULT, getRouteDemandAndFares } from '../game/economics';
 import { calcAircraftScheduleUsage, findScheduleConflict, flightsForTail, isFlightNumberTaken } from '../game/scheduling';
-import { calcAircraftResaleUsd, getAircraftTierInfo } from '../game/tiers';
+import { airportRestrictionFor, calcAircraftResaleUsd, getAircraftTierInfo } from '../game/tiers';
 import { MIN_PER_DAY, daysOrAll, formatClockShort, formatDurationHm, formatMoneyM, snapToFiveMin } from '../game/time';
 import type { Fares, PlayerAircraft, ScheduledFlight, WeekDays } from '../game/types';
 import { Button, C, DayPicker, ModalShell, NumberField, inputStyle, labelStyle } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { AircraftHero } from './AircraftPhoto';
+import { aircraftGateCode } from '../game/gateCode';
 import { RouteDemandBar } from './RouteDemandBar';
 import { ScheduleTimeline } from './ScheduleTimeline';
 import { legLocalText } from '../game/localTime';
@@ -119,7 +120,7 @@ export function AircraftScheduleModal({
               {aircraft.tailNumber} <span style={{ color: C.muted, fontWeight: 500 }}>{aircraft.model.name}</span>
             </h2>
             <div className="num" style={{ fontSize: 12.5, color: C.muted, marginTop: 3 }}>
-              {tierInfo.sizeLabel}
+              {tierInfo.sizeLabel}, ICAO Code {aircraftGateCode(aircraft.model)}
               {isCargo ? `, freighter ${aircraft.model.cargo_cap_tons} t` : ''}. Based at {aircraft.hubIata}, {aircraft.model.turnaround_min} min turnaround. {usage.usedPct}% booked ({usage.avgDailyHours} h a day).
             </div>
           </div>
@@ -147,6 +148,8 @@ export function AircraftScheduleModal({
             {acFlights.map((fl) => {
               const isSel = selectedFlight?.id === fl.id;
               const isPartner = pairedFlight?.id === fl.id;
+              // scheduled before the ICAO size codes (v2.65): it keeps flying, but can't be added again
+              const tooBig = airportRestrictionFor(aircraft.model, fl.origin) ?? airportRestrictionFor(aircraft.model, fl.destination);
               return (
                 <button
                   key={fl.id}
@@ -165,6 +168,11 @@ export function AircraftScheduleModal({
                   <div style={{ fontWeight: 600, fontSize: 13 }}>
                     <span style={{ color: isSel ? C.brand : C.textDim }}>{fl.flightNumber}</span> {fl.origin.iata_code} → {fl.destination.iata_code}
                   </div>
+                  {tooBig && (
+                    <div title={`${tooBig}. It keeps flying, but a new flight like it can't be scheduled.`} style={{ fontSize: 11.5, color: C.amber, marginTop: 2 }}>
+                      Too big for the airport, kept from before
+                    </div>
+                  )}
                   <div className="num" style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>
                     {formatClockShort(fl.depTimeMin)}–{formatClockShort(fl.arrTimeMin)} UTC ({formatDurationHm(fl.blockTimeMin)})
                   </div>

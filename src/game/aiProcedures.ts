@@ -15,7 +15,7 @@ import { AI_ARR_ROLL_MIN, AI_DEP_ROLL_MIN } from './runwayUse';
 import { CLIMB_NM_PER_KFT, DESCENT_NM_PER_KFT, aiCruiseAltitudeFt } from './altitude';
 import { calcBearingDeg, calcCoordDistanceNm, offsetLatLonNm, type LonLat } from './geo';
 import { buildTerminalPaths, landingRollNm, terminalDistances, type TerminalPaths } from './navdata';
-import { aiDepartureDay, aiTaxiMin, type AiAirport, type AiFlight, type AiPosition, type AiTraffic } from './aiTraffic';
+import { aiDepartureDay, aiRunwayFt, aiTaxiMin, type AiAirport, type AiFlight, type AiPosition, type AiTraffic } from './aiTraffic';
 import { MIN_PER_DAY } from './time';
 import type { Airport } from './types';
 
@@ -240,7 +240,7 @@ export class AiPathModel {
     if (budget.left <= 0 || (budget.until !== undefined && now() > budget.until)) return null;
     budget.left--;
     const arrMin = f.depUtcMin + f.blockMin - aiTaxiMin(f);
-    const tp = buildTerminalPaths(this.airports[f.o], this.airports[f.d], depDay, f.depUtcMin + aiTaxiMin(f), depDay, arrMin, { dep: f.depLane ?? 0, arr: f.arrLane ?? 0 });
+    const tp = buildTerminalPaths(this.airports[f.o], this.airports[f.d], depDay, f.depUtcMin + aiTaxiMin(f), depDay, arrMin, { dep: f.depLane ?? 0, arr: f.arrLane ?? 0, minFt: aiRunwayFt(f) });
     const liftIdx = tp.liftoffIdx;
     const dep = makeTrack(tp.dep, (s) => (s < 0.6 ? 70 : 160 + Math.min(1, s / 30) * 90));
     const liftoffNm = dep.cumNm[liftIdx] ?? 0;

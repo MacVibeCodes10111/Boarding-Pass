@@ -18,7 +18,8 @@ import {
   type PlanResult,
   type RoutingMode,
 } from '../game/scheduling';
-import { airportRestrictionFor, calcHubPurchasePriceUsd, calcHubSaleRefundUsd, getAirportMaxAircraftTier } from '../game/tiers';
+import { airportRestrictionFor, calcHubPurchasePriceUsd, calcHubSaleRefundUsd } from '../game/tiers';
+import { GATE_CODE_INFO, airportGateCode } from '../game/gateCode';
 import { formatClockShort, formatDurationHm, formatMoneyM } from '../game/time';
 import type { AircraftModel, Airport, Fares, PlayerAircraft, ScheduledFlight, WeekDays } from '../game/types';
 import { Button, C, DayPicker, Pill, Segmented, Stepper, inputStyle, glass } from '../ui/kit';
@@ -104,7 +105,7 @@ export function AirportDrawer({
   }, [airport.iata_code]);
   const [showWx, setShowWx] = useState(false);
   const isHub = hubs.includes(airport.iata_code);
-  const tierInfo = getAirportMaxAircraftTier(airport.max_runway_length_ft);
+  const gate = airportGateCode(airport);
 
   const origin = airportByIata.get(draft.originIata) ?? null;
   const aircraft = fleet.find((f) => f.tailNumber === draft.tailNumber) ?? null;
@@ -188,7 +189,7 @@ export function AirportDrawer({
           dist > ac.model.range_nm
             ? 'out of range'
             : (from && airportRestrictionFor(ac.model, from)) || airportRestrictionFor(ac.model, airport)
-            ? 'runway too short'
+            ? 'too big for the airport'
             : neededMin > freeMin
             ? 'no time left'
             : null;
@@ -269,7 +270,7 @@ export function AirportDrawer({
               {airport.municipality}, {airport.iso_country}
             </div>
             <div style={{ fontSize: 12, color: C.muted }}>
-              {airport.name}. Up to {tierInfo.sizeLabel.toLowerCase()} aircraft ({airport.max_runway_length_ft.toLocaleString()} ft runway).
+              {airport.name}. Gates up to ICAO Code {gate} ({GATE_CODE_INFO[gate].examples}), {airport.max_runway_length_ft.toLocaleString()} ft runway.
             </div>
           </div>
           <button type="button" aria-label="Close" onClick={onClose} style={{ background: C.raised, border: `1px solid ${C.border}`, color: C.textSoft, cursor: 'pointer', width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', padding: 0, flex: 'none' }}>

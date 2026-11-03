@@ -321,7 +321,12 @@ export interface ActiveRunwaySelection {
  * picks one of them, for busy airports that use more than one at a time
  * (see runwayLanes). With a single runway, both use it.
  */
-export function getActiveRunwayForAirport(airport: Airport, simDay = 1, simMin = 720, purpose: 'arrival' | 'departure' = 'arrival', lane = 0): ActiveRunwaySelection {
+/**
+ * The runway in use for a takeoff or a landing. `minFt` is the runway the
+ * aircraft needs (v2.65): a lane on a runway too short for it goes to the
+ * longest one in use that is long enough instead (or the longest there is).
+ */
+export function getActiveRunwayForAirport(airport: Airport, simDay = 1, simMin = 720, purpose: 'arrival' | 'departure' = 'arrival', lane = 0, minFt = 0): ActiveRunwaySelection {
   const wx = getAirportWeather(airport, simDay, simMin);
   type Pick = RunwayEnd & { headwind: number; crosswind: number };
   const score = (end: RunwayEnd): Pick => {
@@ -358,6 +363,14 @@ export function getActiveRunwayForAirport(airport: Airport, simDay = 1, simMin =
     }
     const list = purpose === 'departure' ? dep : arr;
     best = list[((Math.floor(lane) % list.length) + list.length) % list.length] ?? lead;
+    if (minFt > 0 && (best.lenFt || 0) < minFt) {
+      // too short for this aircraft: a long enough runway of those in use this way, else of any facing into the wind
+      const facing = getAirportRunways(airport)
+        .flatMap(endsOf)
+        .filter((e) => hdgDiff(e.hdg, lead.hdg) <= 60)
+        .map(score);
+      best = longEnough(list, minFt) ?? longEnough(lanes, minFt) ?? longEnough(facing, minFt) ?? [...lanes, ...facing].sort((a, b) => b.lenFt - a.lenFt)[0] ?? best;
+    }
   } else {
     // Strong crosswind on the main runways: the best runway for the wind, takeoffs from a parallel one if there is
     const all = getAirportRunways(airport).flatMap(endsOf);
@@ -369,6 +382,10 @@ export function getActiveRunwayForAirport(airport: Airport, simDay = 1, simMin =
         if (hdgDiff(e.hdg, best.hdg) <= 20 && (!alt || e.lenFt > alt.lenFt)) alt = { ...e, headwind: best.headwind, crosswind: best.crosswind };
       }
       if (alt) best = alt;
+    }
+    if (minFt > 0 && (best.lenFt || 0) < minFt) {
+      const way = best;
+      best = longEnough(all.filter((e) => hdgDiff(e.hdg, way.hdg) <= 60).map(score), minFt) ?? best;
     }
   }
   // Kept to a tenth of a degree: whole degrees put a long landing roll tens of metres off the centreline
@@ -714,8 +731,8 @@ export function buildTerminalPaths(
   // Times may run past midnight; weather (and so the runway) is looked up on the right day
   const dT = normalizeSimTime(depDay, depMin);
   const aT = normalizeSimTime(arrDay, arrMin);
-  const depRwy = getActiveRunwayForAirport(origin, dT.day, dT.min, 'departure', lanes.dep);
-  const arrRwy = getActiveRunwayForAirport(destination, aT.day, aT.min, 'arrival', lanes.arr);
+  const depRwy = getActiveRunwayForAirport(origin, dT.day, dT.min, 'departure', lanes.dep, lanes.minFt);
+  const arrRwy = getActiveRunwayForAirport(destination, aT.day, aT.min, 'arrival', lanes.arr, lanes.minFt);
   const oLL: LonLat = [origin.longitude_deg, origin.latitude_deg];
   const dLL: LonLat = [destination.longitude_deg, destination.latitude_deg];
   const courseOut = calcBearingDeg(oLL, dLL);
@@ -853,6 +870,15 @@ export function getFlightGeometryForDeparture(flight: ScheduledFlight, depSimDay
 export interface RunwayLaneChoice {
   dep: number;
   arr: number;
+  /** The runway length the aircraft needs, in feet (other airlines' flights, v2.65). */
+  minFt?: number;
+}
+
+/** The shortest runway end of these that is at least `minFt` long (the most like the planned one), or null. */
+function longEnough<T extends { lenFt: number }>(ends: T[], minFt: number): T | null {
+  let pick: T | null = null;
+  for (const e of ends) if ((e.lenFt || 0) >= minFt && (!pick || e.lenFt < pick.lenFt)) pick = e;
+  return pick;
 }
 export const NO_LANES: RunwayLaneChoice = { dep: 0, arr: 0 };
 let playerLanes: ((flight: ScheduledFlight, depSimDay: number) => RunwayLaneChoice) | null = null;
