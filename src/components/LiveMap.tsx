@@ -57,7 +57,7 @@ import { airportGateCode, gateRank } from '../game/gateCode';
 import { AIRCRAFT_PHOTOS } from '../game/aircraftPhotos';
 import { cloudSkyCss } from '../game/cloudSky';
 import { paintedPhoto } from '../game/liveryPaint';
-import { airlineBadge, liveryIndexOf, specialLabel } from '../game/livery';
+import { liveryIndexOf, specialLabel } from '../game/livery';
 import { LiveryContext } from './AircraftPhoto';
 
 const EMPTY_FC = { type: 'FeatureCollection', features: [] as any[] };
@@ -1341,7 +1341,7 @@ export function LiveMap(props: LiveMapProps) {
             // paint the picture in the airline's livery once it's ready
             const heroImg = popup.getElement?.()?.querySelector('.bp-pop-hero img[data-model]') as HTMLImageElement | null;
             const badgeImg = popup.getElement?.()?.querySelector('.bp-pop-badge') as HTMLImageElement | null;
-            const badge = liveryRef.current ? airlineBadge(liveryRef.current.liveries) : undefined;
+            const badge = liveryRef.current?.logo;
             if (badgeImg && badge) {
               badgeImg.src = badge;
               badgeImg.style.display = 'block';

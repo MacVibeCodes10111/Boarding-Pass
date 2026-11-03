@@ -35,6 +35,8 @@ function usd(v: number): string {
 }
 const signedUsd = (v: number) => (v > 0 ? `+${usd(v)}` : usd(v));
 /** Big counts: 14,419,000 → 14.4M. */
+/** Up to 6 digits as they are, then 1.39M: big airlines' totals stay inside their boxes. */
+const compact = (n: number) => (Math.abs(n) >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 1 : 2)}M` : num(n));
 const big = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e4 ? `${Math.round(n / 1e3)}k` : num(n));
 
 /** Width of an element in CSS pixels, so charts draw at 1:1 (text never scales). */
@@ -150,7 +152,7 @@ function Tile({ label, value, sub }: { label: string; value: React.ReactNode; su
       <div className="num" style={{ fontSize: 19, fontWeight: 650, color: C.text, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {value}
       </div>
-      {sub && <div style={{ fontSize: 11.5, color: C.faint, marginTop: 1 }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 11.5, color: C.faint, marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>}
     </div>
   );
 }
@@ -283,14 +285,20 @@ function Donut({ slices, unit, centre }: { slices: Slice[]; unit: string; centre
             );
           })
         )}
-        <text x={CX} y={CX - 2} textAnchor="middle" fontSize={20} fontWeight={650} fill={C.text}>
-          {hover !== null ? `${pct(slices[hover].value, total)}%` : num(total)}
-        </text>
+        {(() => {
+          // big airlines: a short number (1.39M), sized to sit inside the ring
+          const t = hover !== null ? `${pct(slices[hover].value, total)}%` : compact(total);
+          return (
+            <text x={CX} y={CX - 2} textAnchor="middle" fontSize={t.length <= 5 ? 20 : t.length <= 6 ? 18 : 15} fontWeight={650} fill={C.text}>
+              {t}
+            </text>
+          );
+        })()}
         <text x={CX} y={CX + 15} textAnchor="middle" fontSize={10.5} fill={C.muted}>
           {hover !== null ? slices[hover].label.slice(0, 16) : centre}
         </text>
       </svg>
-      <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: 4 }}>
+      <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: 4, overflow: 'hidden' }}>
         {slices.map((s, i) => (
           <div
             key={s.label}
@@ -300,8 +308,8 @@ function Donut({ slices, unit, centre }: { slices: Slice[]; unit: string; centre
           >
             <span style={{ width: 10, height: 10, borderRadius: 3, background: sliceColor(s, i) }} />
             <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.label}</span>
-            <span className="num" style={{ color: C.text }}>
-              {num(s.value)}
+            <span className="num" style={{ color: C.text, whiteSpace: 'nowrap' }} title={num(s.value)}>
+              {compact(s.value)}
             </span>
             <span className="num" style={{ color: C.muted, width: 34, textAlign: 'right' }}>
               {pct(s.value, total)}%
@@ -413,10 +421,10 @@ function Record({ label, value, sub }: { label: string; value: React.ReactNode; 
   return (
     <div style={{ minWidth: 0 }}>
       <div style={{ fontSize: 11.5, color: C.muted }}>{label}</div>
-      <div className="num" style={{ fontSize: 14.5, fontWeight: 650, color: C.text, marginTop: 2 }}>
+      <div className="num" style={{ fontSize: 14.5, fontWeight: 650, color: C.text, marginTop: 2, overflowWrap: 'anywhere' }}>
         {value}
       </div>
-      {sub && <div style={{ fontSize: 11.5, color: C.faint }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 11.5, color: C.faint, overflowWrap: 'anywhere' }}>{sub}</div>}
     </div>
   );
 }
@@ -436,11 +444,11 @@ function LiveryCard({ fleet, onEdit }: { fleet: PlayerAircraft[]; onEdit: () => 
       <AircraftHero model={model} tailNumber={pick?.tailNumber ?? ''} liveryIndex={pick?.livery} photoWidth="min(72%, 620px)" style={{ borderRadius: 0, aspectRatio: '4 / 1' }} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 14px', flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 650 }}>{ctx ? 'Your livery' : 'Plain white for now'}</div>
-          <div style={{ fontSize: 12, color: C.muted }}>{ctx ? 'On every aircraft you fly, here, in the fleet and on the map.' : 'Give your airline its own colours, tail and titles.'}</div>
+          <div style={{ fontSize: 13.5, fontWeight: 650 }}>{ctx?.liveries.length ? 'Your livery' : 'Plain white for now'}</div>
+          <div style={{ fontSize: 12, color: C.muted }}>{ctx?.liveries.length ? 'On every aircraft you fly, here, in the fleet and on the map.' : 'Give your airline its own colours, tail and titles.'}</div>
         </div>
         <Button size="sm" variant="primary" onClick={onEdit}>
-          {ctx ? 'Edit livery' : 'Design a livery'}
+          {ctx?.liveries.length ? 'Edit livery' : 'Design a livery'}
         </Button>
       </div>
     </section>
@@ -521,7 +529,7 @@ export function StatsPanel(props: {
             <Tile label="Load factor" value={`${st.loadFactorPct}%`} sub={`${big(st.paxNm)} of ${big(st.seatNm)} seat-nm filled`} />
             <Tile label="Departures a week" value={num(st.departures)} sub={`${num(st.blockHours)} block hours`} />
             <Tile label="Fleet" value={num(st.fleet)} sub={`${st.owned} owned, ${st.leased} leased`} />
-            <Tile label="Network" value={`${st.routes} routes`} sub={`${st.destinations} airports, ${st.countries} countries`} />
+            <Tile label="Network" value={`${num(st.routes)} route${st.routes === 1 ? "" : "s"}`} sub={`${st.destinations} airports, ${st.countries} countries`} />
             <Tile label="Distance flown a week" value={`${num(st.nmFlown)} nm`} sub={`${(st.nmFlown / 21_639).toFixed(1)}× around the world`} />
           </div>
 

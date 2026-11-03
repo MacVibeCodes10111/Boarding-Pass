@@ -4,21 +4,21 @@
 //   (made from the Airline Empires community templates; see Credits). Types
 //   without a picture, and custom aircraft, show their map icon instead.
 // ============================================================================
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useSyncExternalStore } from 'react';
 import { AIRCRAFT_PHOTOS } from '../game/aircraftPhotos';
 import { cloudSkyCss } from '../game/cloudSky';
 import { specialLabel, type Livery } from '../game/livery';
-import { paintedPhoto } from '../game/liveryPaint';
+import { holdPhoto, paintedPhoto } from '../game/liveryPaint';
 import type { AircraftModel } from '../game/types';
 
 /** The player's liveries (up to two), so every picture of their aircraft is painted in its livery. */
-export const LiveryContext = createContext<{ liveries: Livery[]; name: string } | null>(null);
+export const LiveryContext = createContext<{ liveries: Livery[]; name: string; logo?: string } | null>(null);
 
 /** A made-up registration for pictures of a type rather than of one aircraft. */
 export const SAMPLE_REG = 'P4-ABC';
 
-/** The picture of a model in a livery (plain white until it's painted). */
-export function usePaintedPhoto(id: string, livery: Livery | null | undefined, name: string, reg = SAMPLE_REG): string {
+/** The picture of a model in a livery (plain white until it's painted). `cssWidth`: how wide it's shown. */
+export function usePaintedPhoto(id: string, livery: Livery | null | undefined, name: string, reg = SAMPLE_REG, cssWidth = 1280): string {
   const plain = `/aircraft/${id}.webp`;
   const [url, setUrl] = useState(plain);
   useEffect(() => {
@@ -27,12 +27,47 @@ export function usePaintedPhoto(id: string, livery: Livery | null | undefined, n
       setUrl(plain);
       return;
     }
-    paintedPhoto(id, livery, name, reg).then((u) => live && setUrl(u ?? plain));
+    paintedPhoto(id, livery, name, reg, cssWidth).then((u) => live && setUrl(u ?? plain));
+    // kept while shown, so its address is never taken back under it
+    const release = holdPhoto(id, livery, name, reg, cssWidth);
     return () => {
       live = false;
+      release();
     };
-  }, [id, livery, name, reg, plain]);
+  }, [id, livery, name, reg, cssWidth, plain]);
   return url;
+}
+
+const BUY_PREF = 'bp_buy_livery_v1';
+let buyLivery = (() => {
+  try {
+    return localStorage.getItem(BUY_PREF) !== '0';
+  } catch {
+    return true;
+  }
+})();
+const buySubs = new Set<() => void>();
+/** Show the airline's livery on the aircraft in the Buy screen (a choice kept on this device). */
+export function useBuyLivery(): [boolean, (v: boolean) => void] {
+  const v = useSyncExternalStore(
+    (f) => {
+      buySubs.add(f);
+      return () => buySubs.delete(f);
+    },
+    () => buyLivery
+  );
+  return [
+    v,
+    (x: boolean) => {
+      buyLivery = x;
+      try {
+        localStorage.setItem(BUY_PREF, x ? '1' : '0');
+      } catch {
+        /* kept for this visit */
+      }
+      buySubs.forEach((f) => f());
+    },
+  ];
 }
 
 export function hasAircraftPhoto(model: AircraftModel): boolean {
@@ -52,13 +87,17 @@ export function AircraftPhoto(props: {
   liveryIndex?: number;
   /** No "Special Livery" tag (where it's shown beside the picture already). */
   noTag?: boolean;
+  /** The plain white picture, without the airline's livery. */
+  plain?: boolean;
+  /** How wide it's shown, in CSS pixels, when `width` is a percentage (paints a smaller picture). */
+  paintWidth?: number;
 }) {
   const size = AIRCRAFT_PHOTOS[props.model.id];
   const [failed, setFailed] = useState(false);
   const ctx = useContext(LiveryContext);
   const special = Boolean(ctx && props.liveryIndex === 1 && ctx.liveries.length > 1);
   const livery = ctx ? ctx.liveries[special ? 1 : 0] : undefined;
-  const src = usePaintedPhoto(props.model.id, livery, ctx?.name ?? '', props.tailNumber || SAMPLE_REG);
+  const src = usePaintedPhoto(props.model.id, props.plain ? undefined : livery, ctx?.name ?? '', props.tailNumber || SAMPLE_REG, typeof props.width === 'number' ? props.width : props.paintWidth ?? 1280);
   if (!size || failed) {
     if (!props.fallback) return null;
     const s = props.iconSize ?? 24;

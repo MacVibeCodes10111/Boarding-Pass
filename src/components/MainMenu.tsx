@@ -3,7 +3,9 @@
 // ============================================================================
 import type { AirlineColours } from '../game/livery';
 import { ColourPicker } from './livery/ColourPicker';
-import { useState } from 'react';
+import { LOGO_TYPES, makeLogo } from './livery/logoUpload';
+import { PRESET_LOGOS, presetLogo } from './livery/presetLogos';
+import { useMemo, useRef, useState } from 'react';
 import { IS_DEV } from '../game/channel';
 import { Icon, type IconName } from '../ui/icons';
 import { Button, C, DISPLAY, Field, ModalShell, inputStyle } from '../ui/kit';
@@ -26,6 +28,8 @@ export function MainMenu(props: {
   hasLivery: boolean;
   airlineColours: AirlineColours;
   onAirlineColours: (c: AirlineColours) => void;
+  airlineLogo?: string;
+  onAirlineLogo: (l: string | undefined) => void;
   /** Opens the livery editor. */
   onOpenLivery: () => void;
 }) {
@@ -71,7 +75,7 @@ export function MainMenu(props: {
             })}
             {row('download', 'Export save file', 'A protected copy to keep or move to another computer', props.onExport)}
             {row('swap', 'Cloud saves', 'Sign in to play your careers on all your devices', props.onCloud)}
-            {row('edit', 'Airline name, callsign and colours', `${props.airlineName}, callsign ${props.airlineCallsign}`, () => setDetails(true))}
+            {row('edit', 'Airline name, colours and logo', `${props.airlineName}, callsign ${props.airlineCallsign}`, () => setDetails(true))}
             {row('layers', 'Livery', props.hasLivery ? 'Your airline\'s colours on its aircraft' : 'Paint your aircraft in your airline\'s colours', () => {
               props.onClose();
               props.onOpenLivery();
@@ -104,7 +108,7 @@ export function MainMenu(props: {
         </div>
       </ModalShell>
       {credits && <CreditsModal onClose={() => setCredits(false)} />}
-      {details && <AirlineDetailsModal name={props.airlineName} callsign={props.airlineCallsign} colours={props.airlineColours} onSave={props.onAirlineDetails} onColours={props.onAirlineColours} onClose={() => setDetails(false)} />}
+      {details && <AirlineDetailsModal name={props.airlineName} callsign={props.airlineCallsign} colours={props.airlineColours} logo={props.airlineLogo} onSave={props.onAirlineDetails} onColours={props.onAirlineColours} onLogo={props.onAirlineLogo} onClose={() => setDetails(false)} />}
     </>
   );
 }
@@ -114,22 +118,28 @@ function AirlineDetailsModal(props: {
   name: string;
   callsign: string;
   colours: AirlineColours;
+  logo?: string;
   onSave: (name: string, callsign: string) => string | null;
   onColours: (c: AirlineColours) => void;
+  onLogo: (l: string | undefined) => void;
   onClose: () => void;
 }) {
   const [name, setName] = useState(props.name);
   const [callsign, setCallsign] = useState(props.callsign);
   const [colours, setColours] = useState(props.colours);
+  const [logo, setLogo] = useState(props.logo);
   const [err, setErr] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const save = () => {
     const e = props.onSave(name, callsign);
     setErr(e);
     if (!e) {
       props.onColours(colours);
+      props.onLogo(logo);
       props.onClose();
     }
   };
+  const presets = useMemo(() => PRESET_LOGOS.map((p) => ({ ...p, url: presetLogo(p.id, colours.a, colours.b, name) })), [colours.a, colours.b, name]);
   return (
     <ModalShell onClose={props.onClose} maxWidth={420} zIndex={260} label="Airline details">
       <form
@@ -155,6 +165,50 @@ function AirlineDetailsModal(props: {
             <input type="checkbox" checked={Boolean(colours.theme)} onChange={(e) => setColours((c) => ({ ...c, theme: e.target.checked || undefined }))} />
             Use them for the game’s look while I play this airline
           </label>
+        </div>
+        <div style={{ display: 'grid', gap: 10, padding: 12, borderRadius: 10, border: `1px solid ${C.line}` }}>
+          <div style={{ fontSize: 13, fontWeight: 650 }}>Airline logo</div>
+          <div style={{ fontSize: 12, color: C.muted, marginTop: -6 }}>Shown in the corner and beside your flights, and ready to put on your aircraft in the livery editor.</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ width: 56, height: 56, borderRadius: 12, background: '#fff', display: 'grid', placeItems: 'center', flex: 'none', border: `1px solid ${C.line}` }}>
+              {logo ? <img src={logo} alt="Your airline logo" style={{ width: 48, height: 48, objectFit: 'contain' }} /> : <span style={{ fontSize: 11, color: '#667' }}>None</span>}
+            </span>
+            <Button size="sm" onClick={() => fileRef.current?.click()}>
+              Upload
+            </Button>
+            {logo && (
+              <Button size="sm" variant="ghost" onClick={() => setLogo(undefined)}>
+                Remove
+              </Button>
+            )}
+            <input
+              ref={fileRef}
+              type="file"
+              accept={LOGO_TYPES}
+              style={{ display: 'none' }}
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                e.target.value = '';
+                if (!f) return;
+                const r = await makeLogo(f, { fit: 'contain', removeWhite: false });
+                if ('error' in r) setErr(r.error);
+                else {
+                  setErr(null);
+                  setLogo(r.url);
+                }
+              }}
+            />
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {presets.map((p) =>
+              p.url ? (
+                <button key={p.id} type="button" aria-label={`Use the ${p.label} logo`} title={p.label} onClick={() => setLogo(p.url!)} style={{ width: 40, height: 40, borderRadius: 8, border: `1px solid ${logo === p.url ? C.brand : C.line}`, background: C.bg, padding: 3, cursor: 'pointer' }}>
+                  <img src={p.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                </button>
+              ) : null
+            )}
+          </div>
+          <div style={{ fontSize: 11.5, color: C.muted }}>PNG, JPG or WebP, made into 128×128. Only upload pictures you own or have the right to use.</div>
         </div>
         <div role="alert" style={{ minHeight: 16, fontSize: 12.5, color: C.red }}>
           {err}

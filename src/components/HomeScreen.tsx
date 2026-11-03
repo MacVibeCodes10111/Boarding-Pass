@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { moderate } from '../game/moderation';
 import { airportGateCode } from '../game/gateCode';
 import type { Airport, GameMode, SaveGameState } from '../game/types';
 import { CloudCareersOnHome, SaveLocation } from './CloudPanel';
@@ -45,7 +46,8 @@ export function HomeScreen(props: HomeScreenProps) {
   const phone = useLayout() === 'phone';
   const importRef = useRef<HTMLInputElement | null>(null);
   const currentHub = airportByIata.get(hubIata);
-  const canLaunch = Boolean(currentHub) && airlineName.trim() !== '' && /^[A-Z0-9]{2,3}$/.test(airlineIata);
+  const nameProblem = moderate(airlineName) ?? moderate(airlineCallsign) ?? moderate(airlineIata);
+  const canLaunch = Boolean(currentHub) && airlineName.trim() !== '' && /^[A-Z0-9]{2,3}$/.test(airlineIata) && !nameProblem;
 
   const matches = useMemo(() => {
     const q = hubSearch.trim().toLowerCase();
@@ -197,7 +199,7 @@ export function HomeScreen(props: HomeScreenProps) {
             <Button variant="primary" size="lg" block disabled={!canLaunch} onClick={props.onLaunch}>
               {currentHub ? `Start at ${currentHub.iata_code}, ${currentHub.municipality}` : 'Pick a home hub'}
             </Button>
-            {!canLaunch && currentHub && <div style={{ fontSize: 12, color: C.amber, marginTop: 8 }}>Enter an airline name and a 2–3 character code.</div>}
+            {!canLaunch && currentHub && <div style={{ fontSize: 12, color: C.amber, marginTop: 8 }}>{nameProblem ?? 'Enter an airline name and a 2–3 character code.'}</div>}
           </div>
           <div style={{ fontSize: 11.5, color: C.faint, marginTop: 12, whiteSpace: 'pre-line' }}>{props.dataStatus}</div>
         </div>

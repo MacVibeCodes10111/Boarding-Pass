@@ -15,8 +15,80 @@
 // ============================================================================
 import { FONT_CSS, layerText, liveryKey, type Frame, type Layer, type Livery, type PathCmd, type Region } from './livery';
 
-const cache = new Map<string, Promise<string | null>>();
-const MAX = 120;
+/**
+ * Painted pictures, by aircraft, livery, registration and size. A picture
+ * still on screen is never thrown away (taking back its address while an
+ * <img> shows it makes the picture vanish, which Safari does at once), so
+ * pictures are counted while shown and only unused ones are dropped. Paints
+ * run two at a time: hundreds at once, after a reload with a big fleet, ran
+ * the browser out of canvas memory and came out blank.
+ */
+interface Entry {
+  p: Promise<string | null>;
+  refs: number;
+}
+const cache = new Map<string, Entry>();
+const KEEP = 300;
+
+const queue: (() => Promise<void>)[] = [];
+let running = 0;
+function enqueue<T>(job: () => Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    queue.push(() => job().then(resolve, reject));
+    pump();
+  });
+}
+function pump() {
+  while (running < 2 && queue.length) {
+    const job = queue.shift()!;
+    running++;
+    job().finally(() => {
+      running--;
+      pump();
+    });
+  }
+}
+
+/** Sizes painted: a thumbnail doesn't need the full 1280 pixels. */
+const sizeFor = (cssWidth: number) => (cssWidth <= 120 ? 320 : cssWidth <= 300 ? 640 : 1280);
+
+const keyOf = (id: string, livery: Livery, airlineName: string, reg: string, px: number) => `${id}|${px}|${liveryKey(livery, airlineName, reg)}`;
+
+/** The painted picture for an aircraft (an object URL), or null if it has no mask. `cssWidth`: how wide it's shown. */
+export function paintedPhoto(id: string, livery: Livery, airlineName: string, reg = '', cssWidth = 1280): Promise<string | null> {
+  const px = sizeFor(cssWidth * (typeof window !== 'undefined' ? Math.min(2, window.devicePixelRatio || 1) : 1));
+  const key = keyOf(id, livery, airlineName, reg, px);
+  let e = cache.get(key);
+  if (!e) {
+    e = { p: enqueue(() => paint(id, livery, airlineName, reg, px)).catch(() => null), refs: 0 };
+    cache.set(key, e);
+    trim();
+  }
+  return e.p;
+}
+
+/** Keep a picture while it's on screen (call the returned function when it's gone). */
+export function holdPhoto(id: string, livery: Livery, airlineName: string, reg = '', cssWidth = 1280): () => void {
+  const px = sizeFor(cssWidth * (typeof window !== 'undefined' ? Math.min(2, window.devicePixelRatio || 1) : 1));
+  const key = keyOf(id, livery, airlineName, reg, px);
+  const e = cache.get(key);
+  if (!e) return () => {};
+  e.refs++;
+  return () => {
+    e.refs = Math.max(0, e.refs - 1);
+    trim();
+  };
+}
+
+function trim() {
+  if (cache.size <= KEEP) return;
+  for (const [k, e] of cache) {
+    if (cache.size <= KEEP) break;
+    if (e.refs > 0) continue;
+    cache.delete(k);
+    e.p.then((u) => u && URL.revokeObjectURL(u));
+  }
+}
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -55,22 +127,6 @@ function canvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContex
   c.width = w;
   c.height = h;
   return [c, c.getContext('2d', { willReadFrequently: true })!];
-}
-
-/** The painted picture for an aircraft (an object URL), or null if it has no mask. */
-export function paintedPhoto(id: string, livery: Livery, airlineName: string, reg = ''): Promise<string | null> {
-  const key = `${id}|${liveryKey(livery, airlineName, reg)}`;
-  let p = cache.get(key);
-  if (!p) {
-    p = paint(id, livery, airlineName, reg).catch(() => null);
-    cache.set(key, p);
-    if (cache.size > MAX) {
-      const first = cache.keys().next().value as string;
-      cache.get(first)?.then((u) => u && URL.revokeObjectURL(u));
-      cache.delete(first);
-    }
-  }
-  return p;
 }
 
 /** Least-squares line y = a + b·x through points, refitted without outliers. */
@@ -267,7 +323,14 @@ export function aircraftGeometry(id: string): Promise<Geometry | null> {
     geoCache.set(id, p);
     if (geoCache.size > 4) {
       const first = geoCache.keys().next().value as string;
-      geoCache.get(first)?.then((g) => g && Object.values(g.made).forEach(freeCanvas));
+      // its masks are emptied, and made again if the editor still shows it
+      geoCache.get(first)?.then((g) => {
+        if (!g) return;
+        for (const k of Object.keys(g.made) as Region[]) {
+          freeCanvas(g.made[k]);
+          delete g.made[k];
+        }
+      });
       geoCache.delete(first);
     }
   }
@@ -606,13 +669,25 @@ export function renderLivery(g: Geometry, livery: Livery, name: string, logos: M
   out.putImageData(pic, 0, 0);
 }
 
-async function paint(id: string, L: Livery, name: string, reg: string): Promise<string | null> {
+async function paint(id: string, L: Livery, name: string, reg: string, px = 1280, retry = true): Promise<string | null> {
   const g = await aircraftGeometry(id);
   if (!g) return null;
   const logos = await loadLogos(L);
-  const [oc, og] = canvas(g.w, g.h);
-  renderLivery(g, L, name, logos, og, reg);
-  const blob: Blob | null = await new Promise((r) => oc.toBlob(r, 'image/webp', 0.92));
+  const [fc, fg] = reused(2, g.w, g.h);
+  renderLivery(g, L, name, logos, fg, reg);
+  // drawn nothing (the browser short of canvas memory): try once more a moment later, else the plain picture
+  const x = Math.round(g.body.nose + g.body.len * 0.5), y = Math.round(g.body.c0 + g.body.slope * x + g.body.hc * 0.5);
+  if (fg.getImageData(x, y, 1, 1).data[3] === 0) {
+    if (!retry) return null;
+    await new Promise((r) => setTimeout(r, 600));
+    return paint(id, L, name, reg, px, false);
+  }
+  const w = Math.min(g.w, px);
+  const h = Math.round((g.h * w) / g.w);
+  const [oc, og] = canvas(w, h);
+  og.imageSmoothingQuality = 'high';
+  og.drawImage(fc, 0, 0, w, h);
+  const blob: Blob | null = await new Promise((r) => oc.toBlob(r, 'image/webp', 0.9));
   freeCanvas(oc);
   return blob ? URL.createObjectURL(blob) : null;
 }

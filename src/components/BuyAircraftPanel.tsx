@@ -8,7 +8,7 @@
 //   Works the same on phones (one column, everything a tap away).
 // ============================================================================
 import { WINGSPAN_M, aircraftGateCode } from '../game/gateCode';
-import { AircraftPhoto, hasAircraftPhoto } from './AircraftPhoto';
+import { AircraftPhoto, hasAircraftPhoto, useBuyLivery } from './AircraftPhoto';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BRAND_ORDER } from '../game/aircraftCatalog';
 import { cabinSeatTotal, calculateCabinUsage, getDefaultCabinForModel } from '../game/economics';
@@ -74,6 +74,7 @@ export function BuyAircraftPanel(props: BuyAircraftPanelProps) {
 // Step 1: browse
 // ---------------------------------------------------------------------------
 function Browse(props: BuyAircraftPanelProps & { onOpen: (m: AircraftModel) => void }) {
+  const [showLivery, setShowLivery] = useBuyLivery();
   const [search, setSearch] = useState('');
   const [role, setRole] = useState<Role>(props.selectedModel.is_cargo ? 'cargo' : 'pax');
   const [maker, setMaker] = useState('all');
@@ -143,6 +144,10 @@ function Browse(props: BuyAircraftPanelProps & { onOpen: (m: AircraftModel) => v
         <div style={{ flex: '1 1 220px', minWidth: 0 }}>
           <SearchInput value={search} onChange={setSearch} placeholder="Search, e.g. A320 or 787" />
         </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: C.textSoft, whiteSpace: 'nowrap' }} title="Show the aircraft in your livery, or plain white">
+          <input type="checkbox" checked={showLivery} onChange={(e) => setShowLivery(e.target.checked)} />
+          My livery
+        </label>
         <Segmented<Role>
           value={role}
           onChange={setRole}
@@ -209,7 +214,7 @@ function Browse(props: BuyAircraftPanelProps & { onOpen: (m: AircraftModel) => v
                         border: `1px solid ${x.id === props.selectedModel.id ? C.brand : C.line}`,
                       }}
                     >
-                      {hasAircraftPhoto(x) && <AircraftPhoto model={x} width="100%" style={{ height: 58 }} />}
+                      {hasAircraftPhoto(x) && <AircraftPhoto model={x} width="100%" paintWidth={220} plain={!showLivery} style={{ height: 58 }} />}
                       <span style={{ display: 'flex', alignItems: 'flex-start', gap: 8, minWidth: 0 }}>
                         {!hasAircraftPhoto(x) && <img src={props.iconForModel(x)} alt="" style={{ width: 22, height: 22, flex: 'none' }} />}
                         <span style={{ flex: 1, minWidth: 0, fontWeight: 650, fontSize: 13.5, lineHeight: 1.3, overflowWrap: 'anywhere', paddingTop: 2 }}>{shortName(x)}</span>
@@ -241,6 +246,7 @@ function Browse(props: BuyAircraftPanelProps & { onOpen: (m: AircraftModel) => v
 // Step 2: the model, and buying or leasing it
 // ---------------------------------------------------------------------------
 function ModelView(props: BuyAircraftPanelProps) {
+  const [showLivery] = useBuyLivery();
   const { selectedModel: m, cabinDraft } = props;
   const tier = getAircraftTierInfo(m.tier);
   const usage = calculateCabinUsage(m, cabinDraft);
@@ -279,7 +285,7 @@ function ModelView(props: BuyAircraftPanelProps) {
     <div ref={top} style={{ display: 'grid', gap: 14, scrollMarginTop: 8 }}>
       {hasAircraftPhoto(m) && (
         <div style={{ padding: '6px 4px 0', minWidth: 0 }}>
-          <AircraftPhoto model={m} width="100%" style={{ maxWidth: 560, margin: '0 auto' }} />
+          <AircraftPhoto model={m} width="100%" paintWidth={560} plain={!showLivery} style={{ maxWidth: 560, margin: '0 auto' }} />
         </div>
       )}
       {!hasAircraftPhoto(m) && <img src={props.iconForModel(m)} alt="" style={{ width: 44, height: 44 }} />}

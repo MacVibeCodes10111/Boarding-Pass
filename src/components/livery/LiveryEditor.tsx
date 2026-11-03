@@ -38,6 +38,7 @@ import { aircraftGeometry, freeCanvas, fromPx, layerOutline, loadLogos, renderLi
 import { Button, C, DISPLAY, Segmented } from '../../ui/kit';
 import { useLayout } from '../../ui/layout';
 import { ColourPicker } from './ColourPicker';
+import { moderate } from '../../game/moderation';
 import { LOGO_TYPES, makeLogo } from './logoUpload';
 import { PRESET_LOGOS, presetLogo } from './presetLogos';
 
@@ -220,6 +221,8 @@ export function LiveryEditor(props: {
   start?: number;
   /** The airline's colours: where the ready-made styles and logos start. */
   airlineColours?: { a: string; b: string };
+  /** The airline's logo (from Airline details), ready to place. */
+  airlineLogo?: string;
   onSave: (l: Livery[]) => void;
   onClose: () => void;
 }) {
@@ -702,8 +705,7 @@ export function LiveryEditor(props: {
       return null;
     }
     const id = `logo${Date.now().toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`;
-    const anyBadge = docsRef.current.some((x) => x.badge && x.logos[x.badge]);
-    commit({ ...d, logos: { ...d.logos, [id]: url }, badge: d.badge ?? (anyBadge ? undefined : id) });
+    commit({ ...d, logos: { ...d.logos, [id]: url } });
     setLogoPick(id);
     setTool('logo');
     return id;
@@ -713,7 +715,8 @@ export function LiveryEditor(props: {
   const presets = useMemo(() => PRESET_LOGOS.map((p) => ({ ...p, url: presetLogo(p.id, presetA, presetB, name) })), [presetA, presetB, name]);
 
   // ---------------------------------------------------------------- parts of the screen
-  const recent = docColours(doc);
+  // the airline's colours first, then the ones this livery uses
+  const recent = [...new Set([...(props.airlineColours ? [props.airlineColours.a, props.airlineColours.b] : []), ...docColours(doc)])];
   const outline = geo && selLayer && !selLayer.hidden ? layerOutline(geo, selLayer, name, reg) : null;
 
   const stage = (
@@ -795,6 +798,26 @@ export function LiveryEditor(props: {
 
   const logosPanel = (
     <div style={{ display: 'grid', gap: 8 }}>
+      {props.airlineLogo && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            type="button"
+            title="Your airline logo: add it to this livery to place it"
+            onClick={() => {
+              const have = Object.entries(docRef.current.logos).find(([, v]) => v === props.airlineLogo);
+              if (have) {
+                setLogoPick(have[0]);
+                setTool('logo');
+                flash('Click the aircraft to place your airline logo.');
+              } else if (addLogo(props.airlineLogo!)) flash('Airline logo added. Click the aircraft to place it.');
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px 4px 4px', borderRadius: 9, border: `1px solid ${C.brand}88`, background: `${C.brand}14`, color: C.text, cursor: 'pointer', fontSize: 12.5, fontWeight: 600 }}
+          >
+            <img src={props.airlineLogo} alt="" style={{ width: 34, height: 34, borderRadius: 7, background: '#fff', objectFit: 'contain', padding: 2 }} />
+            Use my airline logo
+          </button>
+        </div>
+      )}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {Object.entries(doc.logos).map(([id, src]) => (
           <div key={id} style={{ position: 'relative' }}>
@@ -812,16 +835,7 @@ export function LiveryEditor(props: {
             <button type="button" aria-label="Delete this logo" title="Delete this logo (and its layers)" onClick={() => deleteLogo(id)} style={{ ...smallBtn, position: 'absolute', top: -6, right: -6, background: C.raised, borderRadius: 99, border: `1px solid ${C.border}`, width: 20, height: 20, padding: 0 }}>
               ×
             </button>
-            <button
-              type="button"
-              aria-pressed={doc.badge === id}
-              aria-label={doc.badge === id ? 'This is the airline logo' : 'Use as the airline logo'}
-              title={doc.badge === id ? 'Your airline logo (shown in the corner and beside your flights)' : 'Use as the airline logo (shown in the corner and beside your flights)'}
-              onClick={() => commit({ ...docRef.current, badge: docRef.current.badge === id ? undefined : id })}
-              style={{ ...smallBtn, position: 'absolute', bottom: -6, right: -6, background: doc.badge === id ? C.brand : C.raised, color: doc.badge === id ? C.brandInk : C.muted, borderRadius: 99, border: `1px solid ${C.border}`, width: 20, height: 20, padding: 0, fontSize: 11 }}
-            >
-              ★
-            </button>
+
           </div>
         ))}
         {Object.keys(doc.logos).length < MAX_LOGOS && (
@@ -841,7 +855,7 @@ export function LiveryEditor(props: {
           Take out a white background
         </label>
       </div>
-      <div style={{ fontSize: 11.5, color: C.muted }}>PNG, JPG or WebP, made into a 128×128 logo. Only upload pictures you own or have the right to use. Up to {MAX_LOGOS}. The ★ logo is your airline logo, shown in the corner.</div>
+      <div style={{ fontSize: 11.5, color: C.muted }}>PNG, JPG or WebP, made into a 128×128 logo. Only upload pictures you own or have the right to use. Up to {MAX_LOGOS}. Your airline logo is set in Menu → Airline details.</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
         <span style={{ fontSize: 12, fontWeight: 650, color: C.textSoft }}>Ready-made logos</span>
         <input type="color" aria-label="Preset main colour" value={presetA} onChange={(e) => setPresetA(e.target.value)} style={{ width: 26, height: 22, padding: 0, border: `1px solid ${C.border}`, borderRadius: 5 }} />
@@ -1041,6 +1055,10 @@ export function LiveryEditor(props: {
           <span key={i} style={{ display: 'inline-flex', alignItems: 'center' }}>
             <Button size="sm" role="tab" aria-selected={i === active} variant={i === active ? 'primary' : undefined} onClick={() => setActive(i)} onDoubleClick={() => {
               const n = window.prompt('Name this livery', d.name ?? (i ? 'Second' : 'Main'));
+              if (n != null && moderate(n)) {
+                flash(moderate(n)!);
+                return;
+              }
               if (n != null) {
                 docsRef.current = docsRef.current.map((x, k) => (k === i ? { ...x, name: n.trim().slice(0, 30) || undefined } : x));
                 setDocs(docsRef.current);
@@ -1224,6 +1242,29 @@ function AddLayerMenu({ onAdd }: { onAdd: (k: 'fill' | 'band' | 'shape' | 'text'
   );
 }
 
+/** Text for the aircraft: a word we don't allow isn't painted (the reason shows under the box). */
+function ModeratedText({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  const problem = moderate(draft);
+  return (
+    <div style={{ display: 'grid', gap: 4 }}>
+      <input
+        id="livery-text-input"
+        aria-label="Text"
+        aria-invalid={Boolean(problem)}
+        value={draft}
+        maxLength={40}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          if (!moderate(e.target.value)) onChange(e.target.value);
+        }}
+        style={{ background: C.bg, color: C.text, border: `1px solid ${problem ? C.red : C.border}`, borderRadius: 7, padding: '6px 8px', fontSize: 14 }}
+      />
+      {problem && <span style={{ fontSize: 12, color: C.red }}>{problem}</span>}
+    </div>
+  );
+}
+
 // ----------------------------------------------------------------------------
 // The selected layer's settings
 // ----------------------------------------------------------------------------
@@ -1285,7 +1326,7 @@ function LayerProps(p: {
             {l.frame === 'fin' ? 'Airline’s initial' : 'Airline’s name'}
             {l.airlineName && <span style={{ color: C.muted }}>({layerText(l, p.name, p.reg) || 'no name yet'})</span>}
           </label>
-          {!l.airlineName && !l.registration && <input id="livery-text-input" aria-label="Text" value={l.text} maxLength={40} onChange={(e) => p.patch({ text: e.target.value } as Partial<Layer>)} style={{ background: C.bg, color: C.text, border: `1px solid ${C.border}`, borderRadius: 7, padding: '6px 8px', fontSize: 14 }} />}
+          {!l.airlineName && !l.registration && <ModeratedText key={l.id} value={l.text} onChange={(v) => p.patch({ text: v } as Partial<Layer>)} />}
           <Choice<FontId> label="Font" value={l.font} onChange={(v) => p.patch({ font: v } as Partial<Layer>)} options={(Object.keys(FONT_LABEL) as FontId[]).map((k) => ({ value: k, label: FONT_LABEL[k] }))} />
           <Slider label="Size" value={l.size} min={0.04} max={l.frame === 'fin' ? 0.9 : 0.9} onChange={(v) => p.slide({ size: v } as Partial<Layer>)} onDone={p.done} fmt={pct} />
           {l.auto ? (

@@ -276,6 +276,8 @@ export interface SaveGameState {
   liveries?: Livery[];
   /** The airline's two colours, and whether the game takes its look from them (v2.67). */
   airlineColours?: AirlineColours;
+  /** The airline's logo (v2.69): a 128×128 WebP or PNG data URL, set in Airline details. */
+  airlineLogo?: string;
 }
 
 /** Minimal leg description used by the conflict checker. */

@@ -15,6 +15,8 @@
 //   from v2.64-2.65 (a flat set of colours) are turned into layers on load.
 // ============================================================================
 
+import { moderate } from './moderation';
+
 export type Region = 'fuselage' | 'tail' | 'engines' | 'wings' | 'winglets' | 'stabiliser' | 'all';
 export type Frame = 'body' | 'fin';
 export type ShapeKind = 'rect' | 'ellipse' | 'triangle' | 'star' | 'chevron';
@@ -394,7 +396,7 @@ function layerFrom(x: unknown): Layer | null {
         ...b,
         kind: 'text',
         frame,
-        text: str(o.text, '', 40),
+        text: moderate(str(o.text, '', 40)) ? '' : str(o.text, '', 40),
         font: one(o.font, FONTS, 'sans'),
         colour,
         x: num(o.x, 0.2, -2, 3),
@@ -492,7 +494,8 @@ export function normaliseLivery(x: unknown): Livery | undefined {
     seen.add(l.id);
   }
   const badge = typeof o.badge === 'string' && logos[o.badge] ? o.badge : undefined;
-  return { v: 2, name: typeof o.name === 'string' ? o.name.slice(0, 30) : undefined, layers, logos, badge };
+  const name = typeof o.name === 'string' && !moderate(o.name) ? o.name.slice(0, 30) : undefined;
+  return { v: 2, name, layers, logos, badge };
 }
 
 /** The airline's liveries from saved data: the v2.66 list, or the single livery of earlier versions. */
@@ -537,6 +540,9 @@ export interface AirlineColours {
 }
 
 export const DEFAULT_AIRLINE_COLOURS: AirlineColours = { a: '#1d4e89', b: '#f5a623' };
+
+/** The livery every airline starts with: white with a tail in its main colour, its name and registrations. */
+export const standardLivery = (c: AirlineColours = DEFAULT_AIRLINE_COLOURS): Livery => ({ v: 2, name: 'Standard', layers: LIVERY_STYLES[0].make(c.a, c.b), logos: {} });
 
 export function normaliseAirlineColours(x: unknown): AirlineColours | undefined {
   if (!x || typeof x !== 'object') return undefined;

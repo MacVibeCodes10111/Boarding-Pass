@@ -118,8 +118,9 @@ import { RouteFromBar } from './components/RouteFromBar';
 import { WelcomeTour, tourWantedForNewCareer } from './components/WelcomeTour';
 import { C, PanelTabsContext, applyThemeToDocument, useThemeVersion } from './ui/kit';
 import { initLayout } from './ui/layout';
-import { DEFAULT_AIRLINE_COLOURS, MAX_SPECIAL, airlineBadge, specialLabel, tidyFleetLiveries, normaliseAirlineColours, normaliseLiveries, type AirlineColours, type Livery } from './game/livery';
+import { DEFAULT_AIRLINE_COLOURS, MAX_SPECIAL, normaliseLogo, standardLivery, airlineBadge, specialLabel, tidyFleetLiveries, normaliseAirlineColours, normaliseLiveries, type AirlineColours, type Livery } from './game/livery';
 import { applyAirlineTheme } from './ui/airlineTheme';
+import { moderate } from './game/moderation';
 import { LiveryContext } from './components/AircraftPhoto';
 
 const STANDARD_START_CASH = 150_000_000;
@@ -243,8 +244,9 @@ export default function App() {
   // the game's look follows the airline's colours while its career is open, if the player chose that
   useEffect(() => applyAirlineTheme(screen === 'home' ? undefined : airlineColours), [airlineColours, screen]);
   /** The airline's logo, from its livery (the logo picked to show in the corner). */
-  const airlineLogo = useMemo(() => airlineBadge(liveries), [liveries]);
-  const liveryCtx = useMemo(() => (liveries.length ? { liveries, name: airlineName } : null), [liveries, airlineName]);
+  const [airlineLogo, setAirlineLogo] = useState<string | undefined>(undefined);
+  const liveryCtx = useMemo(() => (liveries.length || airlineLogo ? { liveries, name: airlineName, logo: airlineLogo } : null), [liveries, airlineName, airlineLogo]);
+
   const [liveryStart, setLiveryStart] = useState(0);
   const [airlineIata, setAirlineIata] = useState(LAUNCH.code ?? 'JT');
   const [airlineCallsign, setAirlineCallsign] = useState(LAUNCH.callsign ?? (LAUNCH.name ? LAUNCH.name.split(/\s+/)[0].toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 20) || 'JETSTREAM' : 'JETSTREAM'));
@@ -742,7 +744,8 @@ export default function App() {
   // ---------------------------------------------------------------------------
   const currentSaveState = (isAutosave = false): SaveGameState => ({
     saveId: activeSaveId,
-    liveries: liveries.length ? liveries : undefined,
+    liveries,
+    airlineLogo,
     airlineColours,
     airlineName,
     airlineIata,
@@ -857,7 +860,9 @@ export default function App() {
     setAwayReport(null);
     setFleet([]);
     setSchedule([]);
-    setLiveries([]);
+    // every airline starts in the standard livery
+    setLiveries([standardLivery()]);
+    setAirlineLogo(undefined);
     setAirlineColours(undefined);
     setCareer(gameMode === 'sandbox' ? freshCareer() : { ...freshCareer(), letters: [welcomeLetter(airlineName, airlineIata, hubIata, 0)] });
     setBankTab('programme');
@@ -894,8 +899,11 @@ export default function App() {
     const s = hydrateSave(raw, airportByIata);
     setActiveSaveId(s.saveId);
     setAirlineName(s.airlineName);
-    const loadedLiveries = normaliseLiveries(s.liveries, s.livery);
+    // a career saved before liveries (or with none yet) starts in the standard livery; one the player made plain white stays so
+    const loadedLiveries = s.liveries === undefined && !s.livery ? [standardLivery(normaliseAirlineColours(s.airlineColours))] : normaliseLiveries(s.liveries, s.livery);
     setLiveries(loadedLiveries);
+    // the airline logo: its own since v2.69, else the one starred in a livery (v2.67-2.68)
+    setAirlineLogo(normaliseLogo(s.airlineLogo) ?? airlineBadge(loadedLiveries));
     setAirlineColours(normaliseAirlineColours(s.airlineColours));
     setAirlineIata(s.airlineIata);
     setAirlineCallsign(s.airlineCallsign);
@@ -1718,6 +1726,7 @@ export default function App() {
           models={[...new Set(fleet.map((a) => a.model.id))]}
           sampleReg={fleet[0]?.tailNumber}
           airlineColours={airlineColours ?? DEFAULT_AIRLINE_COLOURS}
+          airlineLogo={airlineLogo}
           onSave={(l) => {
             // nothing left at all: plain white; otherwise both stay, so aircraft keep the livery they wear
             const kept = l.every((x) => !x.layers.length && !Object.keys(x.logos).length) ? [] : l;
@@ -1746,6 +1755,8 @@ export default function App() {
             const call = callRaw.trim().toUpperCase().replace(/\s+/g, ' ');
             if (!/^[\p{L}\p{N} .,'&-]{2,40}$/u.test(name)) return 'The name needs 2 to 40 letters, digits, spaces or . , \' & -';
             if (!/^[A-Z0-9 ]{2,20}$/.test(call)) return 'The callsign needs 2 to 20 letters, digits or spaces.';
+            const bad = moderate(name) ?? moderate(call);
+            if (bad) return bad;
             setAirlineName(name);
             setAirlineCallsign(call);
             flashToast(`Now flying as ${name}, callsign ${call}`);
@@ -1754,6 +1765,8 @@ export default function App() {
           airlineName={airlineName}
           airlineColours={airlineColours ?? DEFAULT_AIRLINE_COLOURS}
           onAirlineColours={setAirlineColours}
+          airlineLogo={airlineLogo}
+          onAirlineLogo={setAirlineLogo}
           version={APP_VERSION}
           onClose={() => setMenuOpen(false)}
           onSave={saveCareer}

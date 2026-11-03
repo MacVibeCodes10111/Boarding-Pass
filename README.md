@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 2.68. Free to play. See [Credits and licences](#credits-and-licences).
+Version 2.69. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -20,6 +20,17 @@ Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 2.69:
+
+- **Fixed: aircraft pictures disappearing,** mostly in Safari after a refresh. Pictures are now painted a couple at a time, at the size they're shown, and kept until nothing shows them any more.
+- **Airline and livery editors are separate.** Menu → Airline name, colours and logo holds your airline's two colours and its logo (upload one or pick a ready-made one). The livery editor starts from those colours and has a button to put your airline logo on the aircraft.
+- **Every aircraft has a livery from the start:** new careers, and older careers without one, get the Standard livery in the airline's colours.
+- **Show or hide your livery in the buy menu** with the My livery box.
+- **A calmer top bar.** Cash and this week's profit stay in view; cash flow and last week are under the arrow next to them, and both clocks and the map speed are under the clock.
+- **Big airlines:** large numbers in My Airline are shortened (such as $12.3B) so they stay inside their boxes.
+- **Name check:** airline names, callsigns, codes and text on liveries are checked for offensive words.
+- **Website:** the terms and privacy policy now cover sharing with friends and alliances and the marketplace, ahead of those updates.
 
 Version 2.68:
 

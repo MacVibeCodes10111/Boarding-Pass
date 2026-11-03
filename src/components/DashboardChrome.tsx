@@ -160,6 +160,8 @@ function ClockButton(props: {
   mapClock: UtcClock;
   mapSpeed: MapSpeed;
   onMapSpeed: (s: MapSpeed) => void;
+  /** Desktop: the map time on the button too, and the panel under the floating bar. */
+  wide?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
@@ -204,11 +206,19 @@ function ClockButton(props: {
       >
         <Icon name={paused ? 'pause' : 'clock'} size={15} color={paused ? C.brand : C.textSoft} />
         <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.12 }}>
-          <span style={{ fontSize: 11, color: C.muted, whiteSpace: 'nowrap' }}>{paused ? 'Paused' : `Week ${week}`}</span>
+          <span style={{ fontSize: 11, color: C.muted, whiteSpace: 'nowrap' }}>{paused ? 'Paused' : props.wide ? `Week ${week}, day ${day}` : `Week ${week}`}</span>
           <span className="num" style={{ fontFamily: DISPLAY, fontSize: 16, fontWeight: 600, whiteSpace: 'nowrap', color: paused ? C.brand : C.text }}>
-            Day {day}
+            {props.wide ? (
+              <>
+                {live && <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', padding: '0 4px', borderRadius: 4, background: C.brand, color: C.brandInk, marginRight: 5 }}>LIVE</span>}
+                {formatClockShort(props.mapClock.min)} <span style={{ color: C.muted, fontWeight: 500 }}>UTC</span>
+              </>
+            ) : (
+              <>Day {day}</>
+            )}
           </span>
         </span>
+        {props.wide && <span style={{ display: 'inline-flex', transform: `rotate(${open ? -90 : 90}deg)`, transition: 'transform .15s' }}><Icon name="chevron" size={12} color={C.muted} /></span>}
       </button>
       {open && (
         <div
@@ -217,8 +227,8 @@ function ClockButton(props: {
           style={{
             ...glass('f0'),
             position: 'fixed',
-            top: 'calc(var(--bp-top-h) + 8px)',
-            right: 8,
+            top: props.wide ? 72 : 'calc(var(--bp-top-h) + 8px)',
+            right: props.wide ? 12 : 8,
             width: 'min(330px, calc(100vw - 16px))',
             borderRadius: 14,
             padding: '12px 14px 14px',
@@ -294,7 +304,22 @@ export function TopBar(props: {
   const phone = layout === 'phone';
   const width = useWindowWidth();
   // Phones and narrow tablets: the clocks fold into one button so the bar fits without scrolling
-  const compactClocks = phone || (layout === 'tablet' && width < 960);
+  // the clocks always fold into one button (with the details under it): the bar stays calm
+  const compactClocks = true;
+  const wideClock = !(phone || (layout === 'tablet' && width < 960));
+  const [moneyOpen, setMoneyOpen] = useState(false);
+  const moneyRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!moneyOpen) return;
+    const onDown = (e: PointerEvent) => moneyRef.current && !moneyRef.current.contains(e.target as Node) && setMoneyOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMoneyOpen(false);
+    window.addEventListener('pointerdown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [moneyOpen]);
   const net = ledgerNet(props.weekSoFar);
   const w = props.weekSoFar;
   const career = props.gameMode !== 'sandbox';
@@ -370,18 +395,57 @@ export function TopBar(props: {
           </Readout>
           <Divider />
           <Readout
-            label={phone ? 'This week' : 'Profit this week'}
+            label="This week"
             title={`Flights ${money(w.flightProfit)}, leases ${money(-w.leaseCost)}${interest ? `, interest ${money(-interest)}` : ''}. Repaying a loan's principal isn't a cost, so only interest counts.${props.lastWeek ? `\nLast week ${money(ledgerNet(props.lastWeek))}.` : ''}`}
           >
-            <span style={{ color: tone(net) }}>{phone ? signedCompact(net) : money(net)}</span>
+            <span style={{ color: tone(net) }}>{signedCompact(net)}</span>
           </Readout>
           {career && (
-            <Readout label="Cash flow" title={flowTitle}>
-              <span className="bp-cashflow" style={{ color: tone(rate.net) }}>
-                {signedCompact(rate.net)}
-                {!phone && <span style={{ color: C.muted, fontWeight: 500, fontSize: 14 }}>/wk</span>}
-              </span>
-            </Readout>
+            <div ref={moneyRef} style={{ position: 'relative', display: 'flex' }}>
+              <button
+                type="button"
+                aria-expanded={moneyOpen}
+                aria-label="Money details"
+                title="Cash flow and last week"
+                onClick={() => setMoneyOpen((v) => !v)}
+                style={{ all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, padding: '0 4px', borderRadius: 8, background: moneyOpen ? C.raised : 'transparent' }}
+              >
+                <span style={{ display: 'inline-flex', transform: `rotate(${moneyOpen ? -90 : 90}deg)`, transition: 'transform .15s' }}><Icon name="chevron" size={12} color={C.muted} /></span>
+              </button>
+              {moneyOpen && (
+                <div
+                  role="dialog"
+                  aria-label="Money"
+                  style={{ ...glass('f0'), position: 'fixed', top: phone ? 'calc(var(--bp-top-h) + 8px)' : 72, left: phone ? 8 : 230, width: 'min(340px, calc(100vw - 16px))', borderRadius: 14, padding: '12px 14px 14px', zIndex: 300, boxShadow: '0 18px 44px rgba(0,0,0,.5)', display: 'grid', gap: 10, fontSize: 13 }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                    <span style={{ color: C.muted }}>Cash flow a week, as scheduled</span>
+                    <b className="num" style={{ color: tone(rate.net) }}>{signedCompact(rate.net)}</b>
+                  </div>
+                  <div style={{ fontSize: 12, color: C.textDim, whiteSpace: 'pre-line', lineHeight: 1.45 }}>{flowTitle}</div>
+                  <div style={{ height: 1, background: C.line }} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                    <span style={{ color: C.muted }}>Profit this week</span>
+                    <b className="num" style={{ color: tone(net) }}>{money(net)}</b>
+                  </div>
+                  {props.lastWeek && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                      <span style={{ color: C.muted }}>Last week</span>
+                      <b className="num" style={{ color: tone(ledgerNet(props.lastWeek)) }}>{money(ledgerNet(props.lastWeek))}</b>
+                    </div>
+                  )}
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setMoneyOpen(false);
+                      props.onOpenDebt();
+                    }}
+                  >
+                    Open the bank
+                  </Button>
+                </div>
+              )}
+            </div>
           )}
           {career && (debt || props.money.insolvent) && (
             <button
@@ -476,6 +540,7 @@ export function TopBar(props: {
           mapClock={props.mapClock}
           mapSpeed={props.mapSpeed}
           onMapSpeed={props.onMapSpeed}
+          wide={wideClock}
         />
       )}
     </header>
