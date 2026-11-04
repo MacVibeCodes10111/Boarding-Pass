@@ -282,16 +282,6 @@ function measureFin(M: Uint8ClampedArray, w: number, h: number): Fin | null {
 }
 
 /** A mask channel (0 red, 1 green, 2 blue) as an alpha-only canvas for cutting. */
-function channel(M: Uint8ClampedArray, w: number, h: number, k: number): HTMLCanvasElement {
-  const [c, g] = canvas(w, h);
-  const d = new ImageData(w, h);
-  for (let i = 0; i < M.length; i += 4) {
-    d.data[i] = d.data[i + 1] = d.data[i + 2] = 255;
-    d.data[i + 3] = M[i + k];
-  }
-  g.putImageData(d, 0, 0);
-  return c;
-}
 
 // ----------------------------------------------------------------------------
 // The aircraft, measured once
@@ -309,9 +299,8 @@ export interface Geometry {
   parts: Region[];
   body: Body;
   fin: Fin;
-  /** A part's mask as a canvas, made the first time a layer needs it. */
-  mask: (r: Region) => HTMLCanvasElement;
-  made: Partial<Record<Region, HTMLCanvasElement>>;
+  /** A part's mask: the pixel array and which channel of it. */
+  mask: (r: Region) => [Uint8ClampedArray, number];
 }
 
 const geoCache = new Map<string, Promise<Geometry | null>>();
@@ -323,14 +312,6 @@ export function aircraftGeometry(id: string): Promise<Geometry | null> {
     geoCache.set(id, p);
     if (geoCache.size > 4) {
       const first = geoCache.keys().next().value as string;
-      // its masks are emptied, and made again if the editor still shows it
-      geoCache.get(first)?.then((g) => {
-        if (!g) return;
-        for (const k of Object.keys(g.made) as Region[]) {
-          freeCanvas(g.made[k]);
-          delete g.made[k];
-        }
-      });
       geoCache.delete(first);
     }
   }
@@ -367,11 +348,10 @@ async function measure(id: string): Promise<Geometry | null> {
     }
   }
   const src: Record<Region, [Uint8ClampedArray, number]> = { tail: [M, 0], fuselage: [M, 1], engines: [M, 2], wings: [M2, 0], winglets: [M2, 1], stabiliser: [M2, 2], all: [all, 0] };
-  const made: Partial<Record<Region, HTMLCanvasElement>> = {};
-  const mask = (r: Region) => (made[r] ??= channel(src[r][0], w, h, src[r][1]));
+  const mask = (r: Region) => src[r] ?? src.all;
   const order: Region[] = ['tail', 'fuselage', 'engines', 'wings', 'winglets', 'stabiliser'];
   const parts = order.filter((_, k) => seen[k] > 20);
-  return { id, w, h, base, B, M, M2, parts, body, fin, mask, made };
+  return { id, w, h, base, B, M, M2, parts, body, fin, mask };
 }
 
 function fakeFin(b: Body): Fin {
@@ -636,57 +616,101 @@ function drawLayer(c: CanvasRenderingContext2D, g: Geometry, l: Layer, name: str
   c.restore();
 }
 
-/** The livery drawn on the aircraft, into `out` (the picture's size). */
-export function renderLivery(g: Geometry, livery: Livery, name: string, logos: Map<string, HTMLImageElement>, out: CanvasRenderingContext2D, reg = '') {
+/**
+ * The livery on the aircraft as pixels, `outW` wide (the picture's own width
+ * by default). All blending is done here in code: Safari can draw a canvas
+ * filled by putImageData into another canvas as blank, which wiped every
+ * layer and left a plain white aircraft. Only script drawing (a layer's
+ * shapes and text) touches a canvas, and it's read straight back.
+ */
+export function renderLiveryPixels(g: Geometry, livery: Livery, name: string, logos: Map<string, HTMLImageElement>, reg = '', outW = g.w): ImageData {
   const { w, h } = g;
-  const [, pg] = reused(0, w, h);
-  pg.fillStyle = '#ffffff';
-  pg.fillRect(0, 0, w, h);
-  const [sc, sg] = reused(1, w, h);
+  const n = w * h;
+  // the paint, white to start
+  const P = new Uint8ClampedArray(n * 3).fill(255);
+  const [, sg] = reused(0, w, h);
   for (const l of livery.layers) {
     if (l.hidden || l.opacity <= 0) continue;
+    sg.setTransform(1, 0, 0, 1, 0, 0);
+    sg.globalAlpha = 1;
     sg.globalCompositeOperation = 'source-over';
     sg.clearRect(0, 0, w, h);
     drawLayer(sg, g, l, name, logos, reg);
-    sg.globalCompositeOperation = 'destination-in';
-    sg.drawImage(g.mask(l.region), 0, 0);
-    pg.globalAlpha = l.opacity;
-    pg.drawImage(sc, 0, 0);
-    pg.globalAlpha = 1;
+    const D = sg.getImageData(0, 0, w, h).data;
+    const [Mk, k] = g.mask(l.region);
+    const op = Math.max(0, Math.min(1, l.opacity)) / 65025;
+    for (let i = 0, j = 0; i < D.length; i += 4, j += 3) {
+      const da = D[i + 3];
+      if (!da) continue;
+      const m = Mk[i + k];
+      if (!m) continue;
+      const a = da * m * op;
+      P[j] += (D[i] - P[j]) * a;
+      P[j + 1] += (D[i + 1] - P[j + 1]) * a;
+      P[j + 2] += (D[i + 2] - P[j + 2]) * a;
+    }
   }
   // the paint multiplied into the picture
-  const P = pg.getImageData(0, 0, w, h).data;
-  const pic = new ImageData(new Uint8ClampedArray(g.B), w, h);
-  const O = pic.data;
-  for (let i = 0; i < O.length; i += 4) {
+  const O = new Uint8ClampedArray(g.B);
+  for (let i = 0, j = 0; i < O.length; i += 4, j += 3) {
     if (!O[i + 3]) continue;
-    O[i] = (O[i] * P[i]) / 255;
-    O[i + 1] = (O[i + 1] * P[i + 1]) / 255;
-    O[i + 2] = (O[i + 2] * P[i + 2]) / 255;
+    O[i] = (O[i] * P[j]) / 255;
+    O[i + 1] = (O[i + 1] * P[j + 1]) / 255;
+    O[i + 2] = (O[i + 2] * P[j + 2]) / 255;
   }
-  out.canvas.width = w;
-  out.canvas.height = h;
+  if (outW >= w) return new ImageData(O, w, h);
+  return shrink(O, w, h, Math.max(1, Math.round(outW)));
+}
+
+/** A smaller copy: each new pixel the average of the ones it covers (weighted by how solid they are). */
+function shrink(S: Uint8ClampedArray, w: number, h: number, W: number): ImageData {
+  const H = Math.max(1, Math.round((h * W) / w));
+  const out = new ImageData(W, H);
+  const D = out.data;
+  const sx = w / W, sy = h / H;
+  for (let oy = 0; oy < H; oy++) {
+    const y0 = Math.floor(oy * sy), y1 = Math.max(y0 + 1, Math.floor((oy + 1) * sy));
+    for (let ox = 0; ox < W; ox++) {
+      const x0 = Math.floor(ox * sx), x1 = Math.max(x0 + 1, Math.floor((ox + 1) * sx));
+      let r = 0, gg = 0, b = 0, a = 0, c = 0;
+      for (let y = y0; y < y1; y++)
+        for (let x = x0; x < x1; x++) {
+          const i = (y * w + x) * 4;
+          const al = S[i + 3];
+          r += S[i] * al;
+          gg += S[i + 1] * al;
+          b += S[i + 2] * al;
+          a += al;
+          c++;
+        }
+      const o = (oy * W + ox) * 4;
+      if (a) {
+        D[o] = r / a;
+        D[o + 1] = gg / a;
+        D[o + 2] = b / a;
+      }
+      D[o + 3] = a / c;
+    }
+  }
+  return out;
+}
+
+/** The livery drawn on the aircraft, into `out` (sized to `outW`, the picture's width by default). */
+export function renderLivery(g: Geometry, livery: Livery, name: string, logos: Map<string, HTMLImageElement>, out: CanvasRenderingContext2D, reg = '', outW = g.w) {
+  const pic = renderLiveryPixels(g, livery, name, logos, reg, outW);
+  out.canvas.width = pic.width;
+  out.canvas.height = pic.height;
   out.putImageData(pic, 0, 0);
 }
 
-async function paint(id: string, L: Livery, name: string, reg: string, px = 1280, retry = true): Promise<string | null> {
+async function paint(id: string, L: Livery, name: string, reg: string, px = 1280): Promise<string | null> {
   const g = await aircraftGeometry(id);
   if (!g) return null;
   const logos = await loadLogos(L);
-  const [fc, fg] = reused(2, g.w, g.h);
-  renderLivery(g, L, name, logos, fg, reg);
-  // drawn nothing (the browser short of canvas memory): try once more a moment later, else the plain picture
-  const x = Math.round(g.body.nose + g.body.len * 0.5), y = Math.round(g.body.c0 + g.body.slope * x + g.body.hc * 0.5);
-  if (fg.getImageData(x, y, 1, 1).data[3] === 0) {
-    if (!retry) return null;
-    await new Promise((r) => setTimeout(r, 600));
-    return paint(id, L, name, reg, px, false);
-  }
-  const w = Math.min(g.w, px);
-  const h = Math.round((g.h * w) / g.w);
-  const [oc, og] = canvas(w, h);
-  og.imageSmoothingQuality = 'high';
-  og.drawImage(fc, 0, 0, w, h);
+  const pic = renderLiveryPixels(g, L, name, logos, reg, Math.min(g.w, px));
+  const [oc, og] = canvas(pic.width, pic.height);
+  og.putImageData(pic, 0, 0);
+  // Safari can't make WebP and gives PNG instead, which is fine
   const blob: Blob | null = await new Promise((r) => oc.toBlob(r, 'image/webp', 0.9));
   freeCanvas(oc);
   return blob ? URL.createObjectURL(blob) : null;

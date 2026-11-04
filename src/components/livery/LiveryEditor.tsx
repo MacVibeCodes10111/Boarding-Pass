@@ -349,9 +349,6 @@ export function LiveryEditor(props: {
       if (!c) return;
       try {
         renderLivery(geo, doc, name, logoImgs, c, reg);
-        // a browser out of canvas memory draws nothing without saying so: check the middle of the cabin
-        const x = Math.round(geo.body.nose + geo.body.len * 0.5), y = Math.round(geo.body.c0 + geo.body.slope * x + geo.body.hc * 0.5);
-        if (c.getImageData(x, y, 1, 1).data[3] === 0) throw new Error('blank picture');
       } catch (e) {
         // never leave the aircraft blank: at worst the plain picture
         console.error('livery preview', e);
@@ -987,22 +984,14 @@ export function LiveryEditor(props: {
     if (!geo || !stylesShown) return;
     let ok = true;
     const t = window.setTimeout(() => {
-      const [big, bg] = [document.createElement('canvas'), null as CanvasRenderingContext2D | null];
-      const bctx = bg ?? big.getContext('2d')!;
       const small = document.createElement('canvas');
-      small.width = 320;
-      small.height = Math.round((320 * geo.h) / geo.w);
       const sctx = small.getContext('2d')!;
       const out: Record<string, string> = {};
       for (const st of LIVERY_STYLES) {
         if (!ok) return;
-        renderLivery(geo, { v: 2, layers: st.make(styleA, styleB), logos: {} }, name, new Map(), bctx, reg);
-        sctx.clearRect(0, 0, small.width, small.height);
-        sctx.imageSmoothingQuality = 'high';
-        sctx.drawImage(big, 0, 0, small.width, small.height);
+        renderLivery(geo, { v: 2, layers: st.make(styleA, styleB), logos: {} }, name, new Map(), sctx, reg, 320);
         out[st.id] = small.toDataURL('image/webp', 0.85);
       }
-      freeCanvas(big);
       freeCanvas(small);
       if (ok) setStylePics(out);
     }, 150);

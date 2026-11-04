@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 2.69. Free to play. See [Credits and licences](#credits-and-licences).
+Version 2.69.1. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -20,6 +20,10 @@ Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 2.69.1:
+
+- **Fixed: liveries showing as a plain white aircraft in Safari** (and the Mac app), in My Airline, the fleet, the map and the livery editor. The colours are now mixed by the game itself, without a canvas step Safari could get wrong.
 
 Version 2.69:
 
