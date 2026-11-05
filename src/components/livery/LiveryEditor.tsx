@@ -142,6 +142,7 @@ const iconBtn = (active: boolean): React.CSSProperties => ({
   flex: 'none',
 });
 
+const pillBtn: React.CSSProperties = { width: 30, height: 28, display: 'grid', placeItems: 'center', border: 'none', borderRadius: 7, background: 'transparent', color: '#fff', cursor: 'pointer', fontSize: 16, padding: 0 };
 const smallBtn: React.CSSProperties = { background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: '2px 4px', fontSize: 13, lineHeight: 1 };
 
 // ----------------------------------------------------------------------------
@@ -331,7 +332,19 @@ export function LiveryEditor(props: {
   const [shapeKind, setShapeKind] = useState<ShapeKind>('rect');
   const [logoPick, setLogoPick] = useState<string | null>(() => Object.keys(doc.logos)[0] ?? null);
   const [note, setNote] = useState<string | null>(null);
-  const [tab, setTab] = useState<'layers' | 'props' | 'styles'>('layers');
+  const [menu, setMenu] = useState<'livery' | 'aircraft' | null>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const onDown = (e: PointerEvent) => !(e.target as Element).closest?.('[data-menu]') && setMenu(null);
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMenu(null);
+    window.addEventListener('pointerdown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [menu]);
+  const [tab, setTab] = useState<'parts' | 'layers' | 'props' | 'styles'>('parts');
   const [stylesOpen, setStylesOpen] = useState(false);
   const [styleA, setStyleA] = useState(props.airlineColours?.a ?? '#1d4e89');
   const [styleB, setStyleB] = useState(props.airlineColours?.b ?? '#f5a623');
@@ -789,10 +802,25 @@ export function LiveryEditor(props: {
   const outline = geo && selLayer && !selLayer.hidden ? layerOutline(geo, selLayer, name, reg) : null;
   const focusBox = useMemo(() => (geo && focus && focus !== 'fuselage' && focus !== 'all' ? partBox(geo, focus) : null), [geo, focus]);
 
+  const zoomPill = (
+    <div style={{ position: 'absolute', right: 8, bottom: 8, zIndex: 2, display: 'flex', alignItems: 'center', gap: 2, padding: 3, borderRadius: 10, background: 'rgba(10,16,28,.72)', border: `1px solid ${C.line}`, backdropFilter: 'blur(6px)' }}>
+      <button type="button" aria-label="Zoom out" disabled={zoom <= 1} onClick={() => setZoom((z) => Math.max(1, z / 1.25))} style={pillBtn}>
+        −
+      </button>
+      <button type="button" aria-label="Fit the whole aircraft" title="Fit the whole aircraft" onClick={() => { setZoom(1); setFocus(null); }} className="num" style={{ ...pillBtn, width: 'auto', minWidth: 44, fontSize: 12 }}>
+        {Math.round(zoom * 100)}%
+      </button>
+      <button type="button" aria-label="Zoom in" disabled={zoom >= MAX_ZOOM} onClick={() => setZoom((z) => Math.min(MAX_ZOOM, z * 1.25))} style={pillBtn}>
+        +
+      </button>
+    </div>
+  );
   const stage = (
+    <div style={{ position: 'relative', flex: '1 1 0', minHeight: phone ? 140 : 320, display: 'flex' }}>
+    {zoomPill}
     <div
       ref={stageRef}
-      style={{ position: 'relative', overflow: 'auto', borderRadius: 12, background: `${cloudSkyCss(`livery-${model}`)} center / cover`, minHeight: phone ? 170 : 320, flex: '1 1 0', border: `1px solid ${C.line}` }}
+      style={{ position: 'relative', overflow: 'auto', borderRadius: 12, background: `${cloudSkyCss(`livery-${model}`)} center / cover`, flex: '1 1 0', minHeight: 0, border: `1px solid ${C.line}` }}
       onWheel={(e) => {
         if (!(e.ctrlKey || e.metaKey)) return;
         e.preventDefault();
@@ -835,10 +863,11 @@ export function LiveryEditor(props: {
       </div>
       {!geo && <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: '#fff', fontSize: 13, textShadow: '0 1px 3px rgba(0,0,0,.5)' }}>Loading the aircraft…</div>}
     </div>
+    </div>
   );
 
   const tools = (
-    <div style={{ display: 'flex', flexDirection: phone ? 'row' : 'column', gap: 6, overflowX: phone ? 'auto' : undefined, paddingBottom: phone ? 2 : 0, alignItems: 'center' }}>
+    <div style={{ display: 'flex', flexDirection: phone ? 'row' : 'column', gap: 6, overflowX: phone ? 'auto' : undefined, paddingBottom: phone ? 2 : 0, alignItems: 'center', scrollbarWidth: 'none', ...(phone ? { maskImage: 'linear-gradient(90deg, #000 88%, transparent)', WebkitMaskImage: 'linear-gradient(90deg, #000 88%, transparent)', paddingRight: 28 } : {}) }}>
       {(Object.keys(TOOL_LABEL) as Tool[]).map((t) => (
         <button key={t} type="button" title={TOOL_LABEL[t]} aria-label={TOOL_LABEL[t]} aria-pressed={tool === t} onClick={() => setTool(t)} style={iconBtn(tool === t)}>
           <ToolIcon tool={t} />
@@ -1120,9 +1149,7 @@ export function LiveryEditor(props: {
   const partsPanel = (
     <div style={{ ...section, gap: 6 }}>
       {head('Parts', focus ? <Button size="sm" onClick={() => workOn(null)}>Whole aircraft</Button> : undefined)}
-      <div style={{ fontSize: 11.5, color: C.muted, marginTop: -2 }}>
-        Click a colour to paint a part. <b style={{ color: C.textSoft }}>Edit</b> zooms in on it, and then the brush, lines, shapes, text and logos only go on that part{partList.includes('winglets') ? ', the winglets too' : ''}.
-      </div>
+      <div style={{ fontSize: 11.5, color: C.muted, marginTop: -2 }}>Tap a colour to paint a part, or Edit to zoom in and draw on it.</div>
       {partList.map((r) => {
         const f = partFill(r);
         const own = f && f.region === r;
@@ -1262,7 +1289,22 @@ export function LiveryEditor(props: {
           <input type="color" value={styleB} onChange={(e) => setStyleB(e.target.value)} aria-label="Second colour" style={{ width: 30, height: 24, padding: 0, border: `1px solid ${C.border}`, borderRadius: 5 }} /> Second
         </label>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${phone ? 140 : 150}px, 1fr))`, gap: 8 }}>
+        <button
+          type="button"
+          aria-label="Plain white"
+          title="Take every layer off this livery"
+          onClick={() => {
+            setLayers([]);
+            setSel(null);
+            setStylesOpen(false);
+            flash('All layers gone: this livery is plain white. Undo brings them back.');
+          }}
+          style={{ display: 'grid', placeItems: 'center', gap: 4, padding: 6, minHeight: 64, borderRadius: 9, border: `1px dashed ${C.border}`, background: C.raised, color: C.text, cursor: 'pointer', fontSize: 12.5, fontWeight: 650 }}
+        >
+          Plain white
+          <span style={{ fontSize: 11, fontWeight: 400, color: C.muted }}>start from nothing</span>
+        </button>
         {LIVERY_STYLES.map((s) => (
           <button
             key={s.id}
@@ -1286,128 +1328,139 @@ export function LiveryEditor(props: {
     </div>
   );
 
+  const liveryName = (i: number) => docs[i]?.name || (i ? 'Second livery' : 'Main livery');
+  const addSecond = () => {
+    const copy: Livery = JSON.parse(JSON.stringify(docRef.current));
+    copy.name = 'Second';
+    copy.layers.forEach((l) => (l.id = newId()));
+    docsRef.current = [...docsRef.current, copy];
+    setDocs(docsRef.current);
+    dirty.current = true;
+    setActive(docsRef.current.length - 1);
+    flash('Second livery made from a copy of the first. Change it, then choose which aircraft wear it in their window.');
+  };
+  const renameLivery = (i: number) => {
+    const n = window.prompt('Name this livery', docs[i]?.name ?? (i ? 'Second' : 'Main'));
+    if (n == null) return;
+    if (moderate(n)) {
+      flash(moderate(n)!);
+      return;
+    }
+    docsRef.current = docsRef.current.map((x, k) => (k === i ? { ...x, name: n.trim().slice(0, 30) || undefined } : x));
+    setDocs(docsRef.current);
+    dirty.current = true;
+  };
+  const deleteLivery = (i: number) => {
+    if (i < 1 || !window.confirm(`Delete ${liveryName(i)}? Its aircraft will wear the main livery.`)) return;
+    docsRef.current = docsRef.current.filter((_, k) => k !== i);
+    setDocs(docsRef.current);
+    pasts.current[i] = [];
+    futures.current[i] = [];
+    dirty.current = true;
+    setActive(0);
+  };
+  const menuBox: React.CSSProperties = { ...(phone ? { position: 'fixed', top: 56, left: 12, right: 12 } : { position: 'absolute', top: 'calc(100% + 6px)', left: 0 }), zIndex: 30, minWidth: 220, display: 'grid', gap: 2, padding: 6, borderRadius: 11, background: C.panel, border: `1px solid ${C.border}`, boxShadow: '0 16px 36px rgba(0,0,0,.5)' };
+  const menuItem = (on: boolean): React.CSSProperties => ({ textAlign: 'left', padding: '8px 10px', borderRadius: 8, border: 'none', background: on ? `${C.brand}22` : 'transparent', color: on ? C.text : C.textSoft, fontWeight: on ? 650 : 500, fontSize: 13, cursor: 'pointer' });
+
   const topBar = (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: phone ? '10px 12px' : '10px 16px', borderBottom: `1px solid ${C.line}`, background: C.panel }}>
-      <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: 22, marginRight: 6 }}>Livery</h2>
-      <span role="tablist" aria-label="Liveries" style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
-        {docs.map((d, i) => (
-          <span key={i} style={{ display: 'inline-flex', alignItems: 'center' }}>
-            <Button size="sm" role="tab" aria-selected={i === active} variant={i === active ? 'primary' : undefined} onClick={() => setActive(i)} onDoubleClick={() => {
-              const n = window.prompt('Name this livery', d.name ?? (i ? 'Second' : 'Main'));
-              if (n != null && moderate(n)) {
-                flash(moderate(n)!);
-                return;
-              }
-              if (n != null) {
-                docsRef.current = docsRef.current.map((x, k) => (k === i ? { ...x, name: n.trim().slice(0, 30) || undefined } : x));
-                setDocs(docsRef.current);
-                dirty.current = true;
-              }
-            }} title="Double-click to rename">
-              {d.name || (i ? 'Second livery' : 'Main livery')}
-            </Button>
-            {i > 0 && (
-              <button
-                type="button"
-                aria-label={`Delete ${d.name || 'the second livery'}`}
-                title="Delete this livery (its aircraft go back to the main one)"
-                onClick={() => {
-                  if (!window.confirm(`Delete ${d.name || 'the second livery'}? Its aircraft will wear the main livery.`)) return;
-                  docsRef.current = docsRef.current.filter((_, k) => k !== i);
-                  setDocs(docsRef.current);
-                  pasts.current[i] = [];
-                  futures.current[i] = [];
-                  dirty.current = true;
-                  setActive(0);
-                }}
-                style={{ ...smallBtn, marginLeft: 2 }}
-              >
-                ×
+    <div style={{ display: 'flex', alignItems: 'center', gap: phone ? 6 : 8, flexWrap: phone ? 'nowrap' : 'wrap', padding: phone ? '8px 10px' : '10px 16px', borderBottom: `1px solid ${C.line}`, background: C.panel, position: 'relative', zIndex: 5 }}>
+      {phone ? (
+        <button type="button" aria-label="Cancel" title="Close without saving" onClick={props.onClose} style={{ ...pillBtn, width: 34, height: 34, fontSize: 18, border: `1px solid ${C.border}`, background: C.raised }}>
+          ×
+        </button>
+      ) : (
+        <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: 22, marginRight: 6 }}>Livery</h2>
+      )}
+      {/* the livery: switch, add a second, rename, delete */}
+      <span style={{ position: 'relative' }} data-menu>
+        <Button size="sm" variant="primary" aria-haspopup="menu" aria-expanded={menu === 'livery'} onClick={() => setMenu((m) => (m === 'livery' ? null : 'livery'))} style={{ maxWidth: phone ? 110 : 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {liveryName(active)} ▾
+        </Button>
+        {menu === 'livery' && (
+          <div role="menu" style={menuBox}>
+            {docs.map((_, i) => (
+              <button key={i} type="button" role="menuitemradio" aria-checked={i === active} onClick={() => { setActive(i); setMenu(null); }} style={menuItem(i === active)}>
+                {i === active ? '● ' : '○ '}
+                {liveryName(i)}
+                {i > 0 && <span style={{ color: C.muted, fontSize: 11.5 }}> · Special Livery</span>}
+              </button>
+            ))}
+            <div style={{ height: 1, background: C.line, margin: '4px 0' }} />
+            {docs.length < MAX_LIVERIES && (
+              <button type="button" role="menuitem" style={menuItem(false)} onClick={() => { setMenu(null); addSecond(); }} title="A copy of this livery to start from; pick which aircraft wear it in each aircraft's window">
+                + Second livery
               </button>
             )}
-          </span>
-        ))}
-        {docs.length < MAX_LIVERIES && (
-          <Button
-            size="sm"
-            title="A second livery (a copy of this one to start from): pick which aircraft wear it in each aircraft's window"
-            onClick={() => {
-              const copy: Livery = JSON.parse(JSON.stringify(docRef.current));
-              copy.name = 'Second';
-              copy.layers.forEach((l) => (l.id = newId()));
-              docsRef.current = [...docsRef.current, copy];
-              setDocs(docsRef.current);
-              dirty.current = true;
-              setActive(docsRef.current.length - 1);
-              flash('Second livery made from a copy of the first. Change it, then choose which aircraft wear it in their window.');
-            }}
-          >
-            + Second livery
-          </Button>
+            <button type="button" role="menuitem" style={menuItem(false)} onClick={() => { setMenu(null); renameLivery(active); }}>
+              Rename “{liveryName(active)}”
+            </button>
+            {active > 0 && (
+              <button type="button" role="menuitem" style={{ ...menuItem(false), color: C.red }} onClick={() => { setMenu(null); deleteLivery(active); }}>
+                Delete “{liveryName(active)}”
+              </button>
+            )}
+          </div>
         )}
       </span>
-      <select aria-label="Aircraft to preview" value={model} onChange={(e) => setModel(e.target.value)} style={{ background: C.raised, color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, padding: '6px 8px', fontSize: 13, maxWidth: phone ? 150 : 220 }}>
-        {choices.map((m) => (
-          <option key={m} value={m}>
-            {m.toUpperCase()}
-            {props.models.includes(m) ? ' (yours)' : ''}
-          </option>
-        ))}
-      </select>
-      <span role="group" aria-label="Changes apply to" style={{ display: 'inline-flex', gap: 2, padding: 2, borderRadius: 9, border: `1px solid ${scope === 'model' ? C.brand : C.border}`, background: C.raised }}>
-        <Button size="sm" variant={scope === 'all' ? 'primary' : undefined} aria-pressed={scope === 'all'} title="Changes go on every aircraft type" onClick={() => setScope('all')}>
-          All aircraft
+      {/* the aircraft on screen, and whether changes are for every type or only this one */}
+      <span style={{ position: 'relative', minWidth: 0 }} data-menu>
+        <Button size="sm" aria-haspopup="menu" aria-expanded={menu === 'aircraft'} onClick={() => setMenu((m) => (m === 'aircraft' ? null : 'aircraft'))} style={{ maxWidth: phone ? 120 : 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderColor: scope === 'model' ? C.brand : undefined }}>
+          {model.toUpperCase()}
+          {scope === 'model' ? <span style={{ color: C.brand }}> · only</span> : null} ▾
         </Button>
-        <Button
-          size="sm"
-          variant={scope === 'model' ? 'primary' : undefined}
-          aria-pressed={scope === 'model'}
-          title="Changes only on this aircraft type: fix a logo or title that sits wrong on it, without moving it on the others"
-          onClick={() => {
-            setScope('model');
-            flash(`Only the ${model.toUpperCase()} now: moves, sizes and colours you change, and layers you add, apply to this type alone.`);
-          }}
-        >
-          Only {model.toUpperCase()}
-        </Button>
+        {menu === 'aircraft' && (
+          <div role="menu" style={{ ...menuBox, width: phone ? undefined : 300 }}>
+            <label style={{ display: 'grid', gap: 4, fontSize: 12, color: C.muted, padding: '2px 4px' }}>
+              Aircraft on screen
+              <select aria-label="Aircraft to preview" value={model} onChange={(e) => setModel(e.target.value)} style={{ background: C.bg, color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 8px', fontSize: 13 }}>
+                {choices.map((m) => (
+                  <option key={m} value={m}>
+                    {m.toUpperCase()}
+                    {props.models.includes(m) ? ' (yours)' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div style={{ height: 1, background: C.line, margin: '4px 0' }} />
+            <div style={{ fontSize: 12, color: C.muted, padding: '0 4px' }}>Your changes go on</div>
+            <button type="button" role="menuitemradio" aria-checked={scope === 'all'} style={menuItem(scope === 'all')} onClick={() => { setScope('all'); setMenu(null); }}>
+              {scope === 'all' ? '● ' : '○ '}Every aircraft type
+            </button>
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked={scope === 'model'}
+              style={menuItem(scope === 'model')}
+              onClick={() => {
+                setScope('model');
+                setMenu(null);
+                flash(`Only the ${model.toUpperCase()} now: moves, sizes and colours you change, and layers you add, apply to this type alone.`);
+              }}
+            >
+              {scope === 'model' ? '● ' : '○ '}Only the {model.toUpperCase()}
+              <div style={{ fontSize: 11.5, color: C.muted, fontWeight: 400, marginTop: 2 }}>To fix a logo or title that sits wrong on this type, without moving it on the others.</div>
+            </button>
+          </div>
+        )}
       </span>
-      <Button size="sm" onClick={undo} disabled={!past.current.length} title="Undo (Ctrl/Cmd+Z)">
-        Undo
+      {phone && <span style={{ flex: 1 }} />}
+      <Button size="sm" onClick={undo} disabled={!past.current.length} title="Undo (Ctrl/Cmd+Z)" aria-label="Undo">
+        {phone ? '↶' : 'Undo'}
       </Button>
-      <Button size="sm" onClick={redo} disabled={!future.current.length} title="Redo (Ctrl/Cmd+Shift+Z)">
-        Redo
+      <Button size="sm" onClick={redo} disabled={!future.current.length} title="Redo (Ctrl/Cmd+Shift+Z)" aria-label="Redo">
+        {phone ? '↷' : 'Redo'}
       </Button>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-        <Button size="sm" aria-label="Zoom out" onClick={() => setZoom((z) => Math.max(1, z / 1.25))}>
-          −
-        </Button>
-        <span className="num" style={{ fontSize: 12, color: C.muted, minWidth: 38, textAlign: 'center' }}>
-          {Math.round(zoom * 100)}%
-        </span>
-        <Button size="sm" aria-label="Zoom in" onClick={() => setZoom((z) => Math.min(MAX_ZOOM, z * 1.25))}>
-          +
-        </Button>
-      </span>
       {!phone && (
         <Button size="sm" onClick={() => setStylesOpen((v) => !v)} variant={stylesOpen ? 'primary' : undefined}>
           Styles
         </Button>
       )}
-      <span style={{ flex: 1 }} />
-      <Button
-        size="sm"
-        onClick={() => {
-          setLayers([]);
-          setSel(null);
-          flash('All layers gone: this livery is plain white. Undo brings them back.');
-        }}
-        title="Take every layer off this livery (plain white aircraft)"
-      >
-        Plain white
-      </Button>
-      <Button size="sm" onClick={props.onClose}>
-        Cancel
-      </Button>
+      {!phone && <span style={{ flex: 1 }} />}
+      {!phone && (
+        <Button size="sm" onClick={props.onClose}>
+          Cancel
+        </Button>
+      )}
       <Button
         size="sm"
         variant="primary"
@@ -1416,14 +1469,19 @@ export function LiveryEditor(props: {
           props.onClose();
         }}
       >
-        Save {docs.length > 1 ? 'liveries' : 'livery'}
+        {phone ? 'Save' : `Save ${docs.length > 1 ? 'liveries' : 'livery'}`}
       </Button>
     </div>
   );
 
   const status = (
-    <div style={{ fontSize: 12, color: note ? C.text : C.muted, minHeight: 18, padding: '0 2px' }}>
-      {note ?? `${focus ? `Working on the ${REGION_LABEL[focus].toLowerCase()}: everything you draw stays on it. ` : ''}${TOOL_LABEL[tool].replace(/ \(.\)$/, '')}. ${countStrokes(doc)} brush strokes. ${phone ? 'Zoom with + and −, then the hand to look around.' : 'Ctrl/Cmd+scroll to zoom.'}`}
+    <div style={{ fontSize: 12, color: note ? C.text : C.muted, minHeight: 18, padding: '0 2px', ...(phone && !note ? { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } : {}) }}>
+      {note ??
+        (focus
+          ? `Working on the ${REGION_LABEL[focus].toLowerCase()}: everything you draw stays on it.`
+          : phone
+            ? `${TOOL_LABEL[tool].replace(/ \(.\)$/, '').replace(/:.*$/, '')}. Zoom with + and −, then the hand to look around.`
+            : `${TOOL_LABEL[tool].replace(/ \(.\)$/, '')}. ${countStrokes(doc)} brush strokes. Ctrl/Cmd+scroll to zoom.`)}
     </div>
   );
 
@@ -1431,23 +1489,41 @@ export function LiveryEditor(props: {
     <div role="dialog" aria-modal="true" aria-label="Livery editor" style={{ position: 'fixed', inset: 0, zIndex: 260, background: C.bg, display: 'flex', flexDirection: 'column', color: C.text }}>
       {topBar}
       {phone ? (
-        <div style={{ flex: 1, overflowY: 'auto', display: 'grid', gap: 10, padding: 10, alignContent: 'start' }}>
-          <div style={{ position: 'sticky', top: 0, zIndex: 2, display: 'grid', gap: 8, background: C.bg, paddingBottom: 6 }}>
-            <div style={{ height: 190, display: 'flex' }}>{stage}</div>
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ flex: 'none', display: 'grid', gap: 6, padding: '8px 10px 6px', borderBottom: `1px solid ${C.line}` }}>
+            <div style={{ height: 'min(30vh, 210px)', display: 'flex' }}>{stage}</div>
             {tools}
             {status}
+            <Segmented<'parts' | 'layers' | 'props' | 'styles'>
+              value={tab}
+              onChange={setTab}
+              options={[
+                { value: 'parts', label: 'Parts' },
+                { value: 'layers', label: 'Layers' },
+                { value: 'props', label: 'Edit' },
+                { value: 'styles', label: 'Styles' },
+              ]}
+            />
           </div>
-          <Segmented<'layers' | 'props' | 'styles'> value={tab} onChange={setTab} options={[{ value: 'layers', label: 'Layers' }, { value: 'props', label: 'Settings' }, { value: 'styles', label: 'Styles' }]} />
-          {tab === 'layers' ? (
-            <>
-              {partsPanel}
-              {layersPanel}
-            </>
-          ) : tab === 'props' ? (
-            settingsPanel
-          ) : (
-            stylesPanel
-          )}
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', display: 'grid', gap: 10, padding: 10, alignContent: 'start' }}>
+            {tab === 'parts' ? (
+              partsPanel
+            ) : tab === 'layers' ? (
+              <>
+                {layersPanel}
+                {selLayer && props_ && (
+                  <div style={section}>
+                    {head(`${KIND_LABEL[selLayer.kind]}: ${selLayer.name}`)}
+                    {props_}
+                  </div>
+                )}
+              </>
+            ) : tab === 'props' ? (
+              settingsPanel
+            ) : (
+              stylesPanel
+            )}
+          </div>
         </div>
       ) : (
         <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '56px minmax(0, 1fr) 320px', gap: 12, padding: 12 }}>

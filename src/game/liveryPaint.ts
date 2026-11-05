@@ -328,7 +328,9 @@ async function measure(id: string): Promise<Geometry | null> {
   const B = bg.getImageData(0, 0, w, h).data;
   freeCanvas(bc);
   // since v2.66 the mask is twice the picture's height: the top half tail, fuselage, engines; the bottom half wings, wingtips, tailplanes
-  const atlas = maskImg.naturalHeight >= base.naturalHeight * 1.9;
+  // judged by shape, not size: a phone can be sent smaller copies of the pictures (the mask then has
+  // about the picture's height, which looked like an old single mask and squashed it to half height)
+  const atlas = maskImg.naturalHeight / Math.max(1, maskImg.naturalWidth) > (base.naturalHeight / Math.max(1, base.naturalWidth)) * 1.5;
   const [mc, mg] = canvas(w, atlas ? h * 2 : h);
   mg.drawImage(maskImg, 0, 0, w, atlas ? h * 2 : h);
   const M = mg.getImageData(0, 0, w, h).data;
