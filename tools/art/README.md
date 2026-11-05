@@ -12,4 +12,6 @@ How `public/aircraft/*.webp` are made (Python 3 with `psd-tools`, `numpy`, `scip
 
 `draw.py` and `specs.py` are an older from-scratch drawing that is no longer used.
 
+Two template fixes run on every build: masks on layer groups are respected (`load` in `kit.py`; without them a group's shading spills out as dark patches), and `SOFT_TAIL` in `config.py` lists the types whose heavy dark shape at the tailplane root gets faded (`soften_tail`). To rebuild only some types: `ART_SRC=<templates folder> python3 hi.py <id> <id>`, copy `out/hi/<id>.webp` and `out/hi/<id>.png` (as `<id>.mask.png`) to `public/aircraft/`, run `winglets.py`'s `fix`/`clear` on any mask in its lists, and check the size still matches `aircraftPhotos.ts`.
+
 The templates are the work of their artists (credited in the game's Credits screen and in THIRD_PARTY_NOTICES.md); they are not kept in this repository.

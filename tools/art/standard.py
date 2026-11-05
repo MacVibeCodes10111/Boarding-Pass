@@ -13,7 +13,7 @@ from psd_tools.constants import BlendMode
 from kit import *
 from builds import BUILDS
 from builds2 import BUILDS2
-from config import C, HIDE_EXTRA, BY
+from config import C, HIDE_EXTRA, BY, SOFT_TAIL
 
 OUT = os.environ.get('ART_OUT', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'out'))
 GROUPS = ['ANTENNAS', 'TAIL', 'FUSELAGE', 'WINGS', 'ENGINES', 'DETAILS']
@@ -104,6 +104,11 @@ def diff(a, b):
 
 
 def get(i):
+    W, H, ls = _get(i)
+    return W, H, soften_tail(ls) if i in SOFT_TAIL else ls
+
+
+def _get(i):
     if i in BUILDS2:
         return BUILDS2[i]()
     v = C[i]

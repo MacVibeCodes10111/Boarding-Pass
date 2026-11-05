@@ -142,8 +142,8 @@ C = {
     'mc-21-310': dict(src='Irkut MC-21.psd', show=[r'^Engine PD'], hide=[r'^Engine PW']),
     'xian-ma60': dict(src='Xian MA-60.psd', hide=[r'ENGINE_BLACK_OPTION']),
     'comac-c909': dict(src='COMAC ARJ-21.psd', hide=[r'^shade$'], clip=True),
-    'comac-c919': dict(src='C919 (Airplano21 effects).psd', hide=[r'^shade$'], clip=True),
-    'comac-c919-std': dict(src='C919 (Airplano21 effects).psd', hide=[r'^shade$'], clip=True),
+    'comac-c919': dict(src='C919 (Airplano21 effects).psd', show=[r'^COCKPIT WINDOW$'], hide=[r'^shade$'], clip=True),  # the glass layer is switched off in the template
+    'comac-c919-std': dict(src='C919 (Airplano21 effects).psd', show=[r'^COCKPIT WINDOW$'], hide=[r'^shade$'], clip=True),  # the glass layer is switched off in the template
     # Regional and small
     'a220-100': dict(src='Airbus A220-100.psd'),
     'a220-300': dict(src='Airbus A220-300.psd'),
@@ -166,6 +166,9 @@ C = {
     'beech-1900d': dict(src='Beech1900D.psd'),
     'beech-1900c-cargo': dict(src='Beech 1900C.psd'),
 }
+
+# Templates with a heavy dark shape where the tailplane meets the fuselage (kit.soften_tail)
+SOFT_TAIL = {'a300-600f', 'a300-600r', 'a310-300', 'a330-200', 'a330-200f', 'a330-300', 'a330-300p2f', 'a330-800neo', 'a330-900neo', 'a340-300', 'tu-204-100', 'tu-204c', 'tu-214'}
 
 # Drawn from scratch (no template exists)
 DRAW = ['emb-110', 'an-26b', 'do-228ng', 'l-382g', 'c402c', 'c408', 'tecnam-p2012', 'pilatus-pc12', 'l-410-uvp', 'metro-23', 'metro-3-cargo']

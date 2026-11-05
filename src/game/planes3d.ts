@@ -1,9 +1,9 @@
 // ============================================================================
 // 3D AIRCRAFT
 //   Aircraft drawn as solid shapes floating at their height above the ground
-//   (MapLibre fill-extrusions with a raised base), a thin line down to their
-//   shadow, and the selected aircraft's route as a ribbon at altitude with a
-//   curtain beneath it. Works on the flat map and on the globe.
+//   (MapLibre fill-extrusions with a raised base), and the selected aircraft's
+//   route as a ribbon at altitude with a curtain beneath it. Works on the flat
+//   map and on the globe.
 //
 //   Sizes are in screen pixels and turned into metres for the current zoom (and
 //   the aircraft's own latitude on the flat map), so aircraft stay readable at
@@ -110,11 +110,10 @@ export interface Plane3d {
 }
 
 /**
- * Body and fin of one aircraft (pushed to `bodies`) and its line down to the
- * ground (pushed to `stems`, when given). Aircraft on the ground are skipped:
- * the flat map icons draw those.
+ * Body and fin of one aircraft (pushed to `bodies`). Aircraft on the ground are
+ * skipped: the flat map icons draw those.
  */
-export function pushPlane3d(p: Plane3d, k: Scale3d, bodies: unknown[], stems?: unknown[]) {
+export function pushPlane3d(p: Plane3d, k: Scale3d, bodies: unknown[]) {
   if (!(p.aglFt > 0) || (!k.globe && Math.abs(p.at[1]) > MAX_LAT)) return;
   const mpp = mppAt(k, p.at[1]);
   const half = (p.sizePx * mpp) / 2;
@@ -123,10 +122,6 @@ export function pushPlane3d(p: Plane3d, k: Scale3d, bodies: unknown[], stems?: u
   const props = { ...p.props, color: p.color, base, top: base + thick };
   bodies.push(poly(ring(BODY, p.at, p.bearing, half), props));
   bodies.push(poly(ring(FIN, p.at, p.bearing, half), { ...props, top: base + thick * 3.6 }));
-  if (stems) {
-    const w = mpp * 0.7;
-    stems.push(poly(ring([[w, w], [w, -w], [-w, -w], [-w, w]], p.at, 0, 1), { color: p.color, base: 0, top: base }));
-  }
 }
 
 /** Tallest a detailed aircraft is drawn (fin top to engines), like the simple shapes' fin. */

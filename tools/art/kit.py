@@ -71,7 +71,21 @@ def load(fname, show=(), hide=(), keep_gear=False):
 
     top_hide = {int(h[4:]) for h in hide if h.startswith('TOP:')}
 
-    def walk(group, path, parent_visible, forced=False):
+    def group_mask(g):
+        """A group's own mask, on the canvas: (x, y, mask, value outside it). Null when it has none."""
+        m = g.mask if g.has_mask() else None
+        if m is None or m.disabled:
+            return None
+        pil = m.topil()
+        return None if pil is None else (m.left + PAD, m.top + PAD, pil.convert('L'), m.background_color)
+
+    def apply_masks(pil, x, y, masks):
+        for mx, my, m, outside in masks:
+            c = Image.new('L', pil.size, outside)
+            c.paste(m, (mx - x, my - y))
+            pil.putalpha(ImageChops.multiply(pil.getchannel('A'), c))
+
+    def walk(group, path, parent_visible, forced=False, masks=()):
         base = None  # clipping base alpha
         for i, l in enumerate(group):
             nm = l.name.replace('\x00', '').strip()
@@ -90,7 +104,8 @@ def load(fname, show=(), hide=(), keep_gear=False):
             if not keep_gear and GEAR.search(low) and not GEAR_UP.search(low):
                 vis = False
             if l.is_group():
-                walk(l, p, vis, forced or shown)
+                gm = group_mask(l)
+                walk(l, p, vis, forced or shown, (*masks, gm) if gm else masks)
                 base = None
                 continue
             pil, raw = None, False
@@ -125,6 +140,9 @@ def load(fname, show=(), hide=(), keep_gear=False):
                 pil.putalpha(ImageChops.multiply(pil.getchannel('A'), m))
             elif not l.clipping:
                 base = (x, y, pil.getchannel('A'))
+            # Masks on the groups around this layer (without them, shading meant to
+            # stay inside a group spills over, as dark patches on the fuselage)
+            apply_masks(pil, x, y, masks)
             bb = pil.getbbox()
             if bb and (bb[2] - bb[0]) * (bb[3] - bb[1]) > 0.5 * psd.width * psd.height:
                 a = np.asarray(pil.getchannel('A').crop(bb))
@@ -135,6 +153,36 @@ def load(fname, show=(), hide=(), keep_gear=False):
 
     walk(psd, '', True)
     return W, H, out
+
+
+def soften_tail(ls, keep=0.18, cut=0.78, min_px=120):
+    """Fades the heavy dark shape some templates draw where the tailplane meets
+    the fuselage (solid on the A330 family, a hollow box on the Tu-204), which
+    reads as a hole in the aircraft. Small dark details there are kept."""
+    from scipy import ndimage
+    fus = [l for l in ls if l.part is not None and re.match(r'fuselage', l.path, re.I)]
+    if not fus:
+        return ls
+    x0 = min(l.x for l in fus)
+    x1 = max(l.x + l.part.width for l in fus)
+    at = x0 + cut * (x1 - x0)
+    for l in fus:
+        a = np.asarray(l.part.convert('RGBA')).astype(np.float32)
+        lum = (a[..., :3] * [0.3, 0.59, 0.11]).sum(-1)
+        # Solid dark only: the soft shading along the belly is dark but see-through, and stays
+        dark = (lum < 110) & (a[..., 3] > 200)
+        dark[:, : max(0, int(at - l.x))] = False
+        labels, n = ndimage.label(dark, structure=np.ones((3, 3)))
+        if not n:
+            continue
+        sizes = ndimage.sum_labels(dark, labels, range(1, n + 1))
+        big = np.isin(labels, [k + 1 for k, s in enumerate(sizes) if s >= min_px])
+        if not big.any():
+            continue
+        fade = ndimage.gaussian_filter(ndimage.binary_dilation(big, iterations=3).astype(np.float32), 1.2).clip(0, 1)
+        a[..., 3] *= 1 - fade * (1 - keep)
+        l.part = Image.fromarray(a.round().astype(np.uint8), 'RGBA')
+    return ls
 
 
 # ---- blending ---------------------------------------------------------------
