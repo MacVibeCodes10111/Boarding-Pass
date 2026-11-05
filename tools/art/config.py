@@ -40,7 +40,7 @@ C = {
     'a340-600': dict(src='Airbus A340-600.psd'),
     'a380-800': dict(src='Airbus A380-800.psd'),
     # Boeing
-    'b717-200': dict(build='b717'),
+    'b717-200': dict(src='Boeing 717-200 (Airplano21).psd', hide=[r'^SHADOW$'], clip=True),
     'b737-200': dict(src='Boeing 737-200.psd'),
     'b737-300': dict(src='Boeing 737-300.psd'),
     'b737-300sf': dict(build='b737sf', base='Boeing 737-300.psd'),
@@ -56,7 +56,7 @@ C = {
     'b737-900': dict(src='Boeing 737-900.psd', show=[r'^WINGLET']),
     'b737-900er': dict(src='Boeing 737-900ER.psd'),
     'b737-max9': dict(build='max9'),
-    'b737-max10': dict(build='max10'),
+    'b737-max10': dict(src='Boeing 737 MAX 10.psd'),
     'b727-200f': dict(src='Boeing 727-200F.psd'),
     'b757-200': dict(src='Boeing 757-200.psd'),
     'b757-200pcf': dict(src='Boeing 757-200F.psd'),
@@ -135,7 +135,19 @@ C = {
     'il-96-300': dict(src='Ilyushin Il-96-300.psd'),
     'il-96-400t': dict(build='il96t'),
     'il-114-300': dict(src='IL-114-100 (1).psd'),
+    'il-76td-90': dict(src='Ilyushin IL-76TD-90VD.psd', hide=[r'^SHADOW$']),
+    'an-12bk': dict(src='Antonov AN-12.psd', hide=[r'^GUNS_OPTION$']),
+    'an-24rv': dict(src='Antonov AN-24RT.psd', hide=[r'ENGINE_BLACK_OPTION', r'ENGINE_METAL_OPTION']),
+    'an-124-100': dict(src='Antonov AN-124.psd'),
+    'mc-21-310': dict(src='Irkut MC-21.psd', show=[r'^Engine PD'], hide=[r'^Engine PW']),
+    'xian-ma60': dict(src='Xian MA-60.psd', hide=[r'ENGINE_BLACK_OPTION']),
+    'comac-c909': dict(src='COMAC ARJ-21.psd', hide=[r'^shade$'], clip=True),
+    'comac-c919': dict(src='C919 (Airplano21 effects).psd', hide=[r'^shade$'], clip=True),
+    'comac-c919-std': dict(src='C919 (Airplano21 effects).psd', hide=[r'^shade$'], clip=True),
     # Regional and small
+    'a220-100': dict(src='Airbus A220-100.psd'),
+    'a220-300': dict(src='Airbus A220-300.psd'),
+    'c208b-ex': dict(src='Cessna C208 IZhang.psd', hide=[r'^shade$'], gear=True, clip=True),
     'saab-340b': dict(src='SAAB 340B.psd'),
     'saab-340bf': dict(build='saab340f'),
     'saab-2000': dict(src='SAAB 2000.psd'),
@@ -156,9 +168,7 @@ C = {
 }
 
 # Drawn from scratch (no template exists)
-DRAW = ['a220-100', 'a220-300', 'emb-110', 'xian-ma60', 'comac-c909', 'comac-c909ccf', 'comac-c919-std', 'comac-c919',
-        'an-24rv', 'an-26b', 'an-12bk', 'il-76td-90', 'an-124-100', 'mc-21-310', 'do-228ng', 'l-382g', 'c402c',
-        'c208b-ex', 'c208b-cargo', 'c408', 'tecnam-p2012', 'pilatus-pc12', 'l-410-uvp', 'metro-23', 'metro-3-cargo']
+DRAW = ['emb-110', 'an-26b', 'do-228ng', 'l-382g', 'c402c', 'c408', 'tecnam-p2012', 'pilatus-pc12', 'l-410-uvp', 'metro-23', 'metro-3-cargo']
 
 # Template makers, for the credits (file -> maker), when not the Airline Empires base set
 BY = {
@@ -167,6 +177,9 @@ BY = {
     'Bombardier CRJ-200.psd': 'N664US', 'Embraer E135.psd': 'N664US', 'Embraer E140.psd': 'N664US', 'Embraer E145.psd': 'N664US', 'SAAB 340B.psd': 'N664US',
     'Airbus A321P2F.psd': 'Pouchok', 'Airbus A330-300P2F.psd': 'Pouchok', 'Dornier328.psd': 'Redrado', 'Airbus A319neo.psd': 'the777fan',
     'Boeing 777-9X.psd': 'the777fan', 'Boeing 777-8X.psd': 'the777fan', 'Ilyushin Il-96-400M.psd': 'AvV008',
+    'Boeing 717-200 (Airplano21).psd': 'airplano21', 'Irkut MC-21.psd': 'Liam_219', 'C919 (Airplano21 effects).psd': "I'Zhang (Airplano21 effects)",
+    'COMAC ARJ-21.psd': "I'Zhang", 'Ilyushin IL-76TD-90VD.psd': "I'Zhang", 'Cessna C208 IZhang.psd': "I'Zhang", 'Antonov AN-12.psd': 'GevoMan (AirGEL)',
+    'Airbus A220-100.psd': 'FlyHighAviator, AJB, FishermanIvan, BlondeBird and iAvi', 'Airbus A220-300.psd': 'FlyHighAviator, AJB, FishermanIvan, BlondeBird and iAvi',
 }
 
 # Layers that are never part of the plane

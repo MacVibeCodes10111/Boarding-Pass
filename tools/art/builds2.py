@@ -186,6 +186,33 @@ def c909(cargo=False):
     return W, H, ls
 
 
+def arj21_cargo():
+    """C909 converted freighter: the ARJ-21 template, windows plugged, a main-deck cargo door."""
+    from standard import clip_fx
+    W, H, ls = load('COMAC ARJ-21.psd', hide=[r'^shade$'])
+    ls = clip_fx(ls)
+    _, _, B = load('e0d57353-Boeing_737-800BCF_V2.0.psd')
+    CANVAS[0], CANVAS[1] = W, H
+    ls = freighter(ls, r'^WINDOWS$', 30)
+    fus = find(ls, r'^FUSELAGE$')[0]
+    g = fus.part.height / 162
+    door1 = find(ls, r'^DOOR$')[0]
+    at = (door1.x - PAD + round(70 * g), fus.y - PAD + round(8 * g))
+    door = patch(B, r'FUSELAGE/BCF Door$', (613, 426, 772, 531), g, at, 'CARGO DOOR')
+    sill = patch(B, r'FUSELAGE/Cargo Door detail option$', (618, 515, 767, 531), g, (at[0] + round(5 * g), at[1] + round(89 * g)), 'CARGO DOOR DETAILS')
+    ls = clear_box(ls, r'^WINDOWS$', (at[0] - 2, 0, at[0] + round(159 * g) + 2, H))
+    ls = insert_after(ls, r'^WINDOWS$', [door, sill])
+    return W, H, ls
+
+
+def c208_cargo():
+    """Caravan cargo: the C208 template with an empty cabin (cargo Caravans keep their windows)."""
+    from standard import clip_fx
+    W, H, ls = load('Cessna C208 IZhang.psd', hide=[r'^shade$', r'^Seats$'], keep_gear=True)
+    ls = clip_fx(ls)
+    return W, H, ls
+
+
 def j31(target_len, scale=1.0, plug_m=0.0, cargo=False):
     W, H, ls = load('13f04f98-British_Aerospace_Jetstream_31.psd', hide=[r'^Layer 4$'])
     if scale != 1.0:
@@ -252,14 +279,14 @@ def cn235_stretch(target):
 
 
 BUILDS2 = {
-    'a220-100': lambda: a220(35.0), 'a220-300': lambda: a220(38.7),
-    'comac-c919': c919, 'comac-c919-std': c919, 'mc-21-310': mc21,
-    'comac-c909': c909, 'comac-c909ccf': lambda: c909(True),
+    
+    
+    'comac-c909ccf': arj21_cargo,
     'emb-110': lambda: j31(15.1, 1.05), 'metro-23': metro, 'metro-3-cargo': lambda: metro(True),
     'c402c': lambda: j31(11.1, 0.77),
     'do-228ng': lambda: dhc6(16.56, False), 'l-410-uvp': lambda: dhc6(14.42, False), 'c408': lambda: dhc6(16.7, True),
     'tecnam-p2012': p2012,
-    'xian-ma60': lambda: f27(24.7), 'an-24rv': lambda: f27(23.53, True),
+    
     'an-26b': lambda: cn235_stretch(23.8),
 }
 
@@ -402,9 +429,6 @@ def pc12():
 
 BUILDS2.update({
     'l-382g': lambda: cn_based(32.3, 1.48, 80, windows=60),
-    'an-12bk': lambda: cn_based(33.1, 1.40, 80, glazed=True, windows=110),
-    'il-76td-90': lambda: cn_based(46.6, 1.75, 55, glazed=True, engines='il96', t_tail=True, eng_f=0.8, windows=40),
-    'an-124-100': lambda: cn_based(69.1, 2.55, 40, engines='747', eng_f=1.05, windows=0),
-    'c208b-ex': caravan, 'c208b-cargo': lambda: caravan(True),
+    'c208b-cargo': c208_cargo,
     'pilatus-pc12': pc12,
 })

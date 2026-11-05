@@ -7,7 +7,7 @@ import sys, os, json, re
 sys.path.insert(0, '.')
 import numpy as np
 from PIL import Image
-from standard import get, classify, tight
+from standard import get, classify, tight, R_FX
 from kit import render
 
 OUT = 'out/mask'
@@ -30,6 +30,12 @@ def part_of(l, g, rear=False, cw=1):
     return 'WINGS'
 
 
+def soft(pa):
+    """Mostly see-through: shading or a highlight, not a surface."""
+    on = pa > 0.02
+    return on.any() and (pa[on] > 0.9).mean() < 0.5
+
+
 def masks(i, width=640, out=None, ret=None):
     W, H, ls = ret if ret else get(i)
     im = render(W, H, ls)
@@ -50,6 +56,8 @@ def masks(i, width=640, out=None, ret=None):
         if w <= 0 or h <= 0:
             continue
         a[dy0:dy0 + h, dx0:dx0 + w] = pa[sy0:sy0 + h, sx0:sx0 + w]
+        if r == 'BASE' and (l.blend != 'NORMAL' or R_FX.search(l.name) or soft(pa)):
+            continue  # shading the classifier took for a surface: it neither paints nor covers
         if r == 'BASE':
             # a paintable surface covers whatever was painted below it
             for k in range(6):
@@ -78,6 +86,25 @@ def masks(i, width=640, out=None, ret=None):
             moved = np.where(low, cov[0], 0)
             cov[5] = np.maximum(cov[5], moved)
             cov[0] = np.where(low, 0, cov[0])
+    # one layer for the whole body (no tail layer): the fin is the body above the roof line at the back
+    if (cov[0] > 0.5).sum() < 0.01 * (cov[1] > 0.5).sum():
+        fus = cov[1] > 0.5
+        xs = np.arange(cw)
+        top = np.array([np.argmax(fus[:, x]) if fus[:, x].any() else -1 for x in xs])
+        mid = (xs > cw * 0.2) & (xs < cw * 0.55) & (top >= 0)
+        if mid.sum() > 10:
+            b, a0 = np.polyfit(xs[mid], top[mid], 1)
+            roof = a0 + b * xs
+            bot = np.array([fus.shape[0] - 1 - np.argmax(fus[::-1, x]) for x in xs[mid]])
+            hc = float(np.median(bot - top[mid]))
+            ys = np.arange(ch)[:, None]
+            # a third of the body's height above the roof line, so an upswept rear fuselage stays fuselage
+            # and from where the top edge climbs steeply (the fin's leading edge)
+            steep = np.where((xs > cw * 0.55) & (top >= 0) & (top < roof - hc * 0.8))[0]
+            x_f = (steep.min() - cw * 0.02) if len(steep) else cw * 0.55
+            fin = (ys < roof[None, :] - max(2, hc * 0.33)) & (xs[None, :] > max(cw * 0.55, x_f))
+            cov[0] = np.maximum(cov[0], np.where(fin, cov[1], 0))
+            cov[1] = np.where(fin, 0, cov[1])
     h = round(ch * width / cw)
     halves = []
     for k in (0, 3):

@@ -303,7 +303,7 @@ dependencies = [
 
 [[package]]
 name = "boarding-pass"
-version = "2.69.1"
+version = "2.70.0"
 dependencies = [
  "serde",
  "serde_json",

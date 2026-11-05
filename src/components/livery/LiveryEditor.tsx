@@ -161,6 +161,24 @@ const regionAt = (g: Geometry, px: number, py: number): Region | null => {
   return best[1] < 100 ? null : best[0];
 };
 const frameFor = (r: Region | null): Frame => (r === 'tail' ? 'fin' : 'body');
+/** Parts small enough that new text, logos and shapes start smaller on them. */
+const small = (r: Region) => r === 'winglets' || r === 'stabiliser' || r === 'engines';
+const MAX_ZOOM = 8;
+/** Where a part is on the picture (pixels), from its mask. */
+const partBox = (g: Geometry, r: Region): [number, number, number, number] | null => {
+  if (r === 'all') return [0, 0, g.w, g.h];
+  const [arr, k] = r === 'tail' ? [g.M, 0] : r === 'fuselage' ? [g.M, 1] : r === 'engines' ? [g.M, 2] : r === 'wings' ? [g.M2, 0] : r === 'winglets' ? [g.M2, 1] : [g.M2, 2];
+  let x0 = g.w, y0 = g.h, x1 = -1, y1 = -1;
+  for (let y = 0; y < g.h; y++)
+    for (let x = 0; x < g.w; x++)
+      if (arr[(y * g.w + x) * 4 + k] > 100) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+  return x1 < 0 ? null : [x0, y0, x1 + 1, y1 + 1];
+};
 /** A layer drawn on the wings or tailplane still uses the body frame. */
 const inPoly = (pts: [number, number][], x: number, y: number) => {
   let inside = false;
@@ -312,6 +330,11 @@ export function LiveryEditor(props: {
   const [styleA, setStyleA] = useState(props.airlineColours?.a ?? '#1d4e89');
   const [styleB, setStyleB] = useState(props.airlineColours?.b ?? '#f5a623');
   const [zoom, setZoom] = useState(1);
+  /** The part being worked on: the view zooms to it and every tool paints only there. */
+  const [focus, setFocus] = useState<Region | null>(null);
+  const focusRef = useRef<Region | null>(null);
+  focusRef.current = focus;
+  const pendingScroll = useRef<[number, number] | null>(null);
   const [colourOpen, setColourOpen] = useState(false);
 
   // aircraft to preview on: your types first, then the common ones
@@ -458,14 +481,14 @@ export function LiveryEditor(props: {
   /** The paint layer to draw on: the selected one, or a new one for the part of the aircraft clicked. */
   const paintTarget = (px: number, py: number, erase: boolean): Extract<Layer, { kind: 'paint' }> | null => {
     const s = docRef.current.layers.find((l) => l.id === sel);
-    if (s && s.kind === 'paint' && !s.locked) return s;
+    if (s && s.kind === 'paint' && !s.locked && (!focusRef.current || s.region === focusRef.current)) return s;
     if (erase) {
       flash('Pick a paint layer to erase from (the eraser works on brush strokes).');
       return null;
     }
-    const region = regionAt(geo!, px, py) ?? 'fuselage';
+    const region = focusRef.current ?? regionAt(geo!, px, py) ?? 'fuselage';
     const n = docRef.current.layers.filter((l) => l.kind === 'paint').length + 1;
-    const l: Layer = { id: newId(), name: `Paint ${n}`, opacity: 1, region, kind: 'paint', frame: frameFor(region), strokes: [] };
+    const l: Layer = { id: newId(), name: focusRef.current ? `${REGION_LABEL[region]} paint` : `Paint ${n}`, opacity: 1, region, kind: 'paint', frame: frameFor(region), strokes: [] };
     return addLayer(l) as Extract<Layer, { kind: 'paint' }> | null;
   };
 
@@ -513,7 +536,7 @@ export function LiveryEditor(props: {
       return;
     }
     if (tool === 'fill') {
-      const region = regionAt(geo, px, py);
+      const region = focus ?? regionAt(geo, px, py);
       if (!region) return;
       addLayer(fillLayer(`${REGION_LABEL[region]} colour`, region, colour));
       return;
@@ -524,10 +547,10 @@ export function LiveryEditor(props: {
       return;
     }
     if (tool === 'text') {
-      const region = regionAt(geo, px, py) ?? 'fuselage';
+      const region = focus ?? regionAt(geo, px, py) ?? 'fuselage';
       const frame = frameFor(region);
       const [x, y] = fromPx(geo, frame, px, py);
-      const l = addLayer({ id: newId(), name: 'Text', opacity: 1, region, kind: 'text', frame, text: 'Text', font: 'sans', colour, x, y, size: frame === 'fin' ? 0.2 : 0.2, rot: 0 });
+      const l = addLayer({ id: newId(), name: 'Text', opacity: 1, region, kind: 'text', frame, text: 'Text', font: 'sans', colour, x, y, size: small(region) ? 0.08 : 0.2, rot: 0 });
       if (l) {
         setTab('props');
         setTool('move');
@@ -541,10 +564,10 @@ export function LiveryEditor(props: {
         flash('Upload a logo first (in the settings).');
         return;
       }
-      const region = regionAt(geo, px, py) ?? 'tail';
+      const region = focus ?? regionAt(geo, px, py) ?? 'tail';
       const frame = frameFor(region);
       const [x, y] = fromPx(geo, frame, px, py);
-      addLayer({ id: newId(), name: 'Logo', opacity: 1, region, kind: 'logo', frame, logo: logoPick, x, y, size: frame === 'fin' ? 0.4 : 0.5, rot: 0 });
+      addLayer({ id: newId(), name: 'Logo', opacity: 1, region, kind: 'logo', frame, logo: logoPick, x, y, size: frame === 'fin' ? 0.4 : small(region) ? 0.2 : 0.5, rot: 0 });
       setTool('move');
     }
   };
@@ -611,12 +634,12 @@ export function LiveryEditor(props: {
       if (!box) return;
       const [x0, y0, x1, y1] = box;
       const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
-      const region = regionAt(geo, x0, y0) ?? regionAt(geo, cx, cy) ?? 'fuselage';
+      const region = focus ?? regionAt(geo, x0, y0) ?? regionAt(geo, cx, cy) ?? 'fuselage';
       const frame = frameFor(region);
       const u = unitPx(geo, frame);
       const big = Math.abs(x1 - x0) > 6 || Math.abs(y1 - y0) > 6;
       const [fx, fy] = fromPx(geo, frame, big ? cx : x0, big ? cy : y0);
-      const w = big ? Math.abs(x1 - x0) / u : frame === 'fin' ? 0.3 : 0.4;
+      const w = big ? Math.abs(x1 - x0) / u : frame === 'fin' ? 0.3 : small(region) ? 0.1 : 0.4;
       const h = big ? Math.abs(y1 - y0) / u : w;
       const l = shapeLayer(SHAPE_LABEL[shapeKind], frame, shapeKind, colour, fx, fy, Math.max(0.02, w), Math.max(0.02, h));
       l.region = region;
@@ -715,15 +738,16 @@ export function LiveryEditor(props: {
   // the airline's colours first, then the ones this livery uses
   const recent = [...new Set([...(props.airlineColours ? [props.airlineColours.a, props.airlineColours.b] : []), ...docColours(doc)])];
   const outline = geo && selLayer && !selLayer.hidden ? layerOutline(geo, selLayer, name, reg) : null;
+  const focusBox = useMemo(() => (geo && focus && focus !== 'fuselage' && focus !== 'all' ? partBox(geo, focus) : null), [geo, focus]);
 
   const stage = (
     <div
       ref={stageRef}
-      style={{ position: 'relative', overflow: 'auto', borderRadius: 12, background: `${cloudSkyCss(`livery-${model}`)} center / cover`, minHeight: phone ? 170 : 320, flex: 1, border: `1px solid ${C.line}` }}
+      style={{ position: 'relative', overflow: 'auto', borderRadius: 12, background: `${cloudSkyCss(`livery-${model}`)} center / cover`, minHeight: phone ? 170 : 320, flex: '1 1 0', border: `1px solid ${C.line}` }}
       onWheel={(e) => {
         if (!(e.ctrlKey || e.metaKey)) return;
         e.preventDefault();
-        setZoom((z) => Math.min(4, Math.max(1, z * (e.deltaY < 0 ? 1.15 : 1 / 1.15))));
+        setZoom((z) => Math.min(MAX_ZOOM, Math.max(1, z * (e.deltaY < 0 ? 1.15 : 1 / 1.15))));
       }}
     >
       <div style={{ width: `${zoom * 100}%`, minHeight: '100%', display: 'grid', placeItems: 'center', padding: phone ? '14px 4%' : '28px 5%', boxSizing: 'border-box' }}>
@@ -740,6 +764,20 @@ export function LiveryEditor(props: {
               onPointerUp={onUp}
               onPointerCancel={onUp}
             >
+              {focusBox && (
+                <rect
+                  x={focusBox[0] - geo.w / 200}
+                  y={focusBox[1] - geo.w / 200}
+                  width={focusBox[2] - focusBox[0] + geo.w / 100}
+                  height={focusBox[3] - focusBox[1] + geo.w / 100}
+                  rx={geo.w / 300}
+                  fill="none"
+                  stroke={C.brand}
+                  strokeWidth={geo.w / 700}
+                  strokeDasharray={`${geo.w / 150} ${geo.w / 250}`}
+                  style={{ pointerEvents: 'none' }}
+                />
+              )}
               {outline && <polygon points={outline.map((p) => p.join(',')).join(' ')} fill="none" stroke="#ffffff" strokeWidth={geo.w / 500} strokeDasharray={`${geo.w / 120} ${geo.w / 200}`} style={{ mixBlendMode: 'difference' }} />}
               {shapeBox && <rect x={Math.min(shapeBox[0], shapeBox[2])} y={Math.min(shapeBox[1], shapeBox[3])} width={Math.abs(shapeBox[2] - shapeBox[0])} height={Math.abs(shapeBox[3] - shapeBox[1])} fill={`${colour}66`} stroke="#fff" strokeWidth={geo.w / 600} />}
             </svg>
@@ -908,6 +946,105 @@ export function LiveryEditor(props: {
         {head(selLayer ? `${KIND_LABEL[selLayer.kind]}: ${selLayer.name}` : 'Layer')}
         {props_ ?? <div style={{ fontSize: 12.5, color: C.muted }}>Pick a layer to change it.</div>}
       </div>
+    </div>
+  );
+
+  // ---------------------------------------------------------------- parts: one colour per part, winglets included
+  const [partOpen, setPartOpen] = useState<Region | null>(null);
+  const partLabel = (r: Region) => (r === 'winglets' ? 'Winglets and wingtips' : REGION_LABEL[r]);
+  const partFill = (r: Region) => {
+    const ls = docRef.current.layers;
+    for (let i = ls.length - 1; i >= 0; i--) {
+      const l = ls[i];
+      if (l.kind === 'fill' && !l.hidden && (l.region === r || (r === 'fuselage' && l.region === 'all'))) return l;
+    }
+    return null;
+  };
+  const setPartColour = (r: Region, c: string) => {
+    const d = docRef.current;
+    const own = [...d.layers].reverse().find((l) => l.kind === 'fill' && l.region === r);
+    if (own) return patch(own.id, { colour: c } as Partial<Layer>);
+    if (d.layers.length >= MAX_LAYERS) return flash(`A livery can have up to ${MAX_LAYERS} layers.`);
+    // a new fill goes just above the other fills: under stripes, titles and logos
+    let at = 0;
+    d.layers.forEach((l, i) => {
+      if (l.kind === 'fill') at = i + 1;
+    });
+    const layers = [...d.layers];
+    layers.splice(at, 0, fillLayer(partLabel(r), r, c));
+    setLayers(layers);
+  };
+  const clearPart = (r: Region) => {
+    const d = docRef.current;
+    const own = [...d.layers].reverse().find((l) => l.kind === 'fill' && l.region === r);
+    if (own && !own.locked) setLayers(d.layers.filter((l) => l.id !== own.id));
+  };
+  const workOn = (r: Region | null) => {
+    setFocus(r);
+    setPartOpen(null);
+    if (!r || !geo) {
+      setZoom(1);
+      return;
+    }
+    const b = partBox(geo, r);
+    if (!b) return;
+    const st = stageRef.current;
+    const aspect = st ? st.clientHeight / Math.max(1, st.clientWidth) : 0.4;
+    // the part about half the view's width, and its height inside the view
+    const fit = Math.min((0.55 * geo.w) / Math.max(1, b[2] - b[0]), (0.75 * aspect * geo.w) / Math.max(1, b[3] - b[1]));
+    setZoom(Math.min(5, Math.max(1, r === 'fuselage' || r === 'all' ? 1 : fit)));
+    pendingScroll.current = [(b[0] + b[2]) / 2 / geo.w, (b[1] + b[3]) / 2 / geo.h];
+    if (tool === 'move' || tool === 'hand') setTool('brush');
+  };
+  // once the zoom has been applied, bring the part to the middle of the view
+  useEffect(() => {
+    const f = pendingScroll.current;
+    const st = stageRef.current, sv = svgRef.current;
+    if (!f || !st || !sv) return;
+    pendingScroll.current = null;
+    requestAnimationFrame(() => {
+      const r = sv.getBoundingClientRect(), sr = st.getBoundingClientRect();
+      st.scrollLeft += r.left + f[0] * r.width - (sr.left + sr.width / 2);
+      st.scrollTop += r.top + f[1] * r.height - (sr.top + sr.height / 2);
+    });
+  }, [zoom, focus]);
+  const partList: Region[] = (geo ? geo.parts : (['fuselage', 'tail', 'engines', 'wings', 'stabiliser'] as Region[])).filter((r) => r !== 'all');
+  const partsPanel = (
+    <div style={{ ...section, gap: 6 }}>
+      {head('Parts', focus ? <Button size="sm" onClick={() => workOn(null)}>Whole aircraft</Button> : undefined)}
+      <div style={{ fontSize: 11.5, color: C.muted, marginTop: -2 }}>
+        Click a colour to paint a part. <b style={{ color: C.textSoft }}>Edit</b> zooms in on it, and then the brush, lines, shapes, text and logos only go on that part{partList.includes('winglets') ? ', winglets too' : ''}.
+      </div>
+      {partList.map((r) => {
+        const f = partFill(r);
+        const own = f && f.region === r;
+        const value = f && 'colour' in f ? f.colour : '#ffffff';
+        return (
+          <div key={r} style={{ display: 'grid', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button
+                type="button"
+                aria-label={`${partLabel(r)} colour`}
+                aria-expanded={partOpen === r}
+                onClick={() => setPartOpen((o) => (o === r ? null : r))}
+                style={{ width: 30, height: 22, borderRadius: 5, border: `1px solid ${partOpen === r ? C.brand : C.border}`, background: value, cursor: 'pointer', padding: 0, flex: 'none' }}
+              />
+              <span style={{ fontSize: 12.5, flex: 1, fontWeight: focus === r ? 700 : 400, color: focus === r ? C.brand : C.text }}>{partLabel(r)}</span>
+              {own ? (
+                <button type="button" style={smallBtn} title={`Take the ${partLabel(r).toLowerCase()} colour off`} aria-label={`Take the ${partLabel(r).toLowerCase()} colour off`} onClick={() => clearPart(r)}>
+                  ×
+                </button>
+              ) : (
+                <span style={{ fontSize: 11, color: C.faint }}>{f ? 'base colour' : 'unpainted'}</span>
+              )}
+              <Button size="sm" variant={focus === r ? 'primary' : undefined} aria-pressed={focus === r} title={`Zoom in and draw only on the ${partLabel(r).toLowerCase()}`} onClick={() => workOn(focus === r ? null : r)}>
+                {focus === r ? 'Done' : 'Edit'}
+              </Button>
+            </div>
+            {partOpen === r && <ColourPicker label={partLabel(r)} value={value} onChange={(c) => setPartColour(r, c)} recent={recent} open />}
+          </div>
+        );
+      })}
     </div>
   );
 
@@ -1117,7 +1254,7 @@ export function LiveryEditor(props: {
         <span className="num" style={{ fontSize: 12, color: C.muted, minWidth: 38, textAlign: 'center' }}>
           {Math.round(zoom * 100)}%
         </span>
-        <Button size="sm" aria-label="Zoom in" onClick={() => setZoom((z) => Math.min(4, z * 1.25))}>
+        <Button size="sm" aria-label="Zoom in" onClick={() => setZoom((z) => Math.min(MAX_ZOOM, z * 1.25))}>
           +
         </Button>
       </span>
@@ -1156,7 +1293,7 @@ export function LiveryEditor(props: {
 
   const status = (
     <div style={{ fontSize: 12, color: note ? C.text : C.muted, minHeight: 18, padding: '0 2px' }}>
-      {note ?? `${TOOL_LABEL[tool].replace(/ \(.\)$/, '')}. ${countStrokes(doc)} brush strokes. ${phone ? 'Zoom with + and −, then the hand to look around.' : 'Ctrl/Cmd+scroll to zoom.'}`}
+      {note ?? `${focus ? `Working on the ${(focus === 'winglets' ? 'winglets and wingtips' : REGION_LABEL[focus]).toLowerCase()}: everything you draw stays on it. ` : ''}${TOOL_LABEL[tool].replace(/ \(.\)$/, '')}. ${countStrokes(doc)} brush strokes. ${phone ? 'Zoom with + and −, then the hand to look around.' : 'Ctrl/Cmd+scroll to zoom.'}`}
     </div>
   );
 
@@ -1171,17 +1308,27 @@ export function LiveryEditor(props: {
             {status}
           </div>
           <Segmented<'layers' | 'props' | 'styles'> value={tab} onChange={setTab} options={[{ value: 'layers', label: 'Layers' }, { value: 'props', label: 'Settings' }, { value: 'styles', label: 'Styles' }]} />
-          {tab === 'layers' ? layersPanel : tab === 'props' ? settingsPanel : stylesPanel}
+          {tab === 'layers' ? (
+            <>
+              {partsPanel}
+              {layersPanel}
+            </>
+          ) : tab === 'props' ? (
+            settingsPanel
+          ) : (
+            stylesPanel
+          )}
         </div>
       ) : (
         <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '56px minmax(0, 1fr) 320px', gap: 12, padding: 12 }}>
           <div style={{ display: 'grid', alignContent: 'start', justifyItems: 'center' }}>{tools}</div>
-          <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8, position: 'relative' }}>
+          <div style={{ minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 8, position: 'relative' }}>
             {stage}
             {status}
             {stylesOpen && <div style={{ position: 'absolute', top: 10, left: 10, width: 'min(560px, 94%)', maxHeight: '90%', overflowY: 'auto', zIndex: 3, boxShadow: '0 12px 30px rgba(0,0,0,.45)', borderRadius: 10 }}>{stylesPanel}</div>}
           </div>
           <div style={{ minHeight: 0, minWidth: 0, overflowY: 'auto', overflowX: 'hidden', display: 'grid', gap: 10, alignContent: 'start' }}>
+            {partsPanel}
             {layersPanel}
             {settingsPanel}
           </div>

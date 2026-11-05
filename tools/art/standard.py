@@ -111,11 +111,40 @@ def get(i):
         fn = BUILDS[v['build']]
         return fn(v['base']) if 'base' in v else fn()
     W, H, ls = load(v['src'], v.get('show', ()), list(v.get('hide', ())) + HIDE_EXTRA.get(v['src'], []), keep_gear=v.get('gear', False))
+    if v.get('clip'):
+        ls = clip_fx(ls)
     if 'BCF_V2' in v['src']:
         # its fuselage shading spills past the fuselage: clip it to the fuselage
         fus = find(ls, r'^FUSELAGE/FUSELAGE$')[0].img.getchannel('A')
         ls = [l.copy(Image.merge('RGBA', l.img.split()[:3] + (ImageChops.multiply(l.img.getchannel('A'), fus),))) if re.search(r'^FUSELAGE/Effects/', l.path) else l for l in ls]
     return W, H, ls
+
+
+R_FX = re.compile(r'shad|shade|edge|highlight|glow|effect|\bfx\b|^图层|^layer \d|paint layer|reflect|^cockpit$', re.I)
+
+
+def clip_fx(ls):
+    """Soft shading layers that spill past the aircraft (made to sit on the
+    artist's white background) clipped to its solid outline."""
+    solid = None
+    for l in ls:
+        if l.part is None or l.blend != 'NORMAL' or R_FX.search(l.name):
+            continue
+        a = np.asarray(l.img.getchannel('A'))
+        if a.max() < 250:
+            continue
+        solid = a.copy() if solid is None else np.maximum(solid, a)
+    if solid is None:
+        return ls
+    sil = Image.fromarray(solid, 'L')
+    out = []
+    for l in ls:
+        if l.part is not None and (l.blend != 'NORMAL' or R_FX.search(l.name)):
+            im = l.img
+            out.append(l.copy(Image.merge('RGBA', im.split()[:3] + (ImageChops.multiply(im.getchannel('A'), sil),))))
+        else:
+            out.append(l)
+    return out
 
 
 def tight(im):

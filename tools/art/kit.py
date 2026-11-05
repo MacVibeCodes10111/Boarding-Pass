@@ -104,8 +104,11 @@ def load(fname, show=(), hide=(), keep_gear=False):
             if pil is None or not l.width or not l.height:
                 continue
             pil = pil.convert('RGBA')
-            if raw and l.opacity != 255:
-                a = np.asarray(pil.getchannel('A'), dtype=np.uint16) * l.opacity // 255
+            # layer opacity, and Photoshop's separate Fill opacity (the same thing for a layer without effects)
+            fill = getattr(l, 'fill_opacity', 255) if not l.has_effects() else 255
+            k = (l.opacity if raw else 255) * fill
+            if k != 255 * 255:
+                a = np.asarray(pil.getchannel('A'), dtype=np.uint32) * k // (255 * 255)
                 pil.putalpha(Image.fromarray(a.astype(np.uint8)))
             al = np.asarray(pil.getchannel('A'))
             if (al < 4).any() and (al > 0).any():

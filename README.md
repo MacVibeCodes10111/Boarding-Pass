@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 2.69.1. Free to play. See [Credits and licences](#credits-and-licences).
+Version 2.70. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -20,6 +20,12 @@ Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 2.70:
+
+- **16 aircraft now use real community templates** instead of stand-ins put together from other aircraft: A220-100 and A220-300, MC-21, C919, C909 and its freighter, MA60, An-24, An-12, An-124, Il-76TD-90, Cessna Caravan (passenger and cargo), 717 and 737 MAX 10. Thanks to their artists, credited in Credits.
+- **Parts panel in the livery editor:** one colour for each part of the aircraft, winglets included. **Edit** zooms in on a part, and then the brush, lines, shapes, text and logos all go only on that part, so you can do Southwest-style winglets.
+- Zooming in the livery editor now stays inside the picture, up to 8×.
 
 Version 2.69.1:
 
