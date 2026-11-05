@@ -4,6 +4,8 @@
 import { BUILTIN_AIRCRAFT } from './aircraftCatalog';
 import { SILHOUETTE_GROUPS, SILHOUETTE_LABELS, drawSilhouette } from './silhouettes';
 import type { AircraftModel, RadarIconGroup } from './types';
+// MapLibre 6 keeps its background worker in a separate file: bundled here so the build includes it
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 
 export const RADAR_GROUPS: RadarIconGroup[] = SILHOUETTE_GROUPS;
 export const PLANE_TINT = '#f97316';
@@ -238,6 +240,7 @@ export function loadMaplibre(): Promise<any> {
   maplibrePromise = Promise.all([import('maplibre-gl'), import('maplibre-gl/dist/maplibre-gl.css')])
     .then(([mod]) => {
       const ml = (mod as any).default ?? mod;
+      ml.setWorkerUrl?.(maplibreWorkerUrl);
       w.maplibregl = ml;
       return ml;
     })

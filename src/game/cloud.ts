@@ -26,6 +26,7 @@
 // ============================================================================
 import type { SupabaseClient, User } from '@supabase/supabase-js';
 import { IS_DEV } from './channel';
+import { clearOnlineState, setFeatures } from './features';
 import { IS_MAC } from './platform';
 import { openProtectedSave, protectSave } from './saveCrypt';
 import { MAX_SAVE_SLOTS, hasRoomForCareer, readSaveSlots, serializeSave, writeSaveSlots, isValidSave } from './saves';
@@ -278,6 +279,7 @@ export async function signOut(): Promise<void> {
   await c.auth.signOut({ scope: 'local' });
   store.remove(SYNCED_KEY);
   setPicks(null);
+  clearOnlineState();
 }
 
 /** Deletes the account and every cloud copy. Careers on devices stay. */
@@ -288,6 +290,19 @@ export async function deleteAccount(): Promise<void> {
   await c.auth.signOut({ scope: 'local' });
   store.remove(SYNCED_KEY);
   setPicks(null);
+  clearOnlineState();
+}
+
+/** Reads which online features are on (see features.ts). Any failure leaves them all off. */
+export async function refreshFeatures(): Promise<void> {
+  const c = await signedInClient().catch(() => null);
+  if (!c) return setFeatures(null);
+  try {
+    const { data, error } = await c.from('features').select('feature,enabled').eq('channel', CHANNEL);
+    setFeatures(error ? null : data);
+  } catch {
+    setFeatures(null);
+  }
 }
 
 // ---------------------------------------------------------------------------

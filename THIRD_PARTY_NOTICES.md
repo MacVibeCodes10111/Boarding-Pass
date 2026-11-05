@@ -122,7 +122,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ## Software
 
-### MapLibre GL JS (BSD 3-Clause), included in the game (npm package maplibre-gl 5.24.0)
+### MapLibre GL JS (BSD 3-Clause), included in the game (npm package maplibre-gl 6.15.0)
 
 ```
 Copyright (c) 2023, MapLibre contributors

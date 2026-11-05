@@ -26,6 +26,7 @@ import {
   cloudDeleteSave,
   lastSyncMs,
   mightBeSignedIn,
+  refreshFeatures,
   setAutoDownload,
   uploadCareer,
   recordAge,
@@ -39,6 +40,7 @@ import {
   type CloudUser,
   type SyncReport,
 } from '../game/cloud';
+import { SHARING, featureOn, onFeaturesChange, readSharing, setSharing } from '../game/features';
 import { readSaveSlots } from '../game/saves';
 import type { SaveGameState } from '../game/types';
 import { Icon } from '../ui/icons';
@@ -69,6 +71,7 @@ export function CloudHost(props: {
   useEffect(() => {
     const run = async (quiet = true) => {
       if (!mightBeSignedIn()) return;
+      void refreshFeatures();
       const r = await syncNow(latest.current.openSaveId);
       report(r, quiet);
     };
@@ -133,6 +136,47 @@ export function CloudHost(props: {
   }, []);
 
   return open ? <CloudModal onClose={() => setOpen(false)} openSaveId={props.openSaveId} onSlotsChanged={props.onSlotsChanged} /> : null;
+}
+
+/** What this player shares with others. Shows only when the server has switched online features on. */
+function OnlineSection(props: { row: React.CSSProperties; sectionTitle: (id: string, text: string) => React.ReactNode }) {
+  const [, redraw] = useState(0);
+  const [sharing, setShared] = useState(readSharing);
+  useEffect(() => {
+    void refreshFeatures();
+    return onFeaturesChange(() => redraw((n) => n + 1));
+  }, []);
+  if (!featureOn('online')) return null;
+  const ready = SHARING.filter((s) => featureOn(s.feature));
+  return (
+    <section aria-labelledby="bp-online">
+      {props.sectionTitle('bp-online', 'Online')}
+      <p style={{ fontSize: 12.5, color: C.muted, margin: ready.length ? '0 0 6px' : 0 }}>
+        {ready.length ? 'Nothing is shared with other players unless you turn it on here.' : 'Nothing is shared with other players. Sharing options will appear here when they’re ready, all off until you turn them on.'}
+      </p>
+      {ready.length > 0 && (
+        <div style={{ display: 'grid', gap: 6 }}>
+          {ready.map((s) => (
+            <label key={s.id} style={{ ...props.row, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={sharing[s.id]}
+                onChange={(e) => {
+                  setSharing(s.id, e.target.checked);
+                  setShared(readSharing());
+                }}
+                style={{ width: 18, height: 18, flex: 'none', accentColor: C.brand }}
+              />
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: 'block', fontWeight: 650 }}>{s.label}</span>
+                <span style={{ display: 'block', fontSize: 12, color: C.muted }}>{s.hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -428,6 +472,8 @@ function SignedIn(props: {
           Sync now
         </Button>
       </div>
+
+      <OnlineSection row={row} sectionTitle={sectionTitle} />
 
       <section aria-labelledby="bp-cloud-in">
         {sectionTitle('bp-cloud-in', 'In the cloud')}
