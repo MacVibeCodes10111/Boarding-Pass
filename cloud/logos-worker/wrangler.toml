@@ -8,7 +8,7 @@ compatibility_date = "2026-10-13"
 
 [vars]
 SUPABASE_URL = "https://dlgkdknfxhmtkhpegufq.supabase.co"
-ALLOWED_ORIGINS = "https://boardingpass.my,https://dev.boardingpass.my,tauri://localhost,http://tauri.localhost,https://tauri.localhost,http://localhost:5173,http://localhost:4173"
+ALLOWED_ORIGINS = "https://play.boardingpass.my,https://test.boardingpass.my,tauri://localhost,http://tauri.localhost,https://tauri.localhost,http://localhost:1420"
 
 [[r2_buckets]]
 binding = "LOGOS"

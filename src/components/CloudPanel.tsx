@@ -77,6 +77,10 @@ export function CloudHost(props: {
         latest.current.onSlotsChanged();
         latest.current.toast(r.received.length === 1 ? `${r.received[0]} arrived from your other device` : `${r.received.length} careers arrived from your other devices`);
       }
+      if (r.kept.length) {
+        latest.current.onSlotsChanged();
+        latest.current.toast(`${r.kept[0]} was played on two devices at once. Both are safe: the other version is on your home screen as “${r.kept[0]} (other copy)”.`);
+      }
       if (r.waiting.length && latest.current.openSaveId)
         latest.current.toast(`A newer copy of ${r.waiting[0]} was saved on another device. Go to the home screen to load it.`);
       if (r.problem && !quiet) latest.current.toast(r.problem);

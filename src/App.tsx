@@ -42,6 +42,7 @@ import {
   ledgerNet,
   weeklyCashFlowRate,
   econMapClock,
+  liveTickGameMinutes,
   utcClockAt,
   type MapSpeed,
   type CashFlowKind,
@@ -88,7 +89,9 @@ import {
 } from './game/icons';
 import { clearFlightGeometryCache, runwayLanes, setGlobalNavaidsMemory } from './game/navdata';
 import {
+  MAX_SAVE_SLOTS,
   downloadSaveFile,
+  hasRoomForCareer,
   hydrateSave,
   readSaveSlots,
   readSaveFileText,
@@ -113,7 +116,8 @@ import type {
 import { APP_VERSION } from './version';
 import { MainMenu } from './components/MainMenu';
 import { CloudHost, openCloud } from './components/CloudPanel';
-import { cloudDeleteSave, nextRev } from './game/cloud';
+import { IS_DEV } from './game/channel';
+import { cloudDeleteSave, downloadCareer, newerCloudCopy, nextRev } from './game/cloud';
 import { RouteFromBar } from './components/RouteFromBar';
 import { WelcomeTour, tourWantedForNewCareer } from './components/WelcomeTour';
 import { C, PanelTabsContext, applyThemeToDocument, useThemeVersion } from './ui/kit';
@@ -129,6 +133,8 @@ const START_MIN = 480; // default departure time in the route builder (08:00 UTC
 const DEFAULT_MODEL = AIRCRAFT_BY_ID.get('a320neo') ?? BUILTIN_AIRCRAFT[0];
 const ECONOMY_TICK_MS = 500;
 const AUTOSAVE_MS = 60_000;
+/** A gap this long between ticks means the computer slept (hidden tabs still tick about once a minute). */
+const SLEEP_REPORT_SEC = 5 * 60;
 const LEDGER_HISTORY_WEEKS = 12;
 const freshLedger = (week = 1): WeekLedger => ({ week, flightProfit: 0, leaseCost: 0 });
 const PREFS_KEY = 'bp_pc_prefs_v1';
@@ -715,7 +721,21 @@ export default function App() {
       const now = Date.now();
       const realSec = (now - last) / 1000;
       last = now;
-      const res = applyAdvance(realSec * rate);
+      const gameMinutes = liveTickGameMinutes(realSec, rate);
+      const res = applyAdvance(gameMinutes);
+      // Woke from sleep: say what happened, as when coming back to a closed game
+      if (realSec >= SLEEP_REPORT_SEC) {
+        setAwayReport({
+          realAwayMs: realSec * 1000,
+          gameMinutes,
+          capped: gameMinutes < realSec * rate,
+          flightProfit: res.flightProfit,
+          leaseCost: res.leaseCost,
+          loanCost: res.loanCost,
+          net: res.cashDelta,
+          weeksClosed: res.closedWeeks.length,
+        });
+      }
       const closed = res.closedWeeks[res.closedWeeks.length - 1];
       if (closed) {
         const usd = (v: number) => (Math.round(v) === 0 ? '$0' : `${v > 0 ? '+' : '−'}$${Math.abs(Math.round(v)).toLocaleString()}`);
@@ -727,8 +747,9 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen, econSpeed, applyAdvance]);
 
-  // Hidden testing speed: Ctrl+Shift+F toggles 1 week per 10 minutes
+  // Testing speed, dev builds only: Ctrl+Shift+F toggles 1 week per 10 minutes
   useEffect(() => {
+    if (!IS_DEV && !import.meta.env.DEV) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'f') {
         e.preventDefault();
@@ -815,8 +836,15 @@ export default function App() {
     setPanel(null);
   };
 
+  const showCareersFull = () =>
+    showAlert(`You have ${MAX_SAVE_SLOTS} careers`, `That's the most this device can keep. Delete one from Your careers to make room.`, 'Use Export save file in a career’s menu first if you want to keep a copy.', 'warning');
+
   /** Start button: if the airline copies a real one in the traffic list, ask first. */
   const requestLaunch = () => {
+    if (!hasRoomForCareer(readSaveSlots())) {
+      showCareersFull();
+      return;
+    }
     const match = findMatchingAiAirline(airlineName, airlineIata, airlineCallsign, aiTraffic?.airlines ?? AI_AIRLINES);
     if (!match) {
       launchNewCareer(null);
@@ -961,6 +989,41 @@ export default function App() {
     setScreen('dashboard');
   };
 
+  /**
+   * Continue button. If another device saved this career more recently and that
+   * copy hasn't arrived, asks first: playing this older copy would replace it.
+   */
+  const checkingCloud = useRef(false);
+  const resumeCareer = async (sv: SaveGameState) => {
+    if (checkingCloud.current) return;
+    checkingCloud.current = true;
+    const newer = await newerCloudCopy(sv);
+    checkingCloud.current = false;
+    if (!newer) {
+      loadCareer(sv);
+      return;
+    }
+    setGameAlert({
+      title: 'A newer copy is in the cloud',
+      message: `${sv.airlineName} was saved more recently on ${newer.fromName || 'another device'}.`,
+      detail: 'Download it to carry on from there. If you open the copy on this device instead, both are kept, as two separate careers.',
+      severity: 'warning',
+      confirmLabel: 'Download and open',
+      onConfirm: () => {
+        downloadCareer(sv.saveId)
+          .then(() => {
+            const slots = readSaveSlots();
+            setSavedGames(slots);
+            loadCareer(slots.find((s) => s.saveId === sv.saveId) ?? sv);
+          })
+          .catch((e: unknown) => showAlert('Could not download', e instanceof Error ? e.message : String(e), undefined, 'warning'));
+      },
+      secondaryLabel: 'Open this copy',
+      secondaryCloses: true,
+      onSecondary: () => loadCareer(sv),
+    });
+  };
+
   const saveCareer = () => {
     if (persistCareer(false)) {
       flashToast(`Saved ${airlineName}`);
@@ -994,6 +1057,16 @@ export default function App() {
       const r = readSaveFileText(String(reader.result));
       if (!r.ok) {
         showAlert('Could not open this save', r.message, undefined, 'warning');
+        return;
+      }
+      if (!hasRoomForCareer(readSaveSlots(), r.save.saveId)) {
+        showCareersFull();
+        return;
+      }
+      try {
+        hydrateSave(r.save, airportByIata); // a broken file fails here, before anything changes
+      } catch {
+        showAlert('Could not open this save', 'This file isn’t a Boarding Pass save, or it is damaged.', undefined, 'warning');
         return;
       }
       loadCareer(r.save);
@@ -1594,7 +1667,7 @@ export default function App() {
           dataStatus={`${dataStatus}\n${aiStatus}`}
           savedGames={savedGames}
           onLaunch={requestLaunch}
-          onResume={loadCareer}
+          onResume={(sv) => void resumeCareer(sv)}
           onDeleteSave={deleteSave}
           onImportFile={importSaveFile}
         />

@@ -28,7 +28,7 @@ import type { SupabaseClient, User } from '@supabase/supabase-js';
 import { IS_DEV } from './channel';
 import { IS_MAC } from './platform';
 import { openProtectedSave, protectSave } from './saveCrypt';
-import { readSaveSlots, serializeSave, writeSaveSlots, isValidSave } from './saves';
+import { MAX_SAVE_SLOTS, hasRoomForCareer, readSaveSlots, serializeSave, writeSaveSlots, isValidSave } from './saves';
 import type { SaveGameState } from './types';
 
 const SUPABASE_URL = 'https://dlgkdknfxhmtkhpegufq.supabase.co';
@@ -87,7 +87,8 @@ export const ageStatus = (): AgeStatus => {
 };
 export function recordAge(year: number, month: number, now = new Date()): AgeStatus {
   let age = now.getFullYear() - year;
-  if (now.getMonth() + 1 < month) age -= 1;
+  // Only the month is asked, so a birthday this month counts as still to come
+  if (now.getMonth() + 1 <= month) age -= 1;
   const status: AgeStatus = age >= 13 ? 'ok' : 'under13';
   store.set(AGE_KEY, status);
   return status;
@@ -315,6 +316,8 @@ export type SyncReport = {
   sent: number;
   /** Careers with a newer copy from another device that weren't applied (the one being played). */
   waiting: string[];
+  /** Careers changed on two devices at once: the other version was kept as a separate career. */
+  kept: string[];
   /** Something the player should know (full, too big, offline…). */
   problem?: string;
 };
@@ -416,15 +419,35 @@ async function pushOne(c: SupabaseClient, s: SaveGameState, force = false): Prom
 
 type CloudRow = { save_id: string; rev: number; airline: string; data: string };
 type StoreResult =
-  | { kind: 'stored' | 'had' | 'playing' | 'dropped'; name: string }
+  | { kind: 'stored' | 'had' | 'playing' | 'dropped'; name: string; kept?: boolean }
   | { kind: 'full' | 'failed'; name: string; message: string };
 
 /**
- * Stores a career that came from the cloud: checks it, keeps this device's
- * copy if it's as new or newer, never replaces the career being played,
- * writes it, reads it back, and only then tells the server it arrived.
+ * This device's unsent changes count as real play past this much time since the
+ * last sync. Sync runs every few minutes, so a shorter gap is just the moments
+ * before the game was closed, not worth a second career.
  */
-async function storeIncoming(c: SupabaseClient, row: CloudRow, openSaveId: string | null): Promise<StoreResult> {
+const REAL_PLAY_UNSYNCED_MS = 10 * 60_000;
+
+/** The version that lost a conflict, as a career of its own that stays on this device. */
+function conflictCopy(s: SaveGameState, rev: number): SaveGameState {
+  const suffix = ' (other copy)';
+  return {
+    ...s,
+    rev,
+    saveId: s.saveId.endsWith('-copy') ? s.saveId : `${s.saveId}-copy`,
+    airlineName: s.airlineName.endsWith(suffix) ? s.airlineName : `${s.airlineName}${suffix}`,
+  };
+}
+
+/**
+ * Stores a career that came from the cloud: checks it, never replaces the
+ * career being played, writes it, reads it back, and only then tells the
+ * server it arrived. The newest version keeps the career's place. If both
+ * devices really changed it since they last synced, the other version is kept
+ * as a separate career, so no one's progress is lost.
+ */
+export async function storeIncoming(c: SupabaseClient, row: CloudRow, openSaveId: string | null): Promise<StoreResult> {
   const dev = deviceId();
   const rev = Number(row.rev);
   const opened = openProtectedSave<SaveGameState>(row.data);
@@ -438,24 +461,59 @@ async function storeIncoming(c: SupabaseClient, row: CloudRow, openSaveId: strin
   const name = row.airline || opened.value.airlineName;
   const slots = readSaveSlots();
   const local = slots.find((s) => s.saveId === row.save_id);
-  if (local && saveRev(local) >= rev) {
-    markSynced(row.save_id, saveRev(local));
+  const incoming: SaveGameState = { ...opened.value, rev };
+  const storageFull = { kind: 'full', name, message: 'This device’s storage is full, so a career from the cloud couldn’t be stored. Delete or export a career and try again.' } as const;
+  /** Puts a conflict copy in the list (replacing an earlier copy of the same career). */
+  const withCopy = (list: SaveGameState[], copy: SaveGameState) => {
+    markSeen(copy.saveId); // stays on this device unless the player puts it in the cloud
+    return [...list.filter((s) => s.saveId !== copy.saveId), copy];
+  };
+  const base = readSynced()[row.save_id] ?? 0;
+  const localRev = local ? saveRev(local) : 0;
+  const changedSinceSync = rev > base; // another device changed it
+
+  if (local && localRev >= rev) {
+    // This device's version takes the career's place, so the other one must be kept
+    const kept = changedSinceSync && localRev > rev;
+    if (kept && !writeSaveSlots(withCopy(slots, conflictCopy(incoming, rev)))) return storageFull;
+    // Up to the cloud's version only: if this device's is newer, it still has to upload
+    markSynced(row.save_id, rev);
     await ack();
-    return { kind: 'had', name };
+    return { kind: 'had', name, kept };
   }
   if (row.save_id === openSaveId) return { kind: 'playing', name };
-  const incoming: SaveGameState = { ...opened.value, rev };
-  const next = local ? slots.map((s) => (s.saveId === row.save_id ? incoming : s)) : [incoming, ...slots];
-  if (!writeSaveSlots(next)) {
-    return { kind: 'full', name, message: 'This device’s storage is full, so a career from the cloud couldn’t be stored. Delete or export a career and try again.' };
+  if (!hasRoomForCareer(slots, row.save_id)) {
+    return { kind: 'full', name, message: `This device has ${MAX_SAVE_SLOTS} careers, so ${name} couldn’t be downloaded. Delete one and try again; it stays in the cloud until then.` };
   }
+  const kept = !!local && base > 0 && changedSinceSync && localRev - base > REAL_PLAY_UNSYNCED_MS;
+  const replaced = local ? slots.map((s) => (s.saveId === row.save_id ? incoming : s)) : [incoming, ...slots];
+  const next = kept ? withCopy(replaced, conflictCopy(local, localRev)) : replaced;
+  if (!writeSaveSlots(next)) return storageFull;
   const check = readSaveSlots().find((s) => s.saveId === row.save_id);
   if (!check || saveRev(check) !== rev) {
     return { kind: 'failed', name, message: `${name} didn’t store correctly. It stays in the cloud; try again.` };
   }
   markSynced(row.save_id, rev);
   await ack();
-  return { kind: 'stored', name };
+  return { kind: 'stored', name, kept };
+}
+
+/**
+ * A newer copy of this career from another device that hasn't reached this
+ * one, if the cloud can say quickly. Asked before a career opens, because
+ * playing an older copy would otherwise replace that progress. Null when
+ * signed out, offline or slow: opening a career never waits long on the cloud.
+ */
+export async function newerCloudCopy(s: SaveGameState, waitMs = 2500): Promise<{ fromName: string } | null> {
+  if (!mightBeSignedIn()) return null;
+  try {
+    const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), waitMs));
+    const o = await Promise.race([cloudOverview(), timeout]);
+    const copy = o?.saves.find((x) => x.saveId === s.saveId);
+    return copy && copy.waitingHere && Number(copy.rev) > saveRev(s) ? { fromName: copy.fromName } : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Downloads one career the player picked from the cloud (v2.52). Returns its name. */
@@ -509,28 +567,37 @@ export function syncNow(openSaveId: string | null = null): Promise<SyncReport> {
 }
 
 async function doSync(openSaveId: string | null): Promise<SyncReport> {
-  const report: SyncReport = { received: [], sent: 0, waiting: [] };
+  const report: SyncReport = { received: [], sent: 0, waiting: [], kept: [] };
   const c = await signedInClient();
   if (!c) return report;
   const dev = deviceId();
   try {
-    // 1. Download (unless the player downloads careers themselves)
+    // 1. Download (unless the player downloads careers themselves). If this
+    //    fails, uploads below still run: only a career with a copy still on
+    //    its way here is held back.
     if (autoDownload()) {
-      const { data: rows, error } = await c.rpc('cloud_pull', { p_device: dev, p_device_name: deviceName(), p_channel: CHANNEL });
-      if (error) throw error;
-      for (const row of (rows ?? []) as CloudRow[]) {
-        const r = await storeIncoming(c, row, openSaveId);
-        if (r.kind === 'stored') report.received.push(r.name);
-        else if (r.kind === 'playing') report.waiting.push(r.name);
-        else if (r.kind === 'full') {
-          report.problem = r.message;
-          break;
-        } else if (r.kind === 'failed') report.problem = r.message;
+      try {
+        const { data: rows, error } = await c.rpc('cloud_pull', { p_device: dev, p_device_name: deviceName(), p_channel: CHANNEL });
+        if (error) throw error;
+        for (const row of (rows ?? []) as CloudRow[]) {
+          const r = await storeIncoming(c, row, openSaveId);
+          if (r.kind === 'stored') report.received.push(r.name);
+          else if (r.kind === 'playing') report.waiting.push(r.name);
+          else if (r.kind === 'full') {
+            report.problem = r.message;
+            break;
+          } else if (r.kind === 'failed') report.problem = r.message;
+          if ((r.kind === 'stored' || r.kind === 'had') && r.kept) report.kept.push(r.name);
+        }
+      } catch (e) {
+        report.problem = friendlyAuthError(e instanceof Error ? e.message : String((e as { message?: string })?.message ?? e));
       }
     }
 
     // 2. Which careers are in the cloud; pick new ones while there's room
     const ov = await cloudOverview();
+    // A copy from another device that hasn't landed here must not be overwritten by an upload
+    const undelivered = new Set((ov?.saves ?? []).filter((x) => x.waitingHere).map((x) => x.saveId));
     const picked = new Set(picks ?? []);
     const seen = readSynced();
     for (const s of readSaveSlots()) {
@@ -545,6 +612,10 @@ async function doSync(openSaveId: string | null): Promise<SyncReport> {
     // 3. Upload what changed here (careers in the cloud only)
     for (const s of readSaveSlots()) {
       if (!picked.has(s.saveId)) continue;
+      if (undelivered.has(s.saveId)) {
+        if (!report.waiting.includes(s.airlineName)) report.waiting.push(s.airlineName);
+        continue;
+      }
       const r = await pushOne(c, s);
       if (r === 'saved') report.sent++;
       else if (r === 'full') report.problem = `The cloud keeps ${MAX_CLOUD_CAREERS} careers per account. Turn one off in Cloud saves to sync another.`;

@@ -298,6 +298,12 @@ export function catchUpGameMinutes(realAwayMs: number): { gameMinutes: number; c
   return { gameMinutes: Math.min(raw, MAX_CATCH_UP_GAME_MIN), capped: raw > MAX_CATCH_UP_GAME_MIN };
 }
 
+/**
+ * Game time for a live tick. A computer that slept with the game open wakes to
+ * one long tick, which gets the same limit as coming back to a closed game.
+ */
+export const liveTickGameMinutes = (realSec: number, rate: number) => Math.min(Math.max(0, realSec) * rate, MAX_CATCH_UP_GAME_MIN);
+
 export function formatAway(ms: number): string {
   const totalMin = Math.round(ms / 60_000);
   const d = Math.floor(totalMin / 1440);

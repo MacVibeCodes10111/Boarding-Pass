@@ -11,7 +11,13 @@ export const MULTI_SAVE_STORAGE_KEY = 'bp_pc_saves_list_v2';
 /** Set once the plain saves from before v2.38 have been re-saved protected. */
 const PROTECTED_SINCE_KEY = 'bp_pc_saves_protected_v1';
 export const CUSTOM_AIRPORTS_KEY = 'bp_pc_custom_airports_v3';
-const MAX_SAVE_SLOTS = 10;
+/**
+ * How many careers a player can start or bring onto a device. Checked where a
+ * career arrives (hasRoomForCareer), never by trimming the list, so saving can't
+ * silently delete a career.
+ */
+export const MAX_SAVE_SLOTS = 10;
+export const hasRoomForCareer = (slots: SaveGameState[], saveId?: string) => slots.length < MAX_SAVE_SLOTS || slots.some((s) => s.saveId === saveId);
 
 /** Drops bulky runway geometry from airports embedded in flights. */
 function slimAirport(ap: Airport): Airport {
@@ -126,7 +132,7 @@ export function asUnprotected(s: SaveGameState): SaveGameState {
 /** Writes the slot list; returns false when storage is full or unavailable. */
 export function writeSaveSlots(list: SaveGameState[]): boolean {
   try {
-    localStorage.setItem(MULTI_SAVE_STORAGE_KEY, JSON.stringify(list.slice(0, MAX_SAVE_SLOTS).map((s) => protectSave(serializeSave(s)))));
+    localStorage.setItem(MULTI_SAVE_STORAGE_KEY, JSON.stringify(list.map((s) => protectSave(serializeSave(s)))));
     return true;
   } catch {
     return false;
@@ -134,7 +140,7 @@ export function writeSaveSlots(list: SaveGameState[]): boolean {
 }
 
 export function upsertSaveSlot(list: SaveGameState[], state: SaveGameState): SaveGameState[] {
-  return [serializeSave(state), ...list.filter((s) => s.saveId !== state.saveId)].slice(0, MAX_SAVE_SLOTS);
+  return [serializeSave(state), ...list.filter((s) => s.saveId !== state.saveId)];
 }
 
 export function downloadSaveFile(state: SaveGameState) {

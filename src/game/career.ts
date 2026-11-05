@@ -302,7 +302,7 @@ export const GOALS: GoalDef[] = [
   { id: 's1-route', stage: 1, title: 'Open your first route', hint: 'Click any airport on the map and schedule a round trip from your hub.', metric: 'routes', target: 1, reward: 8 * M, unit: 'routes' },
   { id: 's1-fleet3', stage: 1, title: 'Operate a fleet of 3 aircraft', hint: 'Owned and leased aircraft both count. A Fleet finance loan can help.', metric: 'aircraft', target: 3, reward: 15 * M, unit: 'aircraft' },
   { id: 's1-routes5', stage: 1, title: 'Fly 5 routes', hint: 'A route is any pair of airports you fly between.', metric: 'routes', target: 5, reward: 15 * M, unit: 'routes' },
-  { id: 's1-profit', stage: 1, title: 'Close a week in profit', hint: 'Flights must earn more than your leases and loan instalments in a game week.', metric: 'closedWeekInProfit', target: 1, reward: 10 * M, unit: 'profitable weeks' },
+  { id: 's1-profit', stage: 1, title: 'Close a week in profit', hint: 'Flights must earn more than your leases and loan interest in a game week.', metric: 'closedWeekInProfit', target: 1, reward: 10 * M, unit: 'profitable weeks' },
 
   // Stage 2: regional operator
   { id: 's2-fleet8', stage: 2, title: 'Operate 8 aircraft', hint: 'Owned and leased aircraft both count.', metric: 'aircraft', target: 8, reward: 40 * M, unit: 'aircraft' },
