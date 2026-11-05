@@ -13,7 +13,8 @@
 //   template's shading, panel lines and windows show through. Painted
 //   pictures are cached as object URLs.
 // ============================================================================
-import { FONT_CSS, layerText, liveryKey, type Frame, type Layer, type Livery, type PathCmd, type Region } from './livery';
+import { aircraftArt } from './aircraftPhotos';
+import { FONT_CSS, layerFor, layerText, liveryKey, type Frame, type Layer, type Livery, type PathCmd, type Region } from './livery';
 
 /**
  * Painted pictures, by aircraft, livery, registration and size. A picture
@@ -319,7 +320,7 @@ export function aircraftGeometry(id: string): Promise<Geometry | null> {
 }
 
 async function measure(id: string): Promise<Geometry | null> {
-  const [base, maskImg] = await Promise.all([loadImage(`/aircraft/${id}.webp`), loadImage(`/aircraft/${id}.mask.png`)]);
+  const [base, maskImg] = await Promise.all([loadImage(aircraftArt(id)), loadImage(aircraftArt(id, 'mask'))]);
   const w = base.naturalWidth;
   const h = base.naturalHeight;
   const [bc, bg] = canvas(w, h);
@@ -341,16 +342,19 @@ async function measure(id: string): Promise<Geometry | null> {
   const all = new Uint8ClampedArray(M.length);
   const seen = [0, 0, 0, 0, 0, 0];
   for (let i = 0; i < M.length; i += 4) {
-    all[i] = all[i + 1] = all[i + 2] = Math.max(M[i], M[i + 1], M[i + 2], M2[i], M2[i + 1], M2[i + 2]);
+    // wings and tailplanes aren't painted (v2.71): the whole aircraft is the tail, fuselage, engines and wingtips
+    all[i] = all[i + 1] = all[i + 2] = Math.max(M[i], M[i + 1], M[i + 2], M2[i + 1]);
     for (let k = 0; k < 3; k++) {
       if (M[i + k] > 128) seen[k]++;
       if (M2[i + k] > 128) seen[k + 3]++;
     }
   }
-  const src: Record<Region, [Uint8ClampedArray, number]> = { tail: [M, 0], fuselage: [M, 1], engines: [M, 2], wings: [M2, 0], winglets: [M2, 1], stabiliser: [M2, 2], all: [all, 0] };
+  const none = new Uint8ClampedArray(M.length);
+  const src: Record<Region, [Uint8ClampedArray, number]> = { tail: [M, 0], fuselage: [M, 1], engines: [M, 2], wings: [none, 0], winglets: [M2, 1], stabiliser: [none, 0], all: [all, 0] };
   const mask = (r: Region) => src[r] ?? src.all;
   const order: Region[] = ['tail', 'fuselage', 'engines', 'wings', 'winglets', 'stabiliser'];
-  const parts = order.filter((_, k) => seen[k] > 20);
+  // the parts that can be painted: wingtips only where there's a real winglet
+  const parts = order.filter((r, k) => (r === 'winglets' ? seen[k] > 60 : r !== 'wings' && r !== 'stabiliser' && seen[k] > 20));
   return { id, w, h, base, B, M, M2, parts, body, fin, mask };
 }
 
@@ -629,7 +633,10 @@ export function renderLiveryPixels(g: Geometry, livery: Livery, name: string, lo
   // the paint, white to start
   const P = new Uint8ClampedArray(n * 3).fill(255);
   const [, sg] = reused(0, w, h);
-  for (const l of livery.layers) {
+  for (const shared of livery.layers) {
+    // as it is on this aircraft model
+    const l = layerFor(shared, g.id);
+    if (!l) continue;
     if (l.hidden || l.opacity <= 0) continue;
     sg.setTransform(1, 0, 0, 1, 0, 0);
     sg.globalAlpha = 1;
@@ -722,7 +729,9 @@ async function paint(id: string, L: Livery, name: string, reg: string, px = 1280
 const [, measureCtx] = typeof document !== 'undefined' ? canvas(4, 4) : [null, null as unknown as CanvasRenderingContext2D];
 
 /** The layer's outline in picture pixels (a polygon), or null for a fill. */
-export function layerOutline(g: Geometry, l: Layer, name: string, reg = ''): [number, number][] | null {
+export function layerOutline(g: Geometry, shared: Layer, name: string, reg = ''): [number, number][] | null {
+  const l = layerFor(shared, g.id);
+  if (!l) return null;
   const box = (cx: number, cy: number, w: number, h: number, ang: number, ox = 0, oy = 0): [number, number][] => {
     const cs = Math.cos(ang), sn = Math.sin(ang);
     return [

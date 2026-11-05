@@ -4,6 +4,8 @@
 //   size in pixels. Made from the Airline Empires community's templates by
 //   tools/art (see Credits). Other models show their map icon.
 // ============================================================================
+import { APP_VERSION } from '../version';
+
 export const AIRCRAFT_PHOTOS: Record<string, [number, number]> = {
   'a220-100': [1280, 407],
   'a220-300': [1280, 366],
@@ -68,7 +70,7 @@ export const AIRCRAFT_PHOTOS: Record<string, [number, number]> = {
   'b737-max7': [1280, 423],
   'b737-max8-200': [1280, 383],
   'b737-max8': [1280, 383],
-  'b737-max9': [1280, 359],
+  'b737-max9': [1280, 361],
   'b747-200b': [1280, 323],
   'b747-400': [1280, 328],
   'b747-400d': [1280, 328],
@@ -168,3 +170,10 @@ export const AIRCRAFT_PHOTOS: Record<string, [number, number]> = {
   'tu-214': [1280, 360],
   'xian-ma60': [1280, 414],
 };
+
+/**
+ * An aircraft's picture or paint mask. The version in the address makes
+ * browsers fetch the new files after an update instead of keeping old ones
+ * (an old mask without the wing half hid the wings and winglets in the editor).
+ */
+export const aircraftArt = (id: string, kind: 'picture' | 'mask' = 'picture') => `/aircraft/${id}.${kind === 'mask' ? 'mask.png' : 'webp'}?v=${APP_VERSION}`;

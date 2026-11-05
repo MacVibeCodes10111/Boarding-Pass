@@ -5,7 +5,7 @@
 //   without a picture, and custom aircraft, show their map icon instead.
 // ============================================================================
 import { createContext, useContext, useEffect, useState, useSyncExternalStore } from 'react';
-import { AIRCRAFT_PHOTOS } from '../game/aircraftPhotos';
+import { AIRCRAFT_PHOTOS, aircraftArt } from '../game/aircraftPhotos';
 import { cloudSkyCss } from '../game/cloudSky';
 import { specialLabel, type Livery } from '../game/livery';
 import { holdPhoto, paintedPhoto } from '../game/liveryPaint';
@@ -19,7 +19,7 @@ export const SAMPLE_REG = 'P4-ABC';
 
 /** The picture of a model in a livery (plain white until it's painted). `cssWidth`: how wide it's shown. */
 export function usePaintedPhoto(id: string, livery: Livery | null | undefined, name: string, reg = SAMPLE_REG, cssWidth = 1280): string {
-  const plain = `/aircraft/${id}.webp`;
+  const plain = aircraftArt(id);
   const [url, setUrl] = useState(plain);
   useEffect(() => {
     let live = true;

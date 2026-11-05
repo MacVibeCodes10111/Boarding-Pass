@@ -98,46 +98,15 @@ def patch(src_layers, rx, box, factor, at, name, boost=1.0):
 
 # ---------------------------------------------------------------------------
 def max9():
-    W, H, A = load('Boeing 737-900ER.psd')
-    _, _, M = load('Boeing 737 MAX 8.psd')
-    CUT, DX = P(1440), 38
-
-    def left(img, x=CUT):
-        return erase(img, (x, 0, img.width, img.height))
-
-    def right(img, x=CUT - DX, dx=DX):
-        o = Image.new('RGBA', img.size); o.paste(img.crop((x, 0, img.width, img.height)), (x + dx, 0)); return o
-
-    def both(a, b):
-        o = left(a); o.alpha_composite(right(b)); return o
-
-    g = lambda ls, rx, i=0: find(ls, rx)[i].img
-    mk = lambda name, img: L(name, name, None).copy(img)
-    wing = g(M, r'^WING$')
-    w2 = left(wing, CUT - DX); w2.alpha_composite(right(wing))
-    out = [
-        mk('STROBE', g(A, r'^STROBE$')),
-        mk('ANTENNA', both(g(A, r'^ANTENNA$', 0), g(M, r'^ANTENNA$', 0))),
-        mk('TAIL', right(g(M, r'^TAIL$'), 0)),
-        mk('TAIL_DETAILS', right(g(M, r'^TAIL_DETAILS$'), 0)),
-        mk('Cockpit Window', g(A, r'^Cockpit Window$')),
-        mk('FUSELAGE', both(g(A, r'^FUSELAGE$'), g(M, r'^FUSELAGE$'))),
-        mk('FUSELAGE_DETAILS', both(g(A, r'^FUSELAGE_DETAILS$'), g(M, r'^FUSELAGE_DETAILS$'))),
-        mk('DOORS & WINDOWS', g(A, r'^DOORS & WINDOWS \(A\)$')),
-        mk('FUSELAGE_EFFECTS', both(g(A, r'^FUSELAGE EFFECTS$'), g(M, r'^FUSELAGE_EFFECTS$'))),
-        mk('ANTENNA', both(g(A, r'^ANTENNA$', 1), g(M, r'^ANTENNA$', 1))),
-        mk('TAILSKID', right(g(M, r'TAILSKID/TAILSKID$'), 0)),
-        mk('TAILSKID DETAILS', right(g(M, r'TAILSKID/TAILSKID DETAILS$'), 0)),
-        mk('WING', w2),
-        mk('WINGLET', g(M, r'WINGLET/WINGLET$')),
-        mk('WINGLET DETAILS', g(M, r'WINGLET/WINGLET DETAILS$')),
-        mk('details (tail)', right(g(M, r'^details$', 0), 0)),
-        mk('ENGINE', g(M, r'^ENGINE/ENGINE$')),
-        mk('ENGINE_DETAILS', g(M, r'^ENGINE/ENGINE_DETAILS$')),
-        mk('ENGINE_EFFECTS', g(M, r'^ENGINE/ENGINE_EFFECTS$')),
-        mk('details (engine)', g(M, r'^ENGINE/details$')),
-    ]
-    return W, H, out
+    """The MAX 10 template without its two cabin plugs."""
+    W, H, ls = load('Boeing 737 MAX 10.psd')
+    # whole window spacings, so the window rhythm stays even: one ahead of the wing, two behind (60 in of the real 66)
+    a = np.asarray(find(ls, r'^DOORS & WINDOWS$')[0].img.getchannel('A'))
+    cols = (a > 40).any(axis=0)
+    starts = [i for i in range(1, len(cols)) if cols[i] and not cols[i - 1]]
+    d = np.diff(starts)
+    pitch = int(np.median(d[(d > 5) & (d < 60)]))
+    return W, H, stretch(ls, 560, -pitch, 1360, -2 * pitch, r'^DOORS & WINDOWS$')
 
 
 NOT_WING = lambda l: not re.search(r'wing|winglet|engine', l.path, re.I)
@@ -158,11 +127,6 @@ def stretch(ls, fwd_at, fwd_w, aft_at, aft_w, rx_win):
         else:
             ls = apply(ls, lambda im: cut(im, x, x - aft_w, keep='left'))
     return ls
-
-
-def max10():
-    W, H, ls = max9()
-    return W, H, stretch(ls, 700, 20, 1360, 41, r'DOORS & WINDOWS')
 
 
 def max7():
@@ -308,6 +272,6 @@ def b717():
     return W, H, ls + new
 
 
-BUILDS = dict(max9=max9, max10=max10, max7=max7, max8200=max8200, a320p2f=a320p2f, e190f=e190f, atr42f=atr42f,
+BUILDS = dict(max9=max9, max7=max7, max8200=max8200, a320p2f=a320p2f, e190f=e190f, atr42f=atr42f,
               saab340f=saab340f, tu214=tu214, il96t=il96t, a350f=a350f, b7778f=b7778f, b777sf=b777sf, b717=b717,
               b737sf=b737sf)

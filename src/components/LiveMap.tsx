@@ -54,7 +54,7 @@ import { C, MAP_C, useThemeVersion } from '../ui/kit';
 import { currentLayout, isTouchFirst } from '../ui/layout';
 import { loadCargoAprons } from '../game/cargoAprons';
 import { airportGateCode, gateRank } from '../game/gateCode';
-import { AIRCRAFT_PHOTOS } from '../game/aircraftPhotos';
+import { AIRCRAFT_PHOTOS, aircraftArt } from '../game/aircraftPhotos';
 import { cloudSkyCss } from '../game/cloudSky';
 import { paintedPhoto } from '../game/liveryPaint';
 import { liveryIndexOf, specialLabel } from '../game/livery';
@@ -395,7 +395,7 @@ function planeHeroHtml(raw: Record<string, any>): string {
   return `<div class="bp-pop-hero" style="position:relative;margin:-2px 0 10px;border-radius:10px;overflow:hidden;aspect-ratio:2.8;background:${sky} center/cover;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)">
     <span class="bp-pop-special" style="display:none;position:absolute;left:8px;bottom:8px;z-index:1;padding:1px 8px;border-radius:99px;background:#a8326e;color:#fff;font-size:11px;font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.35)"></span>
     <img class="bp-pop-badge" alt="" draggable="false" style="display:none;position:absolute;left:8px;top:8px;width:34px;height:34px;padding:3px;border-radius:9px;background:#fff;object-fit:contain;box-shadow:0 2px 6px rgba(0,0,0,.3);z-index:1" />
-    <img alt="" draggable="false" data-model="${escapeHtml(id)}" src="/aircraft/${escapeHtml(id)}.webp" style="position:absolute;left:6%;width:88%;top:50%;transform:translateY(-50%);height:auto;aspect-ratio:${size[0]}/${size[1]};filter:drop-shadow(0 8px 10px rgba(10,20,40,.28));pointer-events:none" />
+    <img alt="" draggable="false" data-model="${escapeHtml(id)}" src="${escapeHtml(aircraftArt(id))}" style="position:absolute;left:6%;width:88%;top:50%;transform:translateY(-50%);height:auto;aspect-ratio:${size[0]}/${size[1]};filter:drop-shadow(0 8px 10px rgba(10,20,40,.28));pointer-events:none" />
   </div>`;
 }
 

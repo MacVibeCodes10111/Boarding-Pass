@@ -17,7 +17,10 @@ import {
   MAX_LOGOS,
   MAX_STROKES,
   REGION_LABEL,
-  REGIONS,
+  EDIT_REGIONS,
+  ADJ_KEYS,
+  layerFor,
+  type ModelAdjust,
   MAX_LIVERIES,
   MAX_POINTS,
   registrationLayer,
@@ -152,9 +155,7 @@ const regionAt = (g: Geometry, px: number, py: number): Region | null => {
     ['tail', g.M[i]],
     ['fuselage', g.M[i + 1]],
     ['engines', g.M[i + 2]],
-    ['wings', g.M2[i]],
     ['winglets', g.M2[i + 1]],
-    ['stabiliser', g.M2[i + 2]],
   ];
   let best: [Region, number] = v[0];
   for (const x of v) if (x[1] > best[1]) best = x;
@@ -318,7 +319,12 @@ export function LiveryEditor(props: {
     docRef.current = d;
     setSel(d?.layers[d.layers.length - 1]?.id ?? null);
   };
-  const selLayer = doc.layers.find((l) => l.id === sel) ?? null;
+  const selShared = doc.layers.find((l) => l.id === sel) ?? null;
+  /** Changes for every aircraft, or only the model on screen (like TAS: where the shared placement doesn't fit a type). */
+  const [scope, setScope] = useState<'all' | 'model'>('all');
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+
   const [tool, setTool] = useState<Tool>('move');
   const [colour, setColour] = useState('#c8102e');
   const [brushSize, setBrushSize] = useState(0.06);
@@ -344,6 +350,10 @@ export function LiveryEditor(props: {
     return [...own, ...extra];
   }, [props.models]);
   const [model, setModel] = useState(choices[0] ?? 'a320neo');
+  const modelRef = useRef(model);
+  modelRef.current = model;
+  /** The selected layer as it is on the aircraft on screen. */
+  const selLayer = selShared ? (layerFor(selShared, model) ?? selShared) : null;
   const [geo, setGeo] = useState<Geometry | null>(null);
   useEffect(() => {
     let ok = true;
@@ -390,8 +400,19 @@ export function LiveryEditor(props: {
 
   // ---------------------------------------------------------------- layers
   const setLayers = (layers: Layer[], from?: Livery) => commit({ ...docRef.current, layers }, from);
+  /** A change to a layer: on every aircraft, or (this aircraft only) kept for the model on screen. */
+  const scoped = (l: Layer, p: Partial<Layer>): Layer => {
+    if (scopeRef.current === 'all' || l.only) return { ...l, ...p } as Layer;
+    const a: ModelAdjust = { ...(l.adj?.[modelRef.current] ?? {}) };
+    const rest: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(p)) {
+      if ((ADJ_KEYS as readonly string[]).includes(k) && k in l && !(l.kind === 'paint')) (a as Record<string, unknown>)[k] = v;
+      else rest[k] = v;
+    }
+    return { ...l, ...rest, adj: { ...(l.adj ?? {}), [modelRef.current]: a } } as Layer;
+  };
   const patch = (id: string, p: Partial<Layer>, isLive = false) => {
-    const next = { ...docRef.current, layers: docRef.current.layers.map((l) => (l.id === id ? ({ ...l, ...p } as Layer) : l)) };
+    const next = { ...docRef.current, layers: docRef.current.layers.map((l) => (l.id === id ? scoped(l, p) : l)) };
     if (isLive) live(next);
     else commit(next);
   };
@@ -408,7 +429,8 @@ export function LiveryEditor(props: {
       commit(docRef.current, from);
     }
   };
-  const addLayer = (l: Layer) => {
+  const addLayer = (l0: Layer) => {
+    const l: Layer = scopeRef.current === 'model' ? { ...l0, only: [modelRef.current] } : l0;
     const d = docRef.current;
     if (d.layers.length >= MAX_LAYERS) {
       flash(`A livery can have up to ${MAX_LAYERS} layers.`);
@@ -456,6 +478,8 @@ export function LiveryEditor(props: {
     id?: string;
     start: [number, number];
     startLayer?: Layer;
+    /** The layer shared by every aircraft, when moving it. */
+    startShared?: Layer;
     sx?: number;
     sy?: number;
   }>(null);
@@ -510,13 +534,14 @@ export function LiveryEditor(props: {
         flash(`${target.name} is locked. Unlock it in the layers to move it.`);
         return;
       }
-      let startLayer = target;
+      const shared = docRef.current.layers.find((l) => l.id === target.id) ?? target;
       // auto-placed titles become a normal text layer once moved
-      if (target.kind === 'text' && target.auto) {
-        const t = titlesPosition(geo, target, name, reg);
-        startLayer = { ...target, auto: undefined, x: t.x, y: t.y, size: t.size };
-      }
-      drag.current = { kind: 'move', from, id: target.id, start: [px, py], startLayer };
+      const placed = (l: Layer): Layer => {
+        if (l.kind !== 'text' || !l.auto) return l;
+        const t = titlesPosition(geo, l, name, reg);
+        return { ...l, auto: undefined, x: t.x, y: t.y, size: t.size };
+      };
+      drag.current = { kind: 'move', from, id: target.id, start: [px, py], startLayer: placed(layerFor(shared, model) ?? shared), startShared: placed(shared) };
       return;
     }
     if (tool === 'brush' || tool === 'eraser' || tool === 'line') {
@@ -595,11 +620,35 @@ export function LiveryEditor(props: {
       const [ax, ay] = fromPx(geo, frame, d.start[0], d.start[1]);
       const [bx, by] = fromPx(geo, frame, px, py);
       const dx = bx - ax, dy = by - ay;
-      let n: Layer = l0;
-      if (l0.kind === 'shape' || l0.kind === 'text' || l0.kind === 'logo') n = { ...l0, x: l0.x + dx, y: l0.y + dy };
-      else if (l0.kind === 'path') n = { ...l0, dx: l0.dx + dx, dy: l0.dy + dy };
-      else if (l0.kind === 'band') n = { ...l0, v0: l0.v0 + dy, v1: l0.v1 + dy };
-      else if (l0.kind === 'paint') n = { ...l0, strokes: l0.strokes.map((s) => ({ ...s, pts: s.pts.map((v, i) => v + (i % 2 ? dy : dx)) })) };
+      const shift = (l: Layer): Layer =>
+        l.kind === 'shape' || l.kind === 'text' || l.kind === 'logo'
+          ? { ...l, x: l.x + dx, y: l.y + dy }
+          : l.kind === 'path'
+            ? { ...l, dx: l.dx + dx, dy: l.dy + dy }
+            : l.kind === 'band'
+              ? { ...l, v0: l.v0 + dy, v1: l.v1 + dy }
+              : l.kind === 'paint'
+                ? { ...l, strokes: l.strokes.map((s) => ({ ...s, pts: s.pts.map((v, i) => v + (i % 2 ? dy : dx)) })) }
+                : l;
+      const base = d.startShared ?? l0;
+      let n: Layer;
+      if (scopeRef.current === 'model' && !base.only) {
+        // moved on this aircraft only: kept as this model's change
+        const m = modelRef.current;
+        const orig = cur.layers.find((l) => l.id === d.id) ?? base;
+        const prev = { ...(orig.adj?.[m] ?? {}) };
+        const a: ModelAdjust =
+          l0.kind === 'shape' || l0.kind === 'logo'
+            ? { ...prev, x: l0.x + dx, y: l0.y + dy }
+            : l0.kind === 'text'
+              ? { ...prev, x: l0.x + dx, y: l0.y + dy, size: l0.size }
+              : l0.kind === 'path'
+                ? { ...prev, dx: l0.dx + dx, dy: l0.dy + dy }
+                : l0.kind === 'band'
+                  ? { ...prev, v0: l0.v0 + dy, v1: l0.v1 + dy }
+                  : { ...prev, dx: (d.startShared?.adj?.[m]?.dx ?? 0) + dx, dy: (d.startShared?.adj?.[m]?.dy ?? 0) + dy };
+        n = { ...orig, adj: { ...(orig.adj ?? {}), [m]: a } } as Layer;
+      } else n = shift(base);
       live({ ...cur, layers: cur.layers.map((l) => (l.id === d.id ? n : l)) });
       return;
     }
@@ -942,6 +991,64 @@ export function LiveryEditor(props: {
           {logosPanel}
         </div>
       )}
+      {selShared && (scope === 'model' || selShared.only || selShared.adj?.[model]) && (
+        <div style={section}>
+          {head(`On the ${model.toUpperCase()}`)}
+          {selShared.only ? (
+            <>
+              <div style={{ fontSize: 12.5, color: C.muted }}>
+                {selShared.name} is only on the {selShared.only.map((m) => m.toUpperCase()).join(', ')}.
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {!selShared.only.includes(model) && (
+                  <Button size="sm" onClick={() => commit({ ...docRef.current, layers: docRef.current.layers.map((l) => (l.id === selShared.id ? { ...l, only: [...(l.only ?? []), model] } : l)) })}>
+                    Add the {model.toUpperCase()}
+                  </Button>
+                )}
+                <Button size="sm" onClick={() => commit({ ...docRef.current, layers: docRef.current.layers.map((l) => (l.id === selShared.id ? { ...l, only: undefined } : l)) })}>
+                  Put it on every aircraft
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(selShared.adj?.[model]?.hidden)}
+                  onChange={(e) =>
+                    commit({
+                      ...docRef.current,
+                      layers: docRef.current.layers.map((l) => (l.id === selShared.id ? { ...l, adj: { ...(l.adj ?? {}), [model]: { ...(l.adj?.[model] ?? {}), hidden: e.target.checked || undefined } } } : l)),
+                    })
+                  }
+                />
+                Hide it on the {model.toUpperCase()}
+              </label>
+              <div style={{ fontSize: 12, color: C.muted }}>
+                {selShared.adj?.[model] ? 'This aircraft has its own placement or colour for this layer.' : 'Move it, resize it or change its colour with “Only ' + model.toUpperCase() + '” on, and only this type changes.'}
+              </div>
+              {selShared.adj?.[model] && (
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    commit({
+                      ...docRef.current,
+                      layers: docRef.current.layers.map((l) => {
+                        if (l.id !== selShared.id || !l.adj) return l;
+                        const { [model]: _gone, ...rest } = l.adj;
+                        return { ...l, adj: Object.keys(rest).length ? rest : undefined };
+                      }),
+                    })
+                  }
+                >
+                  Back to the shared placement
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+      )}
       <div style={section}>
         {head(selLayer ? `${KIND_LABEL[selLayer.kind]}: ${selLayer.name}` : 'Layer')}
         {props_ ?? <div style={{ fontSize: 12.5, color: C.muted }}>Pick a layer to change it.</div>}
@@ -951,18 +1058,18 @@ export function LiveryEditor(props: {
 
   // ---------------------------------------------------------------- parts: one colour per part, winglets included
   const [partOpen, setPartOpen] = useState<Region | null>(null);
-  const partLabel = (r: Region) => (r === 'winglets' ? 'Winglets and wingtips' : REGION_LABEL[r]);
+  const partLabel = (r: Region) => REGION_LABEL[r];
   const partFill = (r: Region) => {
     const ls = docRef.current.layers;
     for (let i = ls.length - 1; i >= 0; i--) {
-      const l = ls[i];
-      if (l.kind === 'fill' && !l.hidden && (l.region === r || (r === 'fuselage' && l.region === 'all'))) return l;
+      const l = layerFor(ls[i], model);
+      if (l && l.kind === 'fill' && !l.hidden && (l.region === r || (r === 'fuselage' && l.region === 'all'))) return l;
     }
     return null;
   };
   const setPartColour = (r: Region, c: string) => {
     const d = docRef.current;
-    const own = [...d.layers].reverse().find((l) => l.kind === 'fill' && l.region === r);
+    const own = [...d.layers].reverse().find((l) => l.kind === 'fill' && l.region === r && layerFor(l, model));
     if (own) return patch(own.id, { colour: c } as Partial<Layer>);
     if (d.layers.length >= MAX_LAYERS) return flash(`A livery can have up to ${MAX_LAYERS} layers.`);
     // a new fill goes just above the other fills: under stripes, titles and logos
@@ -971,7 +1078,8 @@ export function LiveryEditor(props: {
       if (l.kind === 'fill') at = i + 1;
     });
     const layers = [...d.layers];
-    layers.splice(at, 0, fillLayer(partLabel(r), r, c));
+    const f = fillLayer(partLabel(r), r, c);
+    layers.splice(at, 0, scope === 'model' ? { ...f, only: [model] } : f);
     setLayers(layers);
   };
   const clearPart = (r: Region) => {
@@ -1008,12 +1116,12 @@ export function LiveryEditor(props: {
       st.scrollTop += r.top + f[1] * r.height - (sr.top + sr.height / 2);
     });
   }, [zoom, focus]);
-  const partList: Region[] = (geo ? geo.parts : (['fuselage', 'tail', 'engines', 'wings', 'stabiliser'] as Region[])).filter((r) => r !== 'all');
+  const partList: Region[] = (geo ? geo.parts : (['tail', 'fuselage', 'engines'] as Region[])).filter((r) => EDIT_REGIONS.includes(r) && r !== 'all');
   const partsPanel = (
     <div style={{ ...section, gap: 6 }}>
       {head('Parts', focus ? <Button size="sm" onClick={() => workOn(null)}>Whole aircraft</Button> : undefined)}
       <div style={{ fontSize: 11.5, color: C.muted, marginTop: -2 }}>
-        Click a colour to paint a part. <b style={{ color: C.textSoft }}>Edit</b> zooms in on it, and then the brush, lines, shapes, text and logos only go on that part{partList.includes('winglets') ? ', winglets too' : ''}.
+        Click a colour to paint a part. <b style={{ color: C.textSoft }}>Edit</b> zooms in on it, and then the brush, lines, shapes, text and logos only go on that part{partList.includes('winglets') ? ', the winglets too' : ''}.
       </div>
       {partList.map((r) => {
         const f = partFill(r);
@@ -1070,13 +1178,16 @@ export function LiveryEditor(props: {
         />
       )}
       <div role="listbox" aria-label="Layers" style={{ display: 'grid', gap: 2, maxHeight: phone ? undefined : 300, overflowY: 'auto' }}>
-        {[...doc.layers].reverse().map((l) => (
+        {[...doc.layers].reverse().map((l) => {
+          const shown = layerFor(l, model);
+          const tag = l.only ? (l.only.includes(model) ? 'only this aircraft' : `only on ${l.only.map((m) => m.toUpperCase()).join(', ')}`) : l.adj?.[model] ? (l.adj[model].hidden ? 'hidden on this aircraft' : 'changed on this aircraft') : '';
+          return (
           <div
             key={l.id}
             role="option"
             aria-selected={l.id === sel}
             onClick={() => setSel(l.id)}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 6px', borderRadius: 7, background: l.id === sel ? `${C.brand}22` : 'transparent', border: `1px solid ${l.id === sel ? `${C.brand}88` : 'transparent'}`, cursor: 'pointer', opacity: l.hidden ? 0.55 : 1 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 6px', borderRadius: 7, background: l.id === sel ? `${C.brand}22` : 'transparent', border: `1px solid ${l.id === sel ? `${C.brand}88` : 'transparent'}`, cursor: 'pointer', opacity: l.hidden || !shown ? 0.55 : 1 }}
           >
             <button type="button" aria-label={l.hidden ? `Show ${l.name}` : `Hide ${l.name}`} title={l.hidden ? 'Show' : 'Hide'} onClick={(e) => { e.stopPropagation(); patch(l.id, { hidden: l.hidden ? undefined : true }); }} style={smallBtn}>
               {l.hidden ? '◌' : '●'}
@@ -1087,12 +1198,14 @@ export function LiveryEditor(props: {
             <span style={{ flex: 1, minWidth: 0, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {l.name}
               <span style={{ color: C.faint, fontSize: 11.5 }}> · {REGION_LABEL[l.region]}</span>
+              {tag && <span style={{ color: C.brand, fontSize: 11 }}> · {tag}</span>}
             </span>
             <button type="button" aria-label={l.locked ? `Unlock ${l.name}` : `Lock ${l.name}`} title={l.locked ? 'Unlock' : 'Lock'} onClick={(e) => { e.stopPropagation(); patch(l.id, { locked: l.locked ? undefined : true }); }} style={{ ...smallBtn, color: l.locked ? C.brand : C.faint }}>
               {l.locked ? '🔒' : '🔓'}
             </button>
           </div>
-        ))}
+          );
+        })}
         {doc.layers.length === 0 && <div style={{ fontSize: 12.5, color: C.muted, padding: 6 }}>No layers: the aircraft is plain white.</div>}
       </div>
       {selLayer && (
@@ -1241,6 +1354,23 @@ export function LiveryEditor(props: {
           </option>
         ))}
       </select>
+      <span role="group" aria-label="Changes apply to" style={{ display: 'inline-flex', gap: 2, padding: 2, borderRadius: 9, border: `1px solid ${scope === 'model' ? C.brand : C.border}`, background: C.raised }}>
+        <Button size="sm" variant={scope === 'all' ? 'primary' : undefined} aria-pressed={scope === 'all'} title="Changes go on every aircraft type" onClick={() => setScope('all')}>
+          All aircraft
+        </Button>
+        <Button
+          size="sm"
+          variant={scope === 'model' ? 'primary' : undefined}
+          aria-pressed={scope === 'model'}
+          title="Changes only on this aircraft type: fix a logo or title that sits wrong on it, without moving it on the others"
+          onClick={() => {
+            setScope('model');
+            flash(`Only the ${model.toUpperCase()} now: moves, sizes and colours you change, and layers you add, apply to this type alone.`);
+          }}
+        >
+          Only {model.toUpperCase()}
+        </Button>
+      </span>
       <Button size="sm" onClick={undo} disabled={!past.current.length} title="Undo (Ctrl/Cmd+Z)">
         Undo
       </Button>
@@ -1293,7 +1423,7 @@ export function LiveryEditor(props: {
 
   const status = (
     <div style={{ fontSize: 12, color: note ? C.text : C.muted, minHeight: 18, padding: '0 2px' }}>
-      {note ?? `${focus ? `Working on the ${(focus === 'winglets' ? 'winglets and wingtips' : REGION_LABEL[focus]).toLowerCase()}: everything you draw stays on it. ` : ''}${TOOL_LABEL[tool].replace(/ \(.\)$/, '')}. ${countStrokes(doc)} brush strokes. ${phone ? 'Zoom with + and −, then the hand to look around.' : 'Ctrl/Cmd+scroll to zoom.'}`}
+      {note ?? `${focus ? `Working on the ${REGION_LABEL[focus].toLowerCase()}: everything you draw stays on it. ` : ''}${TOOL_LABEL[tool].replace(/ \(.\)$/, '')}. ${countStrokes(doc)} brush strokes. ${phone ? 'Zoom with + and −, then the hand to look around.' : 'Ctrl/Cmd+scroll to zoom.'}`}
     </div>
   );
 
@@ -1417,8 +1547,8 @@ function LayerProps(p: {
 }) {
   const l = p.layer;
   // the parts this aircraft has, and the layer's own part even if this type lacks it
-  const have = p.geo ? [...p.geo.parts, 'all' as Region] : REGIONS;
-  const regions = REGIONS.filter((r) => have.includes(r) || r === l.region);
+  const have = p.geo ? [...p.geo.parts, 'all' as Region] : EDIT_REGIONS;
+  const regions = EDIT_REGIONS.filter((r) => have.includes(r) || r === l.region);
   const deg = (v: number) => `${Math.round(v)}°`;
   const pct = (v: number) => `${Math.round(v * 100)}`;
   return (

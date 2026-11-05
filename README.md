@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 2.70. Free to play. See [Credits and licences](#credits-and-licences).
+Version 2.71. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -20,6 +20,14 @@ Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 2.71:
+
+- **Wingtips on every aircraft with winglets:** sharklets, winglets and wingtip fences can now be painted on the A318 to A321, A300, A310, A380, CRJs, C919, Tu-204 and Tu-214 too. Aircraft without winglets don't offer it.
+- **The livery editor paints the tail, fuselage, engines and wingtips.** Wings and tailplanes keep the aircraft's own finish.
+- **Fix a livery on one aircraft type** (like TAS): switch the editor's top bar from *All aircraft* to *Only A320-200* (or whichever type is on screen), and moves, sizes, colours and new layers apply to that type alone. A layer can also be hidden on one type, or put back to the shared placement.
+- **737 MAX 9** rebuilt from the MAX 10 template, with its mid-cabin exit.
+- **Fixed: Wings and Wingtips missing in the livery editor** after an update. The browser kept the old aircraft files; it now fetches the new ones with each version.
 
 Version 2.70:
 

@@ -42,6 +42,49 @@ interface Base {
   /** 0 to 1. */
   opacity: number;
   region: Region;
+  /** Only on these aircraft models (v2.71); on every model when unset. */
+  only?: string[];
+  /** Changes for single aircraft models (v2.71), by model id: where the shared placement doesn't fit a type. */
+  adj?: Record<string, ModelAdjust>;
+}
+
+/** A layer's changes on one aircraft model: these values replace the shared ones (dx, dy move brush strokes). */
+export interface ModelAdjust {
+  hidden?: boolean;
+  x?: number;
+  y?: number;
+  size?: number;
+  w?: number;
+  h?: number;
+  rot?: number;
+  v0?: number;
+  v1?: number;
+  dx?: number;
+  dy?: number;
+  colour?: string;
+}
+export const ADJ_KEYS = ['x', 'y', 'size', 'w', 'h', 'rot', 'v0', 'v1', 'dx', 'dy', 'colour'] as const;
+const MAX_ADJ_MODELS = 60;
+
+/** A layer as it is on one aircraft model: null when it isn't shown there. */
+export function layerFor(l: Layer, model: string): Layer | null {
+  if (l.only && !l.only.includes(model)) return null;
+  const a = l.adj?.[model];
+  if (!a) return l;
+  if (a.hidden) return null;
+  const o: Record<string, unknown> = { ...l };
+  for (const k of ADJ_KEYS) {
+    if (a[k] === undefined) continue;
+    if (l.kind === 'paint' && (k === 'dx' || k === 'dy')) continue;
+    if (k in l) o[k] = a[k];
+  }
+  // a title or registration placed by hand on this model
+  if (l.kind === 'text' && l.auto && a.x !== undefined) o.auto = undefined;
+  if (l.kind === 'paint' && (a.dx || a.dy)) {
+    const dx = a.dx ?? 0, dy = a.dy ?? 0;
+    o.strokes = l.strokes.map((s) => ({ ...s, pts: s.pts.map((v, i) => v + (i % 2 ? dy : dx)) }));
+  }
+  return o as unknown as Layer;
 }
 
 export type Layer = Base &
@@ -122,6 +165,8 @@ export const LOGO_PX = 128;
 export const MAX_LOGO_CHARS = 22_000;
 
 export const REGION_LABEL: Record<Region, string> = { fuselage: 'Fuselage', tail: 'Tail', engines: 'Engines', wings: 'Wings', winglets: 'Wingtips', stabiliser: 'Tailplane', all: 'Whole aircraft' };
+/** The parts a livery can paint (v2.71): wings and tailplanes stay the aircraft's own grey and white. Wingtips only on types with winglets. */
+export const EDIT_REGIONS: Region[] = ['fuselage', 'tail', 'engines', 'winglets', 'all'];
 /** The parts every aircraft has a mask for (wings, wingtips and tailplanes since v2.66; a type may not have wingtips). */
 export const REGIONS: Region[] = ['fuselage', 'tail', 'engines', 'wings', 'winglets', 'stabiliser', 'all'];
 export const FONT_LABEL: Record<FontId, string> = { sans: 'Modern', italic: 'Italic', serif: 'Classic', condensed: 'Condensed', script: 'Script' };
@@ -332,7 +377,6 @@ export const LIVERY_STYLES: LiveryStyle[] = [
       bandLayer('Belly', a, 0.535, 3),
       fillLayer('Tail', 'tail', a),
       shapeLayer('Tail star', 'fin', 'star', b, 0.52, 0.46, 0.36),
-      fillLayer('Tailplane', 'stabiliser', a),
       fillLayer('Engines', 'engines', b),
       titlesLayer(a),
       registrationLayer('#3a3f45'),
@@ -359,6 +403,30 @@ const FRAMES: Frame[] = ['body', 'fin'];
 const SHAPES: ShapeKind[] = ['rect', 'ellipse', 'triangle', 'star', 'chevron'];
 const FONTS: FontId[] = ['sans', 'serif', 'italic', 'condensed', 'script'];
 
+const MODEL_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
+function modelList(x: unknown): string[] | undefined {
+  if (!Array.isArray(x)) return undefined;
+  const v = [...new Set(x.filter((m): m is string => typeof m === 'string' && MODEL_ID.test(m)))].slice(0, MAX_ADJ_MODELS);
+  return v.length ? v : undefined;
+}
+function adjFrom(x: unknown): Record<string, ModelAdjust> | undefined {
+  if (!x || typeof x !== 'object') return undefined;
+  const out: Record<string, ModelAdjust> = {};
+  for (const [m, v] of Object.entries(x as Record<string, unknown>).slice(0, MAX_ADJ_MODELS)) {
+    if (!MODEL_ID.test(m) || !v || typeof v !== 'object') continue;
+    const o = v as Record<string, unknown>;
+    const a: ModelAdjust = {};
+    if (o.hidden === true) a.hidden = true;
+    const n = (k: 'x' | 'y' | 'size' | 'w' | 'h' | 'rot' | 'v0' | 'v1' | 'dx' | 'dy', lo: number, hi: number) => {
+      if (typeof o[k] === 'number' && Number.isFinite(o[k])) a[k] = Math.min(hi, Math.max(lo, o[k] as number));
+    };
+    n('x', -2, 3); n('y', -2, 3); n('size', 0.01, 5); n('w', 0.005, 20); n('h', 0.005, 20); n('rot', -360, 360); n('v0', -2, 4); n('v1', -2, 4); n('dx', -3, 3); n('dy', -3, 3);
+    if (typeof o.colour === 'string' && /^#[0-9a-f]{6}$/i.test(o.colour)) a.colour = o.colour.toLowerCase();
+    if (Object.keys(a).length) out[m] = a;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 function layerFrom(x: unknown): Layer | null {
   if (!x || typeof x !== 'object') return null;
   const o = x as Record<string, unknown>;
@@ -369,6 +437,8 @@ function layerFrom(x: unknown): Layer | null {
     locked: o.locked === true || undefined,
     opacity: num(o.opacity, 1, 0, 1),
     region: one(o.region, REGIONS, 'fuselage'),
+    only: modelList(o.only),
+    adj: adjFrom(o.adj),
   };
   const frame = one(o.frame, FRAMES, 'body');
   const colour = hex(o.colour, '#ffffff');
