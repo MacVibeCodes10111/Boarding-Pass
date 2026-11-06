@@ -16,7 +16,7 @@ Needs `../supabase/2026-11-05-logos.sql` in Supabase first. From this folder:
 1. `npm install`
 2. `npx wrangler login`
 3. `npx wrangler d1 execute bp-uploads --remote --file schema.sql`
-4. `npx wrangler deploy`, and note the address it prints. It goes in `LOGOS_URL` in `src/game/cloud.ts`, and in `connect-src` in `vite.config.ts` and `src-tauri/tauri.conf.json`.
+4. `npx wrangler deploy`. Its address, `https://bp-logos.boardingpass-game.workers.dev`, is in `LOGOS_URL` in `src/game/cloud.ts`, and in `connect-src` in `vite.config.ts` and `src-tauri/tauri.conf.json`.
 5. `sh setup-cleanup-key.sh`, then run the line it prints in the Supabase SQL editor.
 
 ## Reviewing logos

@@ -39,8 +39,8 @@ const env = (import.meta as unknown as { env?: Record<string, string | undefined
 const SUPABASE_URL = (env.DEV && env.VITE_BP_SUPABASE_URL) || 'https://dlgkdknfxhmtkhpegufq.supabase.co';
 /** The project's publishable key: public by design (it only allows what the database lets players do). */
 const SUPABASE_KEY = (env.DEV && env.VITE_BP_SUPABASE_KEY) || 'sb_publishable_AP8t-FaDMPZ0dHYFezBqPQ_MDoYkfXv';
-// The logos Worker (cloud/logos-worker). Empty until it's deployed, and logos stay off until then.
-const LOGOS_URL = (env.DEV && env.VITE_BP_LOGOS_URL) || '';
+// The logos Worker (cloud/logos-worker). Logos stay off until the server's flag is on.
+const LOGOS_URL = (env.DEV && env.VITE_BP_LOGOS_URL) || 'https://bp-logos.boardingpass-game.workers.dev';
 
 /** Storage keys (listed on boardingpass.my/cookies.html). */
 export const CLOUD_SESSION_KEY = 'bp_cloud_session_v1';

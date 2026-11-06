@@ -14,7 +14,7 @@ const WEB_CSP = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://*.cartocdn.com https://basemaps.cartocdn.com https://tiles.maps.eox.at",
   "font-src 'self' data:",
-  "connect-src 'self' https://*.cartocdn.com https://basemaps.cartocdn.com https://tiles.maps.eox.at https://dlgkdknfxhmtkhpegufq.supabase.co",
+  "connect-src 'self' https://*.cartocdn.com https://basemaps.cartocdn.com https://tiles.maps.eox.at https://dlgkdknfxhmtkhpegufq.supabase.co https://bp-logos.boardingpass-game.workers.dev",
   "worker-src 'self' blob:",
   "child-src 'self' blob:",
   "object-src 'none'",

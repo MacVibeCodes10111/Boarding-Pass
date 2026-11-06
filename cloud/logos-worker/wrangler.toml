@@ -4,6 +4,7 @@
 name = "bp-logos"
 main = "src/index.ts"
 compatibility_date = "2026-10-13"
+workers_dev = true
 
 [vars]
 SUPABASE_URL = "https://dlgkdknfxhmtkhpegufq.supabase.co"
