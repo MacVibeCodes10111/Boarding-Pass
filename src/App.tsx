@@ -117,7 +117,7 @@ import { APP_VERSION } from './version';
 import { MainMenu } from './components/MainMenu';
 import { CloudHost, openCloud } from './components/CloudPanel';
 import { IS_DEV } from './game/channel';
-import { cloudDeleteSave, downloadCareer, newerCloudCopy, nextRev } from './game/cloud';
+import { cloudDeleteSave, downloadCareer, newerCloudCopy, nextRev, publishIfDue } from './game/cloud';
 import { RouteFromBar } from './components/RouteFromBar';
 import { WelcomeTour, tourWantedForNewCareer } from './components/WelcomeTour';
 import { C, PanelTabsContext, applyThemeToDocument, useThemeVersion } from './ui/kit';
@@ -798,6 +798,7 @@ export default function App() {
     const next = upsertSaveSlot(slots, { ...currentSaveState(isAutosave), rev: nextRev(prev) });
     if (!writeSaveSlots(next)) return false;
     setSavedGames(next);
+    void publishIfDue(next[0]);
     return true;
   };
 

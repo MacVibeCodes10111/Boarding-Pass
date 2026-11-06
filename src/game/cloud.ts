@@ -26,15 +26,18 @@
 // ============================================================================
 import type { SupabaseClient, User } from '@supabase/supabase-js';
 import { IS_DEV } from './channel';
-import { clearOnlineState, setFeatures } from './features';
+import { clearOnlineState, featureOn, setFeatures } from './features';
+import { buildProfile, profileKey } from './profile';
 import { IS_MAC } from './platform';
 import { openProtectedSave, protectSave } from './saveCrypt';
 import { MAX_SAVE_SLOTS, hasRoomForCareer, readSaveSlots, serializeSave, writeSaveSlots, isValidSave } from './saves';
 import type { SaveGameState } from './types';
 
-const SUPABASE_URL = 'https://dlgkdknfxhmtkhpegufq.supabase.co';
+const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {};
+// `npm run dev` can point at the build project (.env.development.local); a released build always uses the real one
+const SUPABASE_URL = (env.DEV && env.VITE_BP_SUPABASE_URL) || 'https://dlgkdknfxhmtkhpegufq.supabase.co';
 /** The project's publishable key: public by design (it only allows what the database lets players do). */
-const SUPABASE_KEY = 'sb_publishable_AP8t-FaDMPZ0dHYFezBqPQ_MDoYkfXv';
+const SUPABASE_KEY = (env.DEV && env.VITE_BP_SUPABASE_KEY) || 'sb_publishable_AP8t-FaDMPZ0dHYFezBqPQ_MDoYkfXv';
 
 /** Storage keys (listed on boardingpass.my/cookies.html). */
 export const CLOUD_SESSION_KEY = 'bp_cloud_session_v1';
@@ -279,7 +282,7 @@ export async function signOut(): Promise<void> {
   await c.auth.signOut({ scope: 'local' });
   store.remove(SYNCED_KEY);
   setPicks(null);
-  clearOnlineState();
+  forgetSharing();
 }
 
 /** Deletes the account and every cloud copy. Careers on devices stay. */
@@ -290,7 +293,14 @@ export async function deleteAccount(): Promise<void> {
   await c.auth.signOut({ scope: 'local' });
   store.remove(SYNCED_KEY);
   setPicks(null);
+  forgetSharing();
+}
+
+function forgetSharing() {
   clearOnlineState();
+  sharedSaveId = null;
+  lastPublishAt = 0;
+  lastPublishKey = '';
 }
 
 /** Reads which online features are on (see features.ts). Any failure leaves them all off. */
@@ -302,6 +312,92 @@ export async function refreshFeatures(): Promise<void> {
     setFeatures(error ? null : data);
   } catch {
     setFeatures(null);
+  }
+  if (featureOn('profiles')) await refreshSharedCareer();
+}
+
+// ---------------------------------------------------------------------------
+// The shared airline (A1): one career per account, kept on the server so every
+// device agrees. It's published when the player turns it on, then when its
+// details change, every few minutes at most.
+// ---------------------------------------------------------------------------
+const PUBLISH_EVERY_MS = 5 * 60_000;
+let sharedSaveId: string | null = null;
+let lastPublishAt = 0;
+let lastPublishKey = '';
+
+export const sharedCareerId = () => sharedSaveId;
+
+const PUBLISH_PROBLEM: Record<string, string> = {
+  bad_name: 'That airline’s name, code or callsign can’t be shared. Change it in Airline details and try again.',
+  bad_text: 'A name or text on this airline’s liveries can’t be shared. Change it in the livery editor and try again.',
+  bad_livery: 'This airline’s liveries can’t be shared. Open them in the livery editor, save, and try again.',
+  too_big: 'These liveries are too detailed to share. Remove some brush painting and try again.',
+  off: 'Sharing isn’t available right now.',
+};
+
+async function refreshSharedCareer() {
+  const c = await signedInClient().catch(() => null);
+  if (!c) return;
+  const { data, error } = await c.rpc('profile_mine', { p_channel: CHANNEL });
+  if (error) return;
+  const next = (data as { saveId?: string } | null)?.saveId ?? null;
+  if (next !== sharedSaveId) {
+    sharedSaveId = next;
+    notify();
+  }
+}
+
+async function publish(c: SupabaseClient, s: SaveGameState): Promise<string> {
+  const p = buildProfile(s);
+  const { data, error } = await c.rpc('profile_publish', {
+    p_channel: CHANNEL,
+    p_save_id: p.saveId,
+    p_airline: p.airline,
+    p_code: p.code,
+    p_callsign: p.callsign,
+    p_colours: p.colours,
+    p_liveries: p.liveries,
+    p_stats: p.stats,
+  });
+  if (error) throw new Error(friendlyAuthError(error.message));
+  if (data === 'saved') {
+    lastPublishAt = Date.now();
+    lastPublishKey = profileKey(p);
+  }
+  return String(data);
+}
+
+/** Shares this career (replacing any other this account was sharing). Says why if it can't. */
+export async function shareCareer(s: SaveGameState): Promise<void> {
+  const c = await signedInClient();
+  if (!c) throw new Error('Sign in to share your airline.');
+  const r = await publish(c, s);
+  if (r !== 'saved' && r !== 'too_soon') throw new Error(PUBLISH_PROBLEM[r] ?? 'Sharing didn’t work. Try again later.');
+  sharedSaveId = s.saveId;
+  notify();
+}
+
+/** Stops sharing: the server deletes the airline's profile straight away. */
+export async function stopSharing(): Promise<void> {
+  const c = await signedInClient();
+  if (!c) throw new Error('Sign in to change what you share.');
+  const { error } = await c.rpc('profile_delete', { p_channel: CHANNEL });
+  if (error) throw new Error(friendlyAuthError(error.message));
+  sharedSaveId = null;
+  lastPublishKey = '';
+  notify();
+}
+
+/** After a save: sends the shared career's details if they changed. Never gets in the way of playing. */
+export async function publishIfDue(s: SaveGameState, now = Date.now()): Promise<void> {
+  if (!featureOn('profiles') || sharedSaveId !== s.saveId || now - lastPublishAt < PUBLISH_EVERY_MS) return;
+  try {
+    if (profileKey(buildProfile(s)) === lastPublishKey) return;
+    const c = await signedInClient();
+    if (c) await publish(c, s);
+  } catch {
+    /* offline, or the details can't be shared right now: the last good copy stays */
   }
 }
 

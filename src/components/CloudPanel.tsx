@@ -27,6 +27,9 @@ import {
   lastSyncMs,
   mightBeSignedIn,
   refreshFeatures,
+  shareCareer,
+  sharedCareerId,
+  stopSharing,
   setAutoDownload,
   uploadCareer,
   recordAge,
@@ -139,21 +142,65 @@ export function CloudHost(props: {
 }
 
 /** What this player shares with others. Shows only when the server has switched online features on. */
-function OnlineSection(props: { row: React.CSSProperties; sectionTitle: (id: string, text: string) => React.ReactNode }) {
+function OnlineSection(props: { row: React.CSSProperties; sectionTitle: (id: string, text: string) => React.ReactNode; busy: boolean; act: (label: string, fn: () => Promise<unknown>) => Promise<void> }) {
   const [, redraw] = useState(0);
   const [sharing, setShared] = useState(readSharing);
   useEffect(() => {
     void refreshFeatures();
-    return onFeaturesChange(() => redraw((n) => n + 1));
+    const stopFeatures = onFeaturesChange(() => redraw((n) => n + 1));
+    const stopCloud = onCloudChange(() => redraw((n) => n + 1));
+    return () => {
+      stopFeatures();
+      stopCloud();
+    };
   }, []);
   if (!featureOn('online')) return null;
   const ready = SHARING.filter((s) => featureOn(s.feature));
+  const profiles = featureOn('profiles');
+  const careers = profiles ? readSaveSlots() : [];
+  const shared = sharedCareerId();
+  const share = (s: SaveGameState | undefined) => s && void props.act(`Sharing ${s.airlineName}…`, () => shareCareer(s));
   return (
     <section aria-labelledby="bp-online">
       {props.sectionTitle('bp-online', 'Online')}
-      <p style={{ fontSize: 12.5, color: C.muted, margin: ready.length ? '0 0 6px' : 0 }}>
-        {ready.length ? 'Nothing is shared with other players unless you turn it on here.' : 'Nothing is shared with other players. Sharing options will appear here when they’re ready, all off until you turn them on.'}
+      <p style={{ fontSize: 12.5, color: C.muted, margin: ready.length || profiles ? '0 0 8px' : 0 }}>
+        {ready.length || profiles ? 'Nothing is shared with other players unless you turn it on here.' : 'Nothing is shared with other players. Sharing options will appear here when they’re ready, all off until you turn them on.'}
       </p>
+      {profiles && (
+        <div style={{ ...props.row, display: 'grid', gap: 8, marginBottom: ready.length ? 6 : 0 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={shared !== null}
+              disabled={props.busy || (shared === null && careers.length === 0)}
+              onChange={(e) => {
+                if (e.target.checked) share(careers[0]);
+                else void props.act('Stopping sharing…', stopSharing);
+              }}
+              style={{ width: 18, height: 18, flex: 'none', accentColor: C.brand }}
+            />
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: 'block', fontWeight: 650 }}>Share my airline</span>
+              <span style={{ display: 'block', fontSize: 12, color: C.muted }}>
+                {careers.length === 0 && shared === null ? 'Start a career first.' : 'Its name, code, callsign, colours, liveries and a summary such as fleet size. Never your money, your flights or your account. Turning this off deletes it.'}
+              </span>
+            </span>
+          </label>
+          {shared !== null && careers.length > 0 && (
+            <label style={{ display: 'grid', gap: 4, fontSize: 12, color: C.muted }}>
+              Which career
+              <select value={careers.some((c) => c.saveId === shared) ? shared : ''} disabled={props.busy} onChange={(e) => share(careers.find((c) => c.saveId === e.target.value))} style={inputStyle}>
+                {!careers.some((c) => c.saveId === shared) && <option value="">A career on another device</option>}
+                {careers.map((c) => (
+                  <option key={c.saveId} value={c.saveId}>
+                    {c.airlineName}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
+      )}
       {ready.length > 0 && (
         <div style={{ display: 'grid', gap: 6 }}>
           {ready.map((s) => (
@@ -473,7 +520,7 @@ function SignedIn(props: {
         </Button>
       </div>
 
-      <OnlineSection row={row} sectionTitle={sectionTitle} />
+      <OnlineSection row={row} sectionTitle={sectionTitle} busy={props.busy} act={props.act} />
 
       <section aria-labelledby="bp-cloud-in">
         {sectionTitle('bp-cloud-in', 'In the cloud')}

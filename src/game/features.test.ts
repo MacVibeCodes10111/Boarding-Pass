@@ -57,19 +57,19 @@ describe('feature flags', () => {
 
 describe('sharing choices', () => {
   it('are off by default', () => {
-    expect(readSharing()).toEqual({ profile: false, map: false });
+    expect(readSharing()).toEqual({ map: false });
   });
 
   it('remember what the player turned on', () => {
-    setSharing('profile', true);
-    expect(readSharing()).toEqual({ profile: true, map: false });
-    setSharing('profile', false);
-    expect(readSharing().profile).toBe(false);
+    setSharing('map', true);
+    expect(readSharing()).toEqual({ map: true });
+    setSharing('map', false);
+    expect(readSharing().map).toBe(false);
   });
 
-  it.each(['not json', '[]', 'null', '{"profile":"true"}', '{"profile":1}'])('stay off with damaged storage: %s', (saved) => {
+  it.each(['not json', '[]', 'null', '{"map":"true"}', '{"map":1}'])('stay off with damaged storage: %s', (saved) => {
     mem.set(SHARING_KEY, saved);
-    expect(readSharing().profile).toBe(false);
+    expect(readSharing().map).toBe(false);
   });
 
   it('are forgotten on sign-out, along with the flags', () => {

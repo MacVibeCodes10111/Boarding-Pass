@@ -6,8 +6,9 @@
 //   unreachable counts as off. The server functions behind each feature check
 //   the same table, so these flags only decide what the game shows.
 //
-//   Sharing choices: what this player has agreed to share. All off until they
-//   turn them on, and forgotten when they sign out.
+//   Sharing choices kept on this device: all off until they're turned on, and
+//   forgotten on sign-out. Whether the airline itself is shared is kept on the
+//   server, so every device agrees (see cloud.ts).
 //
 //   How the online parts fit together: cloud/README.md.
 // ============================================================================
@@ -41,7 +42,6 @@ export function setFeatures(rows: unknown) {
 // ---------------------------------------------------------------------------
 export const SHARING_KEY = 'bp_online_sharing_v1';
 export const SHARING = [
-  { id: 'profile', feature: 'profiles', label: 'Share my airline', hint: 'Its name, colours, liveries and fleet size. Other players can see it.' },
   { id: 'map', feature: 'friends_map', label: 'Show my aircraft on friends’ maps', hint: 'Your schedule, so friends and alliance members can watch your flights.' },
 ] as const satisfies readonly { id: string; feature: Feature; label: string; hint: string }[];
 export type SharingId = (typeof SHARING)[number]['id'];

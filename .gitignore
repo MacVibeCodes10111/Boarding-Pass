@@ -8,3 +8,6 @@ src-tauri/gen/
 # Aircraft art working files
 tools/art/templates/
 tools/art/out/
+
+# npm run dev pointed at the build project (dev mode only, so never in a build)
+.env.development.local

@@ -19,6 +19,12 @@ Cloud saves are live with real players. The database they use is the one everyth
 
 The server functions live only in the Supabase project. Scripts for changes made since A0 are kept in `supabase/`, one file per change, in date order.
 
+## Building and testing
+
+New server code goes in the build project (`boarding-pass-build`) first; the live project only gets it at a checkpoint, once tested. To point `npm run dev` at the build project, put its address and publishable key in `.env.development.local` as `VITE_BP_SUPABASE_URL` and `VITE_BP_SUPABASE_KEY` (dev mode only, so it can't end up in a build). The build project has only what online features rely on, with stand-ins for the cloud save functions.
+
+The word filter on the server is made from `src/game/moderation.ts`. After changing its lists, run `npx vitest -u`, then run `supabase/moderation.sql` in both projects and check with `supabase/moderation-check.sql` (no rows means they agree). It treats letters spaced with two or more spaces (`a  s  s`) as separate words, on the server and in the game.
+
 ## Decided for the updates ahead
 
 - Other airlines' schedules go in R2 and are read through Cloudflare, not from Supabase: 20 friends at 200 KB each would use up Supabase's 5 GB a month in about 1,250 refreshes across all players. Republish only when a schedule changes.
