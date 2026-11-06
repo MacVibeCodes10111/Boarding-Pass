@@ -66,10 +66,39 @@ export function setSharing(id: SharingId, value: boolean) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// The legal documents, opened and agreed to before the Online area opens.
+// Change LEGAL_VERSION when they change in a way players should see again.
+// ---------------------------------------------------------------------------
+export const LEGAL_KEY = 'bp_online_legal_v1';
+export const LEGAL_VERSION = '2026-11-06';
+export const LEGAL_DOCS = [
+  { label: 'Terms of use', url: 'https://boardingpass.my/terms.html' },
+  { label: 'Privacy policy', url: 'https://boardingpass.my/privacy.html' },
+  { label: 'Cookies and storage', url: 'https://boardingpass.my/cookies.html' },
+] as const;
+
+export function legalAccepted(): boolean {
+  try {
+    return localStorage.getItem(LEGAL_KEY) === LEGAL_VERSION;
+  } catch {
+    return false;
+  }
+}
+
+export function acceptLegal() {
+  try {
+    localStorage.setItem(LEGAL_KEY, LEGAL_VERSION);
+  } catch {
+    /* storage unavailable: it'll ask again next time */
+  }
+}
+
 /** Signing out: nothing carries over to whoever signs in next. */
 export function clearOnlineState() {
   try {
     localStorage.removeItem(SHARING_KEY);
+    localStorage.removeItem(LEGAL_KEY);
   } catch {
     /* storage unavailable */
   }

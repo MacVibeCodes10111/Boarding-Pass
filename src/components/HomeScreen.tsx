@@ -33,6 +33,7 @@ export interface HomeScreenProps {
   onDeleteSave: (saveId: string) => void;
   onImportFile: (file: File) => void;
   onCloud: () => void;
+  onOnline: () => void;
   /** A career was downloaded from the cloud: re-read the save slots. */
   onCloudDownloaded: () => void;
   toast: (message: string) => void;
@@ -212,6 +213,10 @@ export function HomeScreen(props: HomeScreenProps) {
             <Button size="sm" variant="ghost" onClick={props.onCloud}>
               <Icon name="swap" size={14} />
               Cloud saves
+            </Button>
+            <Button size="sm" variant="ghost" onClick={props.onOnline}>
+              <Icon name="globe" size={14} />
+              Online
             </Button>
             <Button size="sm" variant="ghost" onClick={() => importRef.current?.click()}>
               <Icon name="upload" size={14} />

@@ -59,6 +59,12 @@ const MAX_UPLOAD_CHARS = 3_000_000;
 
 export const inDesktopApp = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
+/** Opens a web page in the player's browser, from the desktop apps. */
+export async function openExternal(url: string): Promise<void> {
+  const { openUrl } = await import('@tauri-apps/plugin-opener');
+  await openUrl(url);
+}
+
 const store = {
   get(k: string): string | null {
     try {

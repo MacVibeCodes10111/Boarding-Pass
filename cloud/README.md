@@ -6,12 +6,13 @@ Cloud saves are live with real players. The database they use is the one everyth
 
 ## Rules
 
+- **The Online window** (`src/components/OnlinePanel.tsx`) is separate from Cloud saves, and asks a player to open the legal documents and agree before signing in or going further. Change `LEGAL_VERSION` in `src/game/features.ts` when they change in a way players should see again.
 - **Nothing shared without asking.** Every sharing choice is off until the player turns it on (`src/game/features.ts`). A player who never signs in sends nothing anywhere, which the privacy policy promises, so flags are only read after sign-in.
 - **The server decides.** The game is on the player's device and can be changed, so every limit and check is repeated on the server, and everything read from another player is checked again before it's used or drawn.
 - **Players can't touch tables directly.** Row Level Security is on everywhere. Anything that changes data goes through `security definer` functions with `search_path = ''`, which check the signed-in player (`auth.uid()`) and that the feature is on (`private.feature_on`).
 - **Dev stays separate.** Dev builds and the test site use channel `dev` and never exchange data with the real game.
 - **Keys.** The publishable key in the game is public by design. The service-role key stays in the dashboards. A Worker that has to remove files for an account that no longer exists keeps its key as a Cloudflare secret.
-- **Keep the legal promises.** `website/terms.html` and `privacy.html` say what players are promised. If something would go beyond them, stop and update them first.
+- **Keep the legal promises.** `website/terms.html` and `privacy.html` say what players are promised. If something would go beyond them, stop and update them first. They promise that reports and the admin log are deleted after 12 months at most, and that those records and marketplace trades (with a placeholder) outlast account deletion, so A5 to A6 and B must do exactly that. There's no chat of any kind. If a breach happens, follow `INCIDENT-PLAN.md`.
 
 ## Feature flags
 

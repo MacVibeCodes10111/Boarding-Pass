@@ -27,10 +27,6 @@ import {
   lastSyncMs,
   mightBeSignedIn,
   refreshFeatures,
-  logoReview,
-  shareCareer,
-  sharedCareerId,
-  stopSharing,
   setAutoDownload,
   uploadCareer,
   recordAge,
@@ -44,7 +40,6 @@ import {
   type CloudUser,
   type SyncReport,
 } from '../game/cloud';
-import { SHARING, featureOn, onFeaturesChange, readSharing, setSharing } from '../game/features';
 import { readSaveSlots } from '../game/saves';
 import type { SaveGameState } from '../game/types';
 import { Icon } from '../ui/icons';
@@ -52,7 +47,7 @@ import { Button, C, DISPLAY, ModalShell, Segmented, inputStyle, labelStyle } fro
 
 const SYNC_EVERY_MS = 3 * 60_000;
 const OPEN_EVENT = 'bp-open-cloud';
-const CHANGED_EVENT = 'bp-cloud-changed';
+export const CHANGED_EVENT = 'bp-cloud-changed';
 const SITE = 'https://boardingpass.my';
 
 /** Opens the Cloud saves window from anywhere (Menu, home screen). */
@@ -142,105 +137,6 @@ export function CloudHost(props: {
   return open ? <CloudModal onClose={() => setOpen(false)} openSaveId={props.openSaveId} onSlotsChanged={props.onSlotsChanged} /> : null;
 }
 
-/** What this player shares with others. Shows only when the server has switched online features on. */
-function OnlineSection(props: { row: React.CSSProperties; sectionTitle: (id: string, text: string) => React.ReactNode; busy: boolean; act: (label: string, fn: () => Promise<unknown>) => Promise<void> }) {
-  const [, redraw] = useState(0);
-  const [sharing, setShared] = useState(readSharing);
-  useEffect(() => {
-    void refreshFeatures();
-    const stopFeatures = onFeaturesChange(() => redraw((n) => n + 1));
-    const stopCloud = onCloudChange(() => redraw((n) => n + 1));
-    return () => {
-      stopFeatures();
-      stopCloud();
-    };
-  }, []);
-  if (!featureOn('online')) return null;
-  const ready = SHARING.filter((s) => featureOn(s.feature));
-  const profiles = featureOn('profiles');
-  const careers = profiles ? readSaveSlots() : [];
-  const shared = sharedCareerId();
-  const share = (s: SaveGameState | undefined) => s && void props.act(`Sharing ${s.airlineName}…`, () => shareCareer(s));
-  const review = logoReview();
-  return (
-    <section aria-labelledby="bp-online">
-      {props.sectionTitle('bp-online', 'Online')}
-      <p style={{ fontSize: 12.5, color: C.muted, margin: ready.length || profiles ? '0 0 8px' : 0 }}>
-        {ready.length || profiles ? 'Nothing is shared with other players unless you turn it on here.' : 'Nothing is shared with other players. Sharing options will appear here when they’re ready, all off until you turn them on.'}
-      </p>
-      {profiles && (
-        <div style={{ ...props.row, display: 'grid', gap: 8, marginBottom: ready.length ? 6 : 0 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={shared !== null}
-              disabled={props.busy || (shared === null && careers.length === 0)}
-              onChange={(e) => {
-                if (e.target.checked) share(careers[0]);
-                else void props.act('Stopping sharing…', stopSharing);
-              }}
-              style={{ width: 18, height: 18, flex: 'none', accentColor: C.brand }}
-            />
-            <span style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ display: 'block', fontWeight: 650 }}>Share my airline</span>
-              <span style={{ display: 'block', fontSize: 12, color: C.muted }}>
-                {careers.length === 0 && shared === null ? 'Start a career first.' : `Its name, code, callsign, colours, liveries${featureOn('logos') ? ', logos (checked before other players see them)' : ''} and a summary such as fleet size. Never your money, your flights or your account. Turning this off deletes it.`}
-              </span>
-            </span>
-          </label>
-          {shared !== null && careers.length > 0 && (
-            <label style={{ display: 'grid', gap: 4, fontSize: 12, color: C.muted }}>
-              Which career
-              <select value={careers.some((c) => c.saveId === shared) ? shared : ''} disabled={props.busy} onChange={(e) => share(careers.find((c) => c.saveId === e.target.value))} style={inputStyle}>
-                {!careers.some((c) => c.saveId === shared) && <option value="">A career on another device</option>}
-                {careers.map((c) => (
-                  <option key={c.saveId} value={c.saveId}>
-                    {c.airlineName}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {shared !== null && review.waiting > 0 && (
-            <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>
-              {review.waiting === 1 ? '1 logo is' : `${review.waiting} logos are`} waiting for review. Other players see your liveries without {review.waiting === 1 ? 'it' : 'them'} until then.
-            </p>
-          )}
-          {shared !== null && review.refused > 0 && (
-            <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>
-              {review.refused === 1 ? '1 logo wasn’t' : `${review.refused} logos weren’t`} approved, so other players won’t see {review.refused === 1 ? 'it' : 'them'}. You still will.
-            </p>
-          )}
-        </div>
-      )}
-      {ready.length > 0 && (
-        <div style={{ display: 'grid', gap: 6 }}>
-          {ready.map((s) => (
-            <label key={s.id} style={{ ...props.row, cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={sharing[s.id]}
-                onChange={(e) => {
-                  setSharing(s.id, e.target.checked);
-                  setShared(readSharing());
-                }}
-                style={{ width: 18, height: 18, flex: 'none', accentColor: C.brand }}
-              />
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ display: 'block', fontWeight: 650 }}>{s.label}</span>
-                <span style={{ display: 'block', fontSize: 12, color: C.muted }}>{s.hint}</span>
-              </span>
-            </label>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// The window
-// ---------------------------------------------------------------------------
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 function ago(ms: number): string {
@@ -338,7 +234,7 @@ function CloudModal(props: { onClose: () => void; openSaveId: string | null; onS
   );
 }
 
-function AgeCheck(props: { onDone: (a: AgeStatus) => void }) {
+export function AgeCheck(props: { onDone: (a: AgeStatus) => void }) {
   const [month, setMonth] = useState('');
   const [year, setYear] = useState('');
   const thisYear = new Date().getFullYear();
@@ -385,8 +281,14 @@ function AgeCheck(props: { onDone: (a: AgeStatus) => void }) {
   );
 }
 
-function SignInForm(props: { busy: boolean; act: (label: string, fn: () => Promise<unknown>) => Promise<void> }) {
-  const [agree, setAgree] = useState(false);
+export function SignInForm(props: {
+  busy: boolean;
+  act: (label: string, fn: () => Promise<unknown>) => Promise<void>;
+  /** They've already agreed to the legal documents (the Online window asks first). */
+  agreed?: boolean;
+}) {
+  const [ticked, setAgree] = useState(false);
+  const agree = ticked || props.agreed === true;
   const [mode, setMode] = useState<'signin' | 'create'>('signin');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -395,6 +297,7 @@ function SignInForm(props: { busy: boolean; act: (label: string, fn: () => Promi
   const viaBrowser = desktop ? ' Your browser opens to sign in, then brings you back here.' : '';
   return (
     <div>
+      {!props.agreed && (
       <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13.5, lineHeight: 1.45, marginBottom: 12, cursor: 'pointer' }}>
         <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} style={{ width: 18, height: 18, marginTop: 1, flex: 'none' }} />
         <span>
@@ -409,6 +312,7 @@ function SignInForm(props: { busy: boolean; act: (label: string, fn: () => Promi
           .
         </span>
       </label>
+      )}
 
       <div style={{ display: 'grid', gap: 8 }}>
         <Button block size="lg" disabled={disabled} onClick={() => props.act(desktop ? 'Opening Google in your browser…' : 'Opening Google…', () => signInWith('google'))}>
@@ -532,7 +436,6 @@ function SignedIn(props: {
         </Button>
       </div>
 
-      <OnlineSection row={row} sectionTitle={sectionTitle} busy={props.busy} act={props.act} />
 
       <section aria-labelledby="bp-cloud-in">
         {sectionTitle('bp-cloud-in', 'In the cloud')}

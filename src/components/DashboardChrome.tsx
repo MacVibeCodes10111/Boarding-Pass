@@ -669,6 +669,7 @@ export function NavRail(props: {
   /** Opens a group on its last-used tab. */
   onOpenGroup: (g: 'airline' | 'buy') => void;
   onSave: () => void;
+  onOnline: () => void;
   onMenu: () => void;
   version: string;
 }) {
@@ -702,6 +703,7 @@ export function NavRail(props: {
         title="Loans, milestones and letters from the bank"
         badge={props.bankBadge}
       />
+      <RailButton tab={tab} icon="globe" label="Online" onClick={props.onOnline} title="Share your airline, friends and alliances" />
       {!tab && <span aria-hidden style={{ width: 1, alignSelf: 'stretch', margin: '10px 4px', background: C.line }} />}
       {/* On a phone Save lives in the menu (the career autosaves anyway) */}
       {!tab && <RailButton icon="save" label="Save" onClick={props.onSave} title="Save career now (it also autosaves every minute)" />}

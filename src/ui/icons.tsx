@@ -4,6 +4,7 @@
 import type React from 'react';
 
 export type IconName =
+  | 'globe'
   | 'clock'
   | 'map'
   | 'fleet'
@@ -35,6 +36,7 @@ export type IconName =
   | 'chart';
 
 const PATHS: Record<IconName, React.ReactNode> = {
+  globe: <path d="M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14ZM3 10h14M10 3c1.9 1.9 2.9 4.3 2.9 7s-1 5.1-2.9 7c-1.9-1.9-2.9-4.3-2.9-7s1-5.1 2.9-7Z" />,
   map: <path d="M3 5.5 7.5 4l5 1.5L17 4v10.5L12.5 16l-5-1.5L3 16V5.5ZM7.5 4v10.5M12.5 5.5V16" />,
   // a plane seen from above
   fleet: <path d="M10 2.5c.7 0 1.1.8 1.1 1.8v3.4l5.4 3.1v1.6l-5.4-1.6v3.3l1.7 1.3v1.3L10 16.1l-2.8.6v-1.3l1.7-1.3v-3.3L3.5 12.4v-1.6l5.4-3.1V4.3c0-1 .4-1.8 1.1-1.8Z" />,

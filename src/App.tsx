@@ -116,6 +116,7 @@ import type {
 import { APP_VERSION } from './version';
 import { MainMenu } from './components/MainMenu';
 import { CloudHost, openCloud } from './components/CloudPanel';
+import { OnlineHost, openOnline } from './components/OnlinePanel';
 import { IS_DEV } from './game/channel';
 import { cloudDeleteSave, downloadCareer, newerCloudCopy, nextRev, publishIfDue } from './game/cloud';
 import { RouteFromBar } from './components/RouteFromBar';
@@ -1645,8 +1646,10 @@ export default function App() {
     return (
       <>
         <CloudHost openSaveId={null} onSlotsChanged={() => setSavedGames(readSaveSlots())} toast={flashToast} />
+        <OnlineHost />
         <HomeScreen
           onCloud={openCloud}
+          onOnline={openOnline}
           onCloudDownloaded={() => setSavedGames(readSaveSlots())}
           toast={flashToast}
           airlineName={airlineName}
@@ -1788,10 +1791,12 @@ export default function App() {
         onOpen={setPanel}
         onOpenGroup={openGroup}
         onSave={saveCareer}
+        onOnline={openOnline}
         onMenu={() => setMenuOpen(true)}
         version={APP_VERSION}
       />
       <CloudHost openSaveId={activeSaveId} onSlotsChanged={() => setSavedGames(readSaveSlots())} toast={flashToast} />
+      <OnlineHost />
       {liveryOpen && (
         <LiveryEditor
           liveries={liveries}

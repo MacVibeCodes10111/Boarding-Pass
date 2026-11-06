@@ -7,7 +7,7 @@ vi.stubGlobal('localStorage', {
   removeItem: (k: string) => void mem.delete(k),
 });
 
-const { SHARING_KEY, clearOnlineState, featureOn, onFeaturesChange, readSharing, setFeatures, setSharing } = await import('./features');
+const { LEGAL_KEY, SHARING_KEY, acceptLegal, clearOnlineState, featureOn, legalAccepted, onFeaturesChange, readSharing, setFeatures, setSharing } = await import('./features');
 
 beforeEach(() => {
   mem.clear();
@@ -78,5 +78,22 @@ describe('sharing choices', () => {
     clearOnlineState();
     expect(readSharing().map).toBe(false);
     expect(featureOn('online')).toBe(false);
+  });
+});
+
+describe('agreeing to the legal documents', () => {
+  it('starts not agreed, and stays agreed once they have', () => {
+    expect(legalAccepted()).toBe(false);
+    acceptLegal();
+    expect(legalAccepted()).toBe(true);
+  });
+  it('asks again when the documents change', () => {
+    localStorage.setItem(LEGAL_KEY, '2020-01-01');
+    expect(legalAccepted()).toBe(false);
+  });
+  it('is forgotten on sign-out', () => {
+    acceptLegal();
+    clearOnlineState();
+    expect(legalAccepted()).toBe(false);
   });
 });
