@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_LIVERY_CHARS, buildProfile, profileKey } from './profile';
+import { MAX_LIVERY_CHARS, buildProfile, liveryFromProfile, logoBytes, logoHash, profileKey } from './profile';
+import { sha256Hex } from './sha256';
 import type { Livery } from './livery';
 import type { SaveGameState } from './types';
 
@@ -85,5 +86,81 @@ describe('the profile’s key', () => {
     expect(profileKey(buildProfile(save()))).toBe(a);
     expect(profileKey(buildProfile(save({ cash: 5 })))).toBe(a);
     expect(profileKey(buildProfile(save({ airlineName: 'Other Air' })))).not.toBe(a);
+  });
+});
+
+// A 1×1 PNG: the picture's bytes are what get hashed, not the data URL
+const PICTURE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAEBgIApD5fRAAAAABJRU5ErkJggg==';
+const withLogo = () =>
+  save({ liveries: [{ v: 2, name: 'Main', badge: 'a', logos: { a: PICTURE, unused: LOGO }, layers: [layer({ kind: 'fill', colour: '#ffffff' }), layer({ kind: 'logo', frame: 'fin', logo: 'a', x: 0.5, y: 0.5, size: 1, rot: 0 })] } as unknown as Livery] });
+
+describe('logos in a profile', () => {
+  it('names a logo by its picture’s hash, the way the Worker does', () => {
+    expect(logoHash(PICTURE)).toBe(sha256Hex(logoBytes(PICTURE)));
+    expect(logoHash(PICTURE)).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('shares logos by name only, so pictures never go to the database', () => {
+    const p = buildProfile(withLogo(), { logos: true });
+    const h = logoHash(PICTURE);
+    const shared = p.liveries[0] as { layers: { kind: string; logo?: string }[]; badge?: string };
+    expect(shared.badge).toBe(h);
+    expect(shared.layers.find((l) => l.kind === 'logo')?.logo).toBe(h);
+    expect(JSON.stringify(p.liveries)).not.toContain('data:');
+  });
+
+  it('only uploads logos the liveries actually use', () => {
+    expect(Object.keys(buildProfile(withLogo(), { logos: true }).logos)).toEqual([logoHash(PICTURE)]);
+  });
+
+  it('leaves logos out when they’re switched off', () => {
+    const p = buildProfile(withLogo());
+    expect(p.logos).toEqual({});
+    expect(JSON.stringify(p.liveries)).not.toContain(logoHash(PICTURE));
+    expect(p.liveries[0]).not.toHaveProperty('badge');
+  });
+
+  it('notices when a logo is swapped, though the layout is the same', () => {
+    const other = withLogo();
+    other.liveries![0].logos.a = 'data:image/png;base64,AAAA';
+    expect(profileKey(buildProfile(other, { logos: true }))).not.toBe(profileKey(buildProfile(withLogo(), { logos: true })));
+  });
+
+  it('comes back as a livery that can be painted', () => {
+    const shared = buildProfile(withLogo(), { logos: true }).liveries[0];
+    const l = liveryFromProfile(shared, { [logoHash(PICTURE)]: PICTURE })!;
+    const logo = l.layers.find((x) => x.kind === 'logo') as Extract<Livery['layers'][number], { kind: 'logo' }>;
+    expect(l.logos[logo.logo]).toBe(PICTURE);
+    expect(l.badge).toBe(logo.logo);
+    expect(new Set(l.layers.map((x) => x.id)).size).toBe(l.layers.length);
+  });
+
+  it('draws a livery without a logo that’s waiting for review', () => {
+    const shared = buildProfile(withLogo(), { logos: true }).liveries[0];
+    const l = liveryFromProfile(shared, {})!;
+    expect(l.layers.map((x) => x.kind)).toEqual(['fill']);
+    expect(l.badge).toBeUndefined();
+  });
+
+  it('won’t take a picture that isn’t a real logo from another player', () => {
+    const shared = buildProfile(withLogo(), { logos: true }).liveries[0];
+    const l = liveryFromProfile(shared, { [logoHash(PICTURE)]: 'https://example.com/x.png' })!;
+    expect(l.layers.map((x) => x.kind)).toEqual(['fill']);
+  });
+});
+
+describe('sha256', () => {
+  const text = (s: string) => new TextEncoder().encode(s);
+  it('matches the published test values', () => {
+    expect(sha256Hex(text(''))).toBe('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');
+    expect(sha256Hex(text('abc'))).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+    expect(sha256Hex(text('abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq'))).toBe('248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1');
+  });
+  it('matches the browser’s own at every padding length', async () => {
+    for (const n of [55, 56, 63, 64, 65, 119, 120, 16384]) {
+      const b = new Uint8Array(n).map((_, i) => i * 31);
+      const real = [...new Uint8Array(await crypto.subtle.digest('SHA-256', b))].map((x) => x.toString(16).padStart(2, '0')).join('');
+      expect(sha256Hex(b)).toBe(real);
+    }
   });
 });

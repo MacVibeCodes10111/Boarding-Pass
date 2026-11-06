@@ -27,6 +27,7 @@ import {
   lastSyncMs,
   mightBeSignedIn,
   refreshFeatures,
+  logoReview,
   shareCareer,
   sharedCareerId,
   stopSharing,
@@ -160,6 +161,7 @@ function OnlineSection(props: { row: React.CSSProperties; sectionTitle: (id: str
   const careers = profiles ? readSaveSlots() : [];
   const shared = sharedCareerId();
   const share = (s: SaveGameState | undefined) => s && void props.act(`Sharing ${s.airlineName}…`, () => shareCareer(s));
+  const review = logoReview();
   return (
     <section aria-labelledby="bp-online">
       {props.sectionTitle('bp-online', 'Online')}
@@ -182,7 +184,7 @@ function OnlineSection(props: { row: React.CSSProperties; sectionTitle: (id: str
             <span style={{ flex: 1, minWidth: 0 }}>
               <span style={{ display: 'block', fontWeight: 650 }}>Share my airline</span>
               <span style={{ display: 'block', fontSize: 12, color: C.muted }}>
-                {careers.length === 0 && shared === null ? 'Start a career first.' : 'Its name, code, callsign, colours, liveries and a summary such as fleet size. Never your money, your flights or your account. Turning this off deletes it.'}
+                {careers.length === 0 && shared === null ? 'Start a career first.' : `Its name, code, callsign, colours, liveries${featureOn('logos') ? ', logos (checked before other players see them)' : ''} and a summary such as fleet size. Never your money, your flights or your account. Turning this off deletes it.`}
               </span>
             </span>
           </label>
@@ -198,6 +200,16 @@ function OnlineSection(props: { row: React.CSSProperties; sectionTitle: (id: str
                 ))}
               </select>
             </label>
+          )}
+          {shared !== null && review.waiting > 0 && (
+            <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>
+              {review.waiting === 1 ? '1 logo is' : `${review.waiting} logos are`} waiting for review. Other players see your liveries without {review.waiting === 1 ? 'it' : 'them'} until then.
+            </p>
+          )}
+          {shared !== null && review.refused > 0 && (
+            <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>
+              {review.refused === 1 ? '1 logo wasn’t' : `${review.refused} logos weren’t`} approved, so other players won’t see {review.refused === 1 ? 'it' : 'them'}. You still will.
+            </p>
           )}
         </div>
       )}

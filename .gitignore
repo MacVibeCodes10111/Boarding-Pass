@@ -11,3 +11,7 @@ tools/art/out/
 
 # npm run dev pointed at the build project (dev mode only, so never in a build)
 .env.development.local
+
+# The logos Worker's local files
+cloud/logos-worker/.wrangler/
+cloud/logos-worker/.dev.vars

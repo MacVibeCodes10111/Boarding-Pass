@@ -27,7 +27,8 @@
 import type { SupabaseClient, User } from '@supabase/supabase-js';
 import { IS_DEV } from './channel';
 import { clearOnlineState, featureOn, setFeatures } from './features';
-import { buildProfile, profileKey } from './profile';
+import { buildProfile, logoBytes, profileKey, type Profile } from './profile';
+import { normaliseLogo } from './livery';
 import { IS_MAC } from './platform';
 import { openProtectedSave, protectSave } from './saveCrypt';
 import { MAX_SAVE_SLOTS, hasRoomForCareer, readSaveSlots, serializeSave, writeSaveSlots, isValidSave } from './saves';
@@ -38,6 +39,8 @@ const env = (import.meta as unknown as { env?: Record<string, string | undefined
 const SUPABASE_URL = (env.DEV && env.VITE_BP_SUPABASE_URL) || 'https://dlgkdknfxhmtkhpegufq.supabase.co';
 /** The project's publishable key: public by design (it only allows what the database lets players do). */
 const SUPABASE_KEY = (env.DEV && env.VITE_BP_SUPABASE_KEY) || 'sb_publishable_AP8t-FaDMPZ0dHYFezBqPQ_MDoYkfXv';
+// The logos Worker (cloud/logos-worker). Empty until it's deployed, and logos stay off until then.
+const LOGOS_URL = (env.DEV && env.VITE_BP_LOGOS_URL) || '';
 
 /** Storage keys (listed on boardingpass.my/cookies.html). */
 export const CLOUD_SESSION_KEY = 'bp_cloud_session_v1';
@@ -301,6 +304,8 @@ function forgetSharing() {
   sharedSaveId = null;
   lastPublishAt = 0;
   lastPublishKey = '';
+  logosInSync = '';
+  logoStatus = {};
 }
 
 /** Reads which online features are on (see features.ts). Any failure leaves them all off. */
@@ -346,10 +351,12 @@ async function refreshSharedCareer() {
     sharedSaveId = next;
     notify();
   }
+  await refreshLogoReview(c);
 }
 
-async function publish(c: SupabaseClient, s: SaveGameState): Promise<string> {
-  const p = buildProfile(s);
+const profileOf = (s: SaveGameState) => buildProfile(s, { logos: logosReady() });
+
+async function publish(c: SupabaseClient, p: Profile): Promise<string> {
   const { data, error } = await c.rpc('profile_publish', {
     p_channel: CHANNEL,
     p_save_id: p.saveId,
@@ -372,13 +379,15 @@ async function publish(c: SupabaseClient, s: SaveGameState): Promise<string> {
 export async function shareCareer(s: SaveGameState): Promise<void> {
   const c = await signedInClient();
   if (!c) throw new Error('Sign in to share your airline.');
-  const r = await publish(c, s);
+  const p = profileOf(s);
+  const r = await publish(c, p);
   if (r !== 'saved' && r !== 'too_soon') throw new Error(PUBLISH_PROBLEM[r] ?? 'Sharing didn’t work. Try again later.');
   sharedSaveId = s.saveId;
   notify();
+  await syncLogos(c, p);
 }
 
-/** Stops sharing: the server deletes the airline's profile straight away. */
+/** Stops sharing: the server deletes the airline's profile straight away, and its logos go with it. */
 export async function stopSharing(): Promise<void> {
   const c = await signedInClient();
   if (!c) throw new Error('Sign in to change what you share.');
@@ -386,18 +395,108 @@ export async function stopSharing(): Promise<void> {
   if (error) throw new Error(friendlyAuthError(error.message));
   sharedSaveId = null;
   lastPublishKey = '';
+  logosInSync = '';
+  logoStatus = {};
   notify();
+  // If this doesn't get through, the server has queued them for the nightly clean-up
+  await logoRequest(c, '', { method: 'DELETE' }).catch(() => undefined);
 }
 
 /** After a save: sends the shared career's details if they changed. Never gets in the way of playing. */
 export async function publishIfDue(s: SaveGameState, now = Date.now()): Promise<void> {
   if (!featureOn('profiles') || sharedSaveId !== s.saveId || now - lastPublishAt < PUBLISH_EVERY_MS) return;
   try {
-    if (profileKey(buildProfile(s)) === lastPublishKey) return;
+    const p = profileOf(s);
+    const unchanged = profileKey(p) === lastPublishKey;
+    if (unchanged && logosInSync === logoSet(p)) return;
     const c = await signedInClient();
-    if (c) await publish(c, s);
+    if (!c) return;
+    if (unchanged) {
+      lastPublishAt = now;
+      return await syncLogos(c, p);
+    }
+    if ((await publish(c, p)) === 'saved') await syncLogos(c, p);
   } catch {
     /* offline, or the details can't be shared right now: the last good copy stays */
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shared logos (A2): pictures go to the Worker, and other players see them once
+// they're approved. A player's own copy stays in their save, so nothing about
+// playing depends on any of this: a failure here is tried again later.
+// ---------------------------------------------------------------------------
+let logoStatus: Record<string, string> = {};
+/** The set of logos last fully uploaded. */
+let logosInSync = '';
+
+/** Logos are shared only once the Worker's address is in the game and the server has them switched on. */
+const logosReady = () => Boolean(LOGOS_URL) && featureOn('logos');
+const logoSet = (p: Profile) => Object.keys(p.logos).sort().join(',');
+
+/** How the shared airline's logos are doing in review. */
+export function logoReview(): { waiting: number; refused: number } {
+  const all = Object.values(logoStatus);
+  return { waiting: all.filter((x) => x === 'pending').length, refused: all.filter((x) => x === 'rejected').length };
+}
+
+async function logoRequest(c: SupabaseClient, path: string, init: RequestInit): Promise<Response> {
+  const { data } = await c.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token || !LOGOS_URL) throw new Error('No logo service');
+  const res = await fetch(`${LOGOS_URL}/logo${path}?channel=${CHANNEL}`, { ...init, headers: { ...init.headers, authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`Logo service: ${res.status}`);
+  return res;
+}
+
+/** Makes the Worker hold exactly the logos this profile uses. Fails quietly: the next save tries again. */
+async function syncLogos(c: SupabaseClient, p: Profile): Promise<void> {
+  if (!logosReady()) return;
+  try {
+    const keep = Object.keys(p.logos);
+    const had = (await (await logoRequest(c, '/sync', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ keep }) })).json()) as { logos: Record<string, string> };
+    const next = { ...had.logos };
+    for (const hash of keep) {
+      if (next[hash]) continue;
+      const url = p.logos[hash];
+      const bytes = logoBytes(url);
+      const res = await logoRequest(c, '', { method: 'PUT', headers: { 'content-type': url.slice(5, url.indexOf(';')) }, body: bytes.slice().buffer });
+      next[hash] = ((await res.json()) as { status: string }).status;
+    }
+    logoStatus = next;
+    logosInSync = logoSet(p);
+    notify();
+  } catch {
+    logosInSync = 'failed';
+  }
+}
+
+/** Reads how this player's logos are doing in review. */
+async function refreshLogoReview(c: SupabaseClient) {
+  if (!logosReady() || !sharedSaveId) return;
+  try {
+    logoStatus = ((await (await logoRequest(c, '/mine', { method: 'GET' })).json()) as { logos: Record<string, string> }).logos;
+    notify();
+  } catch {
+    /* it'll show the last known state */
+  }
+}
+
+/** Another player's logo as a data URL, or null if it isn't approved or can't be fetched. */
+export async function fetchSharedLogo(hash: string): Promise<string | null> {
+  if (!LOGOS_URL || !/^[0-9a-f]{64}$/.test(hash)) return null;
+  try {
+    const res = await fetch(`${LOGOS_URL}/logo/${hash}`);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise((resolve) => {
+      const r = new FileReader();
+      r.onload = () => resolve(normaliseLogo(r.result) ?? null);
+      r.onerror = () => resolve(null);
+      r.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
   }
 }
 

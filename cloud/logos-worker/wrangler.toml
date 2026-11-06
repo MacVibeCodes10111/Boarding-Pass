@@ -1,14 +1,17 @@
-# Boarding Pass logo uploads (stage 2 of liveries): keeps players' 128x128
-# livery logos in the R2 bucket, with a hard 10 GB cap on the whole bucket.
-# Deploy: npx wrangler deploy (from this folder). No secrets are needed: the
-# Worker checks players' Supabase sign-ins with Supabase's public keys.
+# Boarding Pass logos (Update A, phase A2): keeps players' 128x128 livery logos
+# in the R2 bucket, with a hard cap on the whole bucket. See README.md to deploy.
+# Everything here is public. The one secret, CLEANUP_KEY, lives only in Cloudflare.
 name = "bp-logos"
 main = "src/index.ts"
 compatibility_date = "2026-10-13"
 
 [vars]
 SUPABASE_URL = "https://dlgkdknfxhmtkhpegufq.supabase.co"
+SUPABASE_KEY = "sb_publishable_AP8t-FaDMPZ0dHYFezBqPQ_MDoYkfXv"
 ALLOWED_ORIGINS = "https://play.boardingpass.my,https://test.boardingpass.my,tauri://localhost,http://tauri.localhost,https://tauri.localhost,http://localhost:1420"
+
+[triggers]
+crons = ["17 4 * * *"]
 
 [[r2_buckets]]
 binding = "LOGOS"
