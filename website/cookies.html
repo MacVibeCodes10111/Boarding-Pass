@@ -34,21 +34,21 @@
 
     <main id="main" class="page legal">
       <h1>Cookies and storage</h1>
-      <p class="updated">Last updated 3 November 2026.</p>
-      <p><strong>Short version:</strong> neither the game nor this website sets any cookies. There are no analytics, advertising or tracking cookies, pixels or fingerprinting. The game keeps your careers and settings in your browser's storage on your device, only so it works. Nothing in it leaves your device, except your careers if you sign in to cloud saves.</p>
+      <p class="updated">Last updated 6 November 2026 (second version).</p>
+      <p><strong>Short version:</strong> neither the game nor this website sets any cookies. There are no analytics, advertising or tracking cookies, pixels or fingerprinting. The game keeps your careers and settings in your browser's storage on your device, only so it works. Nothing in it leaves your device, except your careers if you sign in to cloud saves, and your airline's details if you turn on sharing.</p>
 
       <h2>Cookies</h2>
-      <p>We don't set cookies on boardingpass.my, play.boardingpass.my or in the desktop apps. The map, update and version requests the game and site make to other services (CARTO, EOX and GitHub) are sent without cookies, so those services can't use them to recognise you. Our web host, Hostinger, may use strictly necessary technical cookies to protect its servers against attacks and keep them running; they are not used by us, or for tracking or advertising. If you choose to sign in with Google or Discord, their own sign-in pages use their own cookies, under their policies.</p>
+      <p>We don't set cookies on boardingpass.my, play.boardingpass.my, test.boardingpass.my or in the desktop apps. The map, update, version and logo requests the game and site make to other services (CARTO, EOX, GitHub and our logo service on Cloudflare) are sent without cookies, so those services can't use them to recognise you. Our web host, Hostinger, may use strictly necessary technical cookies to protect its servers against attacks and keep them running; they are not used by us, or for tracking or advertising. If you choose to sign in with Google or Discord, their own sign-in pages use their own cookies, under their policies.</p>
 
       <h2>Storage on your device</h2>
-      <p>Instead of cookies, the game and this site use your browser's local storage (and, for the version list, session storage). In the desktop apps the same items live in the app's own data folder. Nothing in them is sent to us or anyone else, except that cloud saves (only if you sign in) send your careers and your sign-in session to our cloud service. This is everything we store:</p>
+      <p>Instead of cookies, the game and this site use your browser's local storage (and, for the version list, session storage). In the desktop apps the same items live in the app's own data folder. Nothing in them is sent to us or anyone else, except that cloud saves (only if you sign in) send your careers and your sign-in session to our cloud service, and sharing (only if you turn it on) sends your airline's details and logos. This is everything we store:</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Item</th><th>Where</th><th>What it's for</th><th>How long</th></tr></thead>
           <tbody>
             <tr><td><code>bp_pc_saves_list_v2</code></td><td data-label="Where">Game</td><td>Your saved careers</td><td data-label="Kept">Until you delete them</td></tr>
             <tr><td><code>bp_pc_saves_protected_v1</code></td><td data-label="Where">Game</td><td>Marks saves as stored scrambled and signed</td><td data-label="Kept">Until you clear it</td></tr>
-            <tr><td><code>bp_pc_prefs_v1</code></td><td data-label="Where">Game</td><td>Map and display settings</td><td data-label="Kept">Until you clear it</td></tr>
+            <tr><td><code>bp_pc_prefs_v1</code></td><td data-label="Where">Game</td><td>Map and display settings, including whether friends' aircraft are shown</td><td data-label="Kept">Until you clear it</td></tr>
             <tr><td><code>bp_pc_theme_v1</code></td><td data-label="Where">Game</td><td>Colour theme (Appearance)</td><td data-label="Kept">Until you clear it</td></tr>
             <tr><td><code>bp_popup_angle_v1, bp_popup_gap_v1</code></td><td data-label="Where">Game</td><td>Where the aircraft info box sits around a selected aircraft</td><td data-label="Kept">Until you clear it</td></tr>
             <tr><td><code>bp_pc_cabin_presets_v1</code></td><td data-label="Where">Game</td><td>Cabin layouts you saved</td><td data-label="Kept">Until you clear it</td></tr>
@@ -63,6 +63,7 @@
             <tr><td><code>bp_cloud_device_v1</code></td><td data-label="Where">Game, if you sign in</td><td>A random number for this device, so the cloud knows which devices still need a career</td><td data-label="Kept">Until you clear it</td></tr>
             <tr><td><code>bp_cloud_auto_v1</code></td><td data-label="Where">Game, if you sign in</td><td>Whether careers from your other devices download by themselves</td><td data-label="Kept">Until you clear it</td></tr>
             <tr><td><code>bp_cloud_synced_v1, bp_cloud_last_sync_v1</code></td><td data-label="Where">Game, if you sign in</td><td>Which careers this device has synced, and when it last synced</td><td data-label="Kept">Until you sign out or clear it</td></tr>
+            <tr><td><code>bp_online_legal_v1</code></td><td data-label="Where">Game, if you open Online</td><td>Which version of the legal documents you agreed to, so it's asked once per version</td><td data-label="Kept">Until you sign out</td></tr>
             <tr><td><code>bp-web-pass</code></td><td data-label="Where">This site</td><td>The airline name, code, hub and colours in Print your boarding pass</td><td data-label="Kept">Until you clear it</td></tr>
             <tr><td><code>bp-web-takeoffs</code></td><td data-label="Where">This site</td><td>How many times you pressed Board now (shown on the page)</td><td data-label="Kept">Until you clear it</td></tr>
             <tr><td><code>bp-rel, bp-readme</code></td><td data-label="Where">This site</td><td>The latest version and list of changes from GitHub, so they load once per visit</td><td data-label="Kept">Until you close the tab</td></tr>
@@ -81,7 +82,7 @@
       <p>See the <a href="/privacy.html">Privacy policy</a> for what services see when you play, and the <a href="/terms.html">Terms of use</a>.</p>
 
       <h2>Contact</h2>
-      <p>Boarding Pass is made by one developer, Mac, with the help of AI (Claude, by Anthropic). Ask anything on the <a href="https://discord.gg/zCk6hcFkzf">Boarding Pass Discord</a> or in a <a href="https://github.com/MacVibeCodes10111/Boarding-Pass/issues">GitHub issue</a>. For anything private (a privacy request, for example), send the developer a direct message on that Discord server rather than posting in a public channel.</p>
+      <p>Boarding Pass is made by one developer, Mac, with the help of AI (Claude, by Anthropic). Ask anything on the <a href="https://discord.gg/zCk6hcFkzf">Boarding Pass Discord</a> or in a <a href="https://github.com/MacVibeCodes10111/Boarding-Pass/issues">GitHub issue</a>. For anything private, such as a privacy request or a complaint about shared content, email <a href="mailto:boardingpass.support@gmail.com">boardingpass.support@gmail.com</a> or send the developer a direct message on that Discord server, rather than posting in a public channel.</p>
 </main>
 
     <footer class="site-foot">
