@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fetchSharedLogo, type MyAirline } from '../game/cloud';
 import { featureOn } from '../game/features';
-import { blockFriend, cleanFriendCode, formatFriendCode, loadFriends, newFriendCode, removeFriend, respondToFriend, sendFriendRequest, setFriendOnMap, unblockFriend, type FriendCard, type FriendsData } from '../game/friends';
+import { blockFriend, cleanFriendCode, formatFriendCode, loadFriends, newFriendCode, removeFriend, respondToFriend, sendFriendRequest, setFriendOnMap, unblockFriend, type AllianceBadge, type FriendCard, type FriendsData } from '../game/friends';
 import { refreshFriendsMap } from '../game/friendsMap';
 import { Icon } from '../ui/icons';
 import { Button, C, inputStyle } from '../ui/kit';
@@ -18,7 +18,8 @@ const rowStyle: () => React.CSSProperties = () => ({ display: 'flex', alignItems
 const headStyle: () => React.CSSProperties = () => ({ fontSize: 12, fontWeight: 650, color: C.muted, margin: '6px 0 0' });
 
 const badges = new Map<string, Promise<string | null>>();
-function badgeFor(hash: string) {
+/** A shared logo by its hash (null until it's approved), fetched once. */
+export function badgeFor(hash: string) {
   let p = badges.get(hash);
   if (!p) {
     p = fetchSharedLogo(hash);
@@ -27,8 +28,20 @@ function badgeFor(hash: string) {
   return p;
 }
 
+/** An alliance's tag in its colours. */
+export function AllianceTag({ badge, title }: { badge: Pick<AllianceBadge, 'tag' | 'name' | 'colours'>; title?: string }) {
+  return (
+    <span
+      title={title ?? badge.name}
+      style={{ display: 'inline-block', flex: 'none', padding: '1px 6px', borderRadius: 6, fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', lineHeight: 1.5, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,.5)', background: `linear-gradient(135deg, ${badge.colours.a} 55%, ${badge.colours.b} 55%)`, verticalAlign: 'middle' }}
+    >
+      {badge.tag}
+    </span>
+  );
+}
+
 /** The airline's badge once it's approved, else its code in its colours. */
-function AirlineChip({ card }: { card: FriendCard | null }) {
+export function AirlineChip({ card }: { card: FriendCard | null }) {
   const [badge, setBadge] = useState<string | null>(null);
   const hash = card?.badge ?? null;
   useEffect(() => {
@@ -48,11 +61,14 @@ function AirlineChip({ card }: { card: FriendCard | null }) {
   );
 }
 
-function AirlineName({ card }: { card: FriendCard | null }) {
-  const details = card ? [card.code, card.callsign, card.fleet === null ? '' : `${card.fleet} aircraft`].filter(Boolean).join(' · ') : 'Not sharing an airline right now';
+export function AirlineName({ card, extra }: { card: FriendCard | null; extra?: string }) {
+  const details = card ? [card.code, card.callsign, card.fleet === null ? '' : `${card.fleet} aircraft`, extra ?? ''].filter(Boolean).join(' · ') : 'Not sharing an airline right now';
   return (
     <span style={{ flex: '1 1 150px', minWidth: 0 }}>
-      <span style={{ display: 'block', fontWeight: 650, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{card?.airline ?? 'An airline'}</span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+        <span style={{ fontWeight: 650, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{card?.airline ?? 'An airline'}</span>
+        {card?.alliance && <AllianceTag badge={card.alliance} />}
+      </span>
       <span style={{ display: 'block', fontSize: 12, color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{details}</span>
     </span>
   );

@@ -57,7 +57,7 @@ import { loadCargoAprons } from '../game/cargoAprons';
 import { airportGateCode, gateRank } from '../game/gateCode';
 import { AIRCRAFT_PHOTOS, aircraftArt } from '../game/aircraftPhotos';
 import { cloudSkyCss } from '../game/cloudSky';
-import { friendLivery } from '../game/friendsMap';
+import { friendLivery, friendsOnMap } from '../game/friendsMap';
 import { openFriendAirline } from './FriendAirline';
 import { paintedPhoto } from '../game/liveryPaint';
 import { liveryIndexOf, specialLabel } from '../game/livery';
@@ -326,8 +326,16 @@ function buildAiPopupHtml(t: AiTraffic, f: AiFlight, pos: AiPosition): string {
     <div style="display:flex;justify-content:space-between;font-size:11.5px;color:${C.muted};font-variant-numeric:tabular-nums"><span>${hhmm(f.depUtcMin)} UTC</span><span>${formatDurationHm(pos.remainingMin)} to go</span><span>${hhmm(f.depUtcMin + f.blockMin)} UTC</span></div>
     <div style="margin:8px 0 2px;color:${C.textDim}">${e(phase)}</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px">${kv('Altitude', altLabel(pos.altitudeFt))}${kv('Speed', `${pos.groundSpeedKts} kt`)}${kv('Distance', `${f.distanceNm.toLocaleString()} nm`)}</div>
-    <div style="margin-top:8px;font-size:11px;color:${C.faint}">${f.friend ? 'A friend’s airline, flying on your game’s clock' : 'Other airline, shown for atmosphere'}</div>
+    <div style="margin-top:8px;font-size:11px;color:${C.faint}">${f.friend ? friendLine(f.friend.owner) : 'Other airline, shown for atmosphere'}</div>
   </div>`;
+}
+
+/** Whose aircraft it is: a friend's, or an airline in the player's alliance, and the alliance it's in. */
+function friendLine(owner: string): string {
+  const fr = friendsOnMap().find((x) => x.id === owner);
+  const who = fr?.ally ? 'An airline in your alliance' : 'A friend’s airline';
+  const tag = fr?.alliance ? ` · <span style="font-weight:700;color:${C.textDim}">${escapeHtml(fr.alliance.tag)}</span> ${escapeHtml(fr.alliance.name)}` : '';
+  return `${who}, flying on your game’s clock${tag}`;
 }
 
 /** Info box for another airline's aircraft on the ground. */

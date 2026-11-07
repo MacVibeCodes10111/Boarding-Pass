@@ -1698,7 +1698,7 @@ export default function App() {
     return (
       <>
         <CloudHost openSaveId={null} onSlotsChanged={() => setSavedGames(readSaveSlots())} toast={flashToast} />
-        <OnlineHost />
+        <OnlineHost airports={airportByIata} mapStyle={mapStyle} />
         <HomeScreen
           onCloud={openCloud}
           onOnline={openOnline}
@@ -1855,7 +1855,7 @@ export default function App() {
         version={APP_VERSION}
       />
       <CloudHost openSaveId={activeSaveId} onSlotsChanged={() => setSavedGames(readSaveSlots())} toast={flashToast} />
-      <OnlineHost career={() => currentSaveState()} />
+      <OnlineHost career={() => currentSaveState()} airports={airportByIata} mapStyle={mapStyle} />
       <FriendAirlineHost airports={airportByIata} mapStyle={mapStyle} />
       {liveryOpen && (
         <LiveryEditor

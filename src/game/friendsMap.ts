@@ -20,6 +20,7 @@ import { fetchFriendSchedules, fetchSharedLogo, cloudRpc, onForgetOnline } from 
 import { getRadarIconGroup } from './icons';
 import { liveryFromProfile } from './profile';
 import { checkSnapshot, type ScheduleSnapshot } from './scheduleSnapshot';
+import { normaliseAllianceBadge, type AllianceBadge } from './friends';
 import type { Livery } from './livery';
 import type { Airport } from './types';
 
@@ -32,11 +33,16 @@ export interface FriendOnMap {
   updatedAt: string;
   version: number;
   snapshot: ScheduleSnapshot;
+  /** In the viewer's alliance. */
+  ally: boolean;
+  /** The alliance they're in, if any. */
+  alliance: AllianceBadge | null;
 }
 
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const HEX = /^#[0-9a-fA-F]{6}$/;
-const MAX_FRIENDS_ON_MAP = 20;
+/** 20 friends, and up to 19 others from the airline's alliance. */
+const MAX_FRIENDS_ON_MAP = 40;
 
 /**
  * The next list from the Worker's answer. A friend missing from the answer has gone from the
@@ -68,6 +74,8 @@ export function mergeFriendAnswer(prev: readonly FriendOnMap[], answer: unknown)
       updatedAt: typeof o.updatedAt === 'string' ? o.updatedAt : '',
       version,
       snapshot,
+      ally: o.ally === true,
+      alliance: normaliseAllianceBadge(o.alliance),
     });
   }
   return out;
@@ -147,7 +155,7 @@ export function onFriendsMapChange(fn: () => void): () => void {
 }
 
 function setShown(next: FriendOnMap[]) {
-  const same = next.length === shown.length && next.every((f, i) => f.id === shown[i].id && f.version === shown[i].version && f.airline === shown[i].airline && f.callsign === shown[i].callsign);
+  const same = next.length === shown.length && next.every((f, i) => f.id === shown[i].id && f.version === shown[i].version && f.airline === shown[i].airline && f.callsign === shown[i].callsign && f.ally === shown[i].ally && f.alliance?.tag === shown[i].alliance?.tag);
   shown = next;
   if (!same) for (const fn of listeners) fn();
 }

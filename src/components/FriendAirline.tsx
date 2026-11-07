@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AIRCRAFT_PHOTOS } from '../game/aircraftPhotos';
 import { cloudSkyCss } from '../game/cloudSky';
-import { friendAirlineStats, friendRouteMap, type FriendRoute } from '../game/friendAirline';
+import { friendAirlineStats, friendRouteMap, type MapRoute } from '../game/friendAirline';
 import { loadFriends, type FriendCard } from '../game/friends';
 import { friendLiveries, friendsMapViewer, friendsOnMap, onFriendsMapChange } from '../game/friendsMap';
 import { loadMaplibre } from '../game/icons';
@@ -16,6 +16,7 @@ import { specialLabel } from '../game/livery';
 import { paintedPhoto } from '../game/liveryPaint';
 import type { Airport } from '../game/types';
 import { Button, C, DISPLAY, ModalShell, Stat } from '../ui/kit';
+import { AllianceTag } from './FriendsTab';
 import { TrustedCredits, friendTintFor, mapStyleFor, type MapStyleId } from './LiveMap';
 
 const OPEN_EVENT = 'bp-open-friend-airline';
@@ -97,7 +98,13 @@ function FriendAirlineWindow(props: { id: string; airports: ReadonlyMap<string, 
                 <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>
                   {[fr.code, fr.callsign, card?.stats?.founded ? `since ${new Date(`${card.stats.founded}T12:00:00Z`).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}` : ''].filter(Boolean).join(' · ')}
                   {' · '}
-                  <span style={{ color: C.friends }}>Friend</span>
+                  <span style={{ color: C.friends }}>{fr.ally ? (card ? 'Friend · In your alliance' : 'In your alliance') : 'Friend'}</span>
+                  {fr.alliance && (
+                    <>
+                      {' '}
+                      <AllianceTag badge={fr.alliance} />
+                    </>
+                  )}
                 </div>
               </div>
             </header>
@@ -200,8 +207,8 @@ function List(props: { rows: string[][]; more: number }) {
   );
 }
 
-/** Their routes on a small map of its own, in the same map style as the game's. */
-function RouteMap(props: { routes: readonly FriendRoute[]; airports: ReadonlyMap<string, Airport>; mapStyle: MapStyleId }) {
+/** Routes on a small map of its own, in the same map style as the game's. A route with a colour is drawn in it. */
+export function RouteMap(props: { routes: readonly MapRoute[]; airports: ReadonlyMap<string, Airport>; mapStyle: MapStyleId; label?: string }) {
   const box = useRef<HTMLDivElement | null>(null);
   const { routes, airports, mapStyle } = props;
   useEffect(() => {
@@ -217,7 +224,7 @@ function RouteMap(props: { routes: readonly FriendRoute[]; airports: ReadonlyMap
         const halo = mapStyle === 'light' ? '#ffffff' : '#0b1220';
         map.addSource('fr-routes', { type: 'geojson', data: m.lines });
         map.addSource('fr-airports', { type: 'geojson', data: m.points });
-        map.addLayer({ id: 'fr-routes', type: 'line', source: 'fr-routes', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': tint, 'line-opacity': 0.85, 'line-width': ['interpolate', ['linear'], ['get', 'weekly'], 1, 1.2, 14, 2.2, 60, 4] } });
+        map.addLayer({ id: 'fr-routes', type: 'line', source: 'fr-routes', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['coalesce', ['get', 'colour'], tint], 'line-opacity': 0.85, 'line-width': ['interpolate', ['linear'], ['get', 'weekly'], 1, 1.2, 14, 2.2, 60, 4] } });
         map.addLayer({ id: 'fr-airports', type: 'circle', source: 'fr-airports', paint: { 'circle-radius': 3.5, 'circle-color': tint, 'circle-stroke-color': halo, 'circle-stroke-width': 1.5 } });
         map.addLayer({
           id: 'fr-labels',
@@ -237,5 +244,5 @@ function RouteMap(props: { routes: readonly FriendRoute[]; airports: ReadonlyMap
       map?.remove();
     };
   }, [routes, airports, mapStyle]);
-  return <div ref={box} role="img" aria-label="Their route map" style={{ height: 'min(300px, 45vh)', borderRadius: 12, overflow: 'hidden', background: C.raised }} />;
+  return <div ref={box} role="img" aria-label={props.label ?? 'Their route map'} style={{ height: 'min(300px, 45vh)', borderRadius: 12, overflow: 'hidden', background: C.raised }} />;
 }

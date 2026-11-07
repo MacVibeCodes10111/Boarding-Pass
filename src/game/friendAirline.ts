@@ -87,7 +87,10 @@ export function friendAirlineStats(snap: ScheduleSnapshot, airports: ReadonlyMap
 /** The routes as great-circle lines and the airports as points, for a map. */
 type Feature = { type: 'Feature'; properties: Record<string, unknown>; geometry: { type: 'LineString'; coordinates: [number, number][] } | { type: 'Point'; coordinates: [number, number] } };
 
-export function friendRouteMap(routes: readonly FriendRoute[], airports: ReadonlyMap<string, Airport>) {
+/** A route on a map with several airlines: drawn in its airline's colour. */
+export type MapRoute = FriendRoute & { colour?: string };
+
+export function friendRouteMap(routes: readonly MapRoute[], airports: ReadonlyMap<string, Airport>) {
   const lines: Feature[] = [];
   const seen = new Set<string>();
   const points: Feature[] = [];
@@ -109,7 +112,7 @@ export function friendRouteMap(routes: readonly FriendRoute[], airports: Readonl
       if (prev) while (lon - prev[0] < -180) lon += 360;
       coords.push([lon, p[1]]);
     }
-    lines.push({ type: 'Feature', properties: { weekly: r.weekly }, geometry: { type: 'LineString', coordinates: coords } });
+    lines.push({ type: 'Feature', properties: r.colour ? { weekly: r.weekly, colour: r.colour } : { weekly: r.weekly }, geometry: { type: 'LineString', coordinates: coords } });
     for (const ap of [A, B]) {
       if (seen.has(ap.iata_code)) continue;
       seen.add(ap.iata_code);

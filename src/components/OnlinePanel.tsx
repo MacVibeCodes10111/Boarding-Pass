@@ -4,7 +4,7 @@
 //   player has to be 13 or over, open the legal documents, agree to them, and be
 //   signed in. Nothing is sent anywhere until they sign in. New documents
 //   (LEGAL_VERSION in features.ts) bring the legal step back.
-//   Alliances show what's coming until their servers exist.
+//   Each tab shows what's coming while its feature flag is off.
 //
 //   Everything is per airline. Inside a career, it's about that career: share it,
 //   its friends, its map. On the main menu, the player picks one of the airlines
@@ -19,7 +19,10 @@ import type { SaveGameState } from '../game/types';
 import { Icon } from '../ui/icons';
 import { Button, C, DISPLAY, ModalShell, Segmented, inputStyle } from '../ui/kit';
 import { AgeCheck, CHANGED_EVENT, SignInForm, openCloud } from './CloudPanel';
+import { AlliancesTab } from './AlliancesTab';
 import { ConfirmButton, FriendsTab } from './FriendsTab';
+import type { MapStyleId } from './LiveMap';
+import type { Airport } from '../game/types';
 
 const OPEN_EVENT = 'bp-open-online';
 type Act = (label: string, fn: () => Promise<unknown>) => Promise<void>;
@@ -28,18 +31,20 @@ type Tab = 'airline' | 'friends' | 'alliances';
 /** Opens the Online window from anywhere (the bottom bar, the home screen). */
 export const openOnline = () => window.dispatchEvent(new Event(OPEN_EVENT));
 
+type Where = { career?: () => SaveGameState; airports?: ReadonlyMap<string, Airport>; mapStyle?: MapStyleId };
+
 /** `career` is the career being played (none on the main menu). */
-export function OnlineHost(props: { career?: () => SaveGameState }) {
+export function OnlineHost(props: Where) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     const onOpen = () => setOpen(true);
     window.addEventListener(OPEN_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_EVENT, onOpen);
   }, []);
-  return open ? <OnlineModal career={props.career} onClose={() => setOpen(false)} /> : null;
+  return open ? <OnlineModal {...props} onClose={() => setOpen(false)} /> : null;
 }
 
-function OnlineModal(props: { onClose: () => void; career?: () => SaveGameState }) {
+function OnlineModal(props: Where & { onClose: () => void }) {
   const [user, setUser] = useState<CloudUser | null | undefined>(undefined);
   const [age, setAge] = useState<AgeStatus>(ageStatus());
   const [agreed, setAgreed] = useState(legalAccepted);
@@ -98,7 +103,7 @@ function OnlineModal(props: { onClose: () => void; career?: () => SaveGameState 
     if (!user) return <SignInForm busy={busy} act={act} agreed />;
     if (!flagsRead) return <p style={{ color: C.muted, fontSize: 13 }}>Checking…</p>;
     if (!featureOn('online')) return <p style={{ fontSize: 13.5, lineHeight: 1.5 }}>Online features aren’t open yet. They’ll appear here when they’re ready.</p>;
-    return <OnlineArea user={user} busy={busy} act={act} onClose={props.onClose} career={props.career} />;
+    return <OnlineArea user={user} busy={busy} act={act} onClose={props.onClose} career={props.career} airports={props.airports} mapStyle={props.mapStyle} />;
   };
 
   return (
@@ -172,7 +177,7 @@ function LegalGate(props: { onDone: () => void }) {
   );
 }
 
-function OnlineArea(props: { user: CloudUser; busy: boolean; act: Act; onClose: () => void; career?: () => SaveGameState }) {
+function OnlineArea(props: Where & { user: CloudUser; busy: boolean; act: Act; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('airline');
   const inGame = props.career !== undefined;
   const current = props.career?.() ?? null;
@@ -227,9 +232,14 @@ function OnlineArea(props: { user: CloudUser; busy: boolean; act: Act; onClose: 
           ) : (
             <NotShared inGame={inGame} onShare={() => setTab('airline')} what="Friends belong to an airline" />
           ))}
-        {tab === 'alliances' && (
-          <ComingSoon icon="globe" title="Alliances are on the way" lines={['Start an alliance or join one, one at a time.', 'Up to 20 airlines in each.', 'See your alliance’s airlines together.']} />
-        )}
+        {tab === 'alliances' &&
+          (!featureOn('alliances') || !featureOn('friends') ? (
+            <ComingSoon icon="globe" title="Alliances are on the way" lines={['Start an alliance or join one, one at a time.', 'Up to 20 airlines in each.', 'See your alliance’s airlines together.']} />
+          ) : selected ? (
+            <AlliancesTab me={selected} busy={props.busy} act={props.act} career={inGame ? current : null} airports={props.airports} mapStyle={props.mapStyle} />
+          ) : (
+            <NotShared inGame={inGame} onShare={() => setTab('airline')} what="Alliances are made of airlines" />
+          ))}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.line}`, fontSize: 12.5, color: C.muted }}>
         <span style={{ flex: 1, minWidth: 0 }}>Signed in as {props.user.name}</span>

@@ -10,7 +10,7 @@ const card = { airline: 'Alpha Air', code: 'AA', callsign: 'ALPHA', colours: { a
 describe('the friends list from the server', () => {
   it('comes through as sent', () => {
     const d = normaliseFriends({ id: id(1), code: 'BCDF2345', friends: [{ id: id(2), onMap: false, card }], incoming: [{ id: id(3), card }], outgoing: [{ id: id(4), code: 'GHJK6789' }], blocked: [{ id: id(5), label: 'Beta' }] });
-    expect(d?.friends[0]).toEqual({ id: id(2), onMap: false, card: { airline: 'Alpha Air', code: 'AA', callsign: 'ALPHA', colours: { a: '#112233', b: '#445566' }, fleet: 7, stats: null, badge: 'a'.repeat(64) } });
+    expect(d?.friends[0]).toEqual({ id: id(2), onMap: false, card: { airline: 'Alpha Air', code: 'AA', callsign: 'ALPHA', colours: { a: '#112233', b: '#445566' }, fleet: 7, stats: null, badge: 'a'.repeat(64), alliance: null } });
     expect(d?.incoming).toHaveLength(1);
     expect(d?.outgoing[0].code).toBe('GHJK6789');
     expect(d?.blocked[0].label).toBe('Beta');

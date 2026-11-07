@@ -8,7 +8,7 @@ const { aiDepartureDay, aiFlightPosition, findAirborneAi, toVec } = await import
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const snapshot = { v: 1 as const, models: ['a320-200', 'from-a-newer-game'], regs: ['G-ABCD', 'G-EFGH'], flights: [['LHR', 'JFK', 600, 480, 127, 0, 0, 'BP1', 1], ['JFK', 'CDG', 60, 420, 1, 1, 1, '', 0], ['LHR', 'ZZZ', 60, 60, 127, 0, 0, 'BP2', 0]] as [string, string, number, number, number, number, number, string, number][] };
-const friend = (n: number, over = {}) => ({ id: id(n), airline: `Friend ${n}`, code: 'FR', callsign: 'FRIEND', colours: { a: '#112233', b: '#445566' }, updatedAt: 't', version: 1, snapshot, ...over });
+const friend = (n: number, over = {}) => ({ id: id(n), airline: `Friend ${n}`, code: 'FR', callsign: 'FRIEND', colours: { a: '#112233', b: '#445566' }, updatedAt: 't', version: 1, snapshot, ally: false, alliance: null, ...over });
 
 const ap = (iata: string, lat: number, lon: number) => ({ iata, name: iata, city: iata, country: 'X', lat, lon, elevFt: 0, tz: 'UTC', tzHours: 0, v: toVec(lat, lon) });
 const base = (): AiTraffic => ({
@@ -119,9 +119,18 @@ describe('the answer from the Worker', () => {
     expect(r.map((f) => f.id)).toEqual([id(3)]);
   });
 
-  it('never shows more than 20 airlines, and never a bad colour', () => {
-    const r = mergeFriendAnswer([], { airlines: Array.from({ length: 30 }, (_, i) => entry(i + 1, { colours: { a: 'url(x)' } })) });
-    expect(r).toHaveLength(20);
+  it('never shows more than 40 airlines (20 friends, 19 allies), and never a bad colour', () => {
+    const r = mergeFriendAnswer([], { airlines: Array.from({ length: 50 }, (_, i) => entry(i + 1, { colours: { a: 'url(x)' } })) });
+    expect(r).toHaveLength(40);
     expect(r[0].colours.a).toBe('#475569');
+  });
+
+  it('keeps whether they’re an ally, and a checked alliance badge', () => {
+    const al = { id: id(99), name: 'Star Union', tag: 'SU', colours: { a: '#0b6e4f', b: 'nope' }, logo: 'b'.repeat(64), members: 5 };
+    const [x, y] = mergeFriendAnswer([], { airlines: [entry(1, { ally: true, alliance: al }), entry(2, { ally: 'yes', alliance: { ...al, tag: '<b>' } })] });
+    expect(x.ally).toBe(true);
+    expect(x.alliance).toEqual({ ...al, colours: { a: '#0b6e4f', b: '#94a3b8' } });
+    expect(y.ally).toBe(false);
+    expect(y.alliance).toBeNull();
   });
 });
