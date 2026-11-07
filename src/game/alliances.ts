@@ -108,6 +108,7 @@ const ANSWERS: Record<string, string> = {
   already: 'You’ve already invited them.',
   full: `The alliance is full: ${MAX_ALLIANCE} airlines, counting the ones invited.`,
   gone: 'That invite isn’t there any more.',
+  locked: 'A moderator changed this alliance, so it can’t be edited for a while.',
 };
 /** What to tell the player after an alliance action ('' when it worked and needs no words). */
 export const allianceAnswer = (r: unknown) => ANSWERS[String(r)] ?? 'That didn’t work. Try again later.';

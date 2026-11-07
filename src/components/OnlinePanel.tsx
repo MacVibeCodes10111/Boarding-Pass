@@ -21,6 +21,7 @@ import { Button, C, DISPLAY, ModalShell, Segmented, inputStyle } from '../ui/kit
 import { AgeCheck, CHANGED_EVENT, SignInForm, openCloud } from './CloudPanel';
 import { AlliancesTab } from './AlliancesTab';
 import { ConfirmButton, FriendsTab } from './FriendsTab';
+import { checkNotices } from './ReportButton';
 import type { MapStyleId } from './LiveMap';
 import type { Airport } from '../game/types';
 
@@ -189,6 +190,10 @@ function OnlineArea(props: Where & { user: CloudUser; busy: boolean; act: Act; o
   useEffect(() => {
     if (selectedId) void refreshLogoReview(selectedId);
   }, [selectedId]);
+  // Anything a moderator changed shows straight away
+  useEffect(() => {
+    checkNotices();
+  }, []);
 
   return (
     <div>

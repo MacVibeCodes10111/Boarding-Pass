@@ -116,6 +116,7 @@ import { APP_VERSION } from './version';
 import { MainMenu } from './components/MainMenu';
 import { CloudHost, openCloud } from './components/CloudPanel';
 import { OnlineHost, openOnline } from './components/OnlinePanel';
+import { NoticesHost } from './components/ReportButton';
 import { FriendAirlineHost } from './components/FriendAirline';
 import { IS_DEV } from './game/channel';
 import { airlineFor, cloudDeleteSave, downloadCareer, newerCloudCopy, nextRev, onCloudChange, publishIfDue } from './game/cloud';
@@ -1691,6 +1692,7 @@ export default function App() {
       {toast && <Toast key={toast} message={toast} onDismiss={() => setToast(null)} />}
       <UpdateBanner onBeforeInstall={() => screen === 'dashboard' && persistRef.current(true)} />
       <AppearanceHost mapStyle={mapStyle} onMapStyle={setMapStyle} />
+      <NoticesHost />
     </>
   );
 

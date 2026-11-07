@@ -11,6 +11,7 @@ import { blockFriend, cleanFriendCode, formatFriendCode, loadFriends, newFriendC
 import { refreshFriendsMap } from '../game/friendsMap';
 import { Icon } from '../ui/icons';
 import { Button, C, inputStyle } from '../ui/kit';
+import { ReportButton } from './ReportButton';
 
 type Act = (label: string, fn: () => Promise<unknown>) => Promise<void>;
 
@@ -230,6 +231,7 @@ export function FriendsTab(props: { me: MyAirline; busy: boolean; act: Act }) {
               Decline
             </Button>
             <ConfirmButton label="Block" ask="Block them" disabled={props.busy} onConfirm={() => void change('Blocking…', () => blockFriend(me, r.id))} />
+            {r.card && <ReportButton me={me} kind="airline" target={r.id} name={r.card.airline} logo={r.card.badge} disabled={props.busy} />}
           </span>
         </div>
       ))}
@@ -248,6 +250,7 @@ export function FriendsTab(props: { me: MyAirline; busy: boolean; act: Act }) {
             )}
             <ConfirmButton label="Remove" ask="Remove them" disabled={props.busy} onConfirm={() => void change('Removing…', () => removeFriend(me, f.id))} />
             <ConfirmButton label="Block" ask="Block them" disabled={props.busy} onConfirm={() => void change('Blocking…', () => blockFriend(me, f.id))} />
+            {f.card && <ReportButton me={me} kind="airline" target={f.id} name={f.card.airline} logo={f.card.badge} disabled={props.busy} />}
           </span>
         </div>
       ))}

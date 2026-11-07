@@ -397,6 +397,7 @@ const PUBLISH_PROBLEM: Record<string, string> = {
   too_big: 'These liveries are too detailed to share. Remove some brush painting and try again.',
   too_many: `You can share ${MAX_SHARED_AIRLINES} airlines at most. Stop sharing one first.`,
   off: 'Sharing isn’t available right now.',
+  suspended: 'This account can’t share airlines right now, because of the sharing rules. Your careers keep working as before.',
 };
 
 /** Reads the player's shared airlines from the server. */

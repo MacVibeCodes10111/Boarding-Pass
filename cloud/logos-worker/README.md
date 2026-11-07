@@ -22,15 +22,15 @@ Needs `../supabase/2026-11-05-logos.sql` (and for schedules `2026-11-06-friends.
 
 ## Reviewing logos
 
-The review screen comes with the admin site (A6). Until then, in the D1 console:
+In the admin site's Logos page (`admin/`, see `cloud/README.md`). It calls `/admin/logos`, `/admin/logo/<hash>` and `/admin/usage` here (`src/admin.ts`) with the admin's own sign-in. The Worker has no admin powers of its own: Supabase's `admin_whoami` and `admin_logo_act` must say yes first, which they only do for an account in `private.admins` signed in with two-factor. `admin_logo_act` also writes the admin log and tells the airlines using a removed logo. Removing deletes the file at once, lowers the total and keeps the hash, so the same picture can't come back.
+
+If the admin site is ever unavailable, the D1 console still works:
 
 ```sql
 SELECT hash, bytes, created_at FROM logo_files WHERE status = 'pending' ORDER BY created_at;
 UPDATE logo_files SET status = 'approved', reviewed_at = unixepoch() * 1000 WHERE hash = '...';
 UPDATE logo_files SET status = 'rejected', reviewed_at = unixepoch() * 1000 WHERE hash = '...';
 ```
-
-To see a pending picture, open its hash in the R2 bucket `bplogos` in the Cloudflare dashboard.
 
 ## Trying it locally
 

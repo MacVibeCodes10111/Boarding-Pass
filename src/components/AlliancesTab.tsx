@@ -18,6 +18,7 @@ import { Icon } from '../ui/icons';
 import { Button, C, DISPLAY, inputStyle } from '../ui/kit';
 import { RouteMap } from './FriendAirline';
 import { AirlineChip, AirlineName, AllianceTag, ConfirmButton, badgeFor } from './FriendsTab';
+import { ReportButton } from './ReportButton';
 import type { MapStyleId } from './LiveMap';
 
 type Act = (label: string, fn: () => Promise<unknown>) => Promise<void>;
@@ -95,6 +96,7 @@ export function AlliancesTab(props: { me: MyAirline; busy: boolean; act: Act; ca
               <Button size="sm" disabled={props.busy} onClick={() => void ask('Declining…', () => answerAllianceInvite(me, i.alliance.id, false))}>
                 Decline
               </Button>
+              <ReportButton me={me} kind="alliance" target={i.alliance.id} name={i.alliance.name} logo={i.alliance.logo} disabled={props.busy} />
             </span>
           </div>
         ))}
@@ -182,10 +184,12 @@ function InAlliance(props: {
           <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{[`${al.count} of ${MAX_ALLIANCE} airlines`, al.createdAt ? `since ${day(al.createdAt)}` : '', leader ? 'You lead it' : ''].filter(Boolean).join(' · ')}</div>
           {al.description && <p style={{ fontSize: 13, margin: '6px 0 0', lineHeight: 1.45, overflowWrap: 'anywhere', whiteSpace: 'pre-line' }}>{al.description}</p>}
         </div>
-        {leader && (
+        {leader ? (
           <Button size="sm" variant="ghost" disabled={props.busy} onClick={props.onEdit}>
             Edit
           </Button>
+        ) : (
+          <ReportButton me={me} kind="alliance" target={al.id} name={al.name} logo={al.logo} disabled={props.busy} />
         )}
       </div>
       {props.said}
@@ -197,10 +201,11 @@ function InAlliance(props: {
         <div key={m.id} style={rowStyle}>
           <AirlineChip card={m.card} />
           <AirlineName card={m.card ? { ...m.card, alliance: null } : null} extra={[m.role === 'leader' ? 'Leader' : '', m.me ? 'You' : '', m.joinedAt ? `joined ${day(m.joinedAt)}` : ''].filter(Boolean).join(' · ')} />
-          {leader && !m.me && (
+          {!m.me && (
             <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <ConfirmButton label="Make leader" ask="Hand it over" disabled={props.busy} onConfirm={() => void change('Handing over…', () => handOverAlliance(me, m.id))} />
-              <ConfirmButton label="Remove" ask="Remove them" disabled={props.busy} onConfirm={() => void change('Removing…', () => removeFromAlliance(me, m.id))} />
+              {leader && <ConfirmButton label="Make leader" ask="Hand it over" disabled={props.busy} onConfirm={() => void change('Handing over…', () => handOverAlliance(me, m.id))} />}
+              {leader && <ConfirmButton label="Remove" ask="Remove them" disabled={props.busy} onConfirm={() => void change('Removing…', () => removeFromAlliance(me, m.id))} />}
+              {m.card && <ReportButton me={me} kind="airline" target={m.id} name={m.card.airline} logo={m.card.badge} disabled={props.busy} />}
             </span>
           )}
         </div>

@@ -58,6 +58,16 @@ To go live: run both scripts, run `schema.sql` on D1, deploy the Worker, then tu
 
 To go live: run `2026-11-07-alliances.sql` on the live project, republish the legal pages (they mention alliances), then turn on `alliances` for `dev`, later `main`. With the flag off the tab says they're on the way, and every function answers `off`.
 
+## Reports, moderation and the admin site
+
+`supabase/2026-11-07-admin.sql`, the Worker's `src/admin.ts`, and the site in `admin/` (`npm run admin:dev` on port 1430, `npm run admin:build` to `admin/dist`). Players report an airline, an alliance or a logo (`report_make`, 10 a day, behind the `reports` flag) and get a plain notice, once, when a moderator changes something of theirs (`notices_mine`; never who did it).
+
+Admins need three locks. **Cloudflare Access** in front of the site: only listed emails can load it. **Their Boarding Pass account with two-factor**: the site asks for an authenticator code every time, and every admin function refuses a session that isn't `aal2`. **A row in `private.admins`** (`owner` or `moderator`), which the API can't reach; only an owner can add or remove people, from the Team page. No admin power is in the game, and the Worker has none of its own: it asks Supabase with the admin's own token before it touches a logo.
+
+Every change needs a reason and is written to `private.admin_log` in the same transaction, with what it was before; 60 changes an hour per admin. Admins see only shared things and reports; only the owner can look an airline up by username. Resets keep a safe stand-in (`Airline 4821`, `Alliance 4821`) for the days chosen, whatever the game sends (`mod_fields`, `mod_until`); hidden liveries stay hidden until the player changes them (`hidden_liveries`). A suspension stops all of a player's airlines being shared, in both channels, and `profile_publish` refuses them until it ends. Reports and the log go after 12 months, notices after 90 days (`private.admin_cleanup`, 04:47).
+
+To go live: run the script on the live project, deploy the Worker (it allows `https://bp-admin.boardingpass-game.workers.dev`), deploy the site with `npm run admin:deploy` (a static Worker, `bp-admin`, on `bp-admin.boardingpass-game.workers.dev`; never run a bare `npx wrangler` in the repo root, which rewrites the game's Vite config. There is no `admin.` subdomain: the domain's DNS is at Hostinger, and Access only protects addresses Cloudflare serves), put Cloudflare Access in front of it, turn on two-factor in the site, add yourself with the line at the top of the script, then turn on `reports`.
+
 ## Decided for the updates ahead
 
 - Other airlines' schedules go in R2 and are read through Cloudflare, not from Supabase: 20 friends at 200 KB each would use up Supabase's 5 GB a month in about 1,250 refreshes across all players. Republish only when a schedule changes.

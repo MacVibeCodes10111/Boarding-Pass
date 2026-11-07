@@ -1,0 +1,7 @@
+// The admin site, as static files on Cloudflare (bp-admin.boardingpass-game.workers.dev).
+// Deploy with `npm run admin:deploy`, never from the repo root.
+{
+  "name": "bp-admin",
+  "compatibility_date": "2026-11-04",
+  "assets": { "directory": "./dist" }
+}

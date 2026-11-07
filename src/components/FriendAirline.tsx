@@ -17,6 +17,7 @@ import { paintedPhoto } from '../game/liveryPaint';
 import type { Airport } from '../game/types';
 import { Button, C, DISPLAY, ModalShell, Stat } from '../ui/kit';
 import { AllianceTag } from './FriendsTab';
+import { ReportButton } from './ReportButton';
 import { TrustedCredits, friendTintFor, mapStyleFor, type MapStyleId } from './LiveMap';
 
 const OPEN_EVENT = 'bp-open-friend-airline';
@@ -159,7 +160,10 @@ function FriendAirlineWindow(props: { id: string; airports: ReadonlyMap<string, 
               </section>
             </div>
 
-            <p style={{ fontSize: 11.5, color: C.faint, margin: 0, lineHeight: 1.45 }}>From the weekly schedule they show friends. Their money and passengers stay private.</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <p style={{ flex: '1 1 240px', fontSize: 11.5, color: C.faint, margin: 0, lineHeight: 1.45 }}>From the weekly schedule they show friends. Their money and passengers stay private.</p>
+              {friendsMapViewer() && <ReportButton me={friendsMapViewer()!} kind="airline" target={fr.id} name={fr.airline} logo={card?.badge ?? null} />}
+            </div>
           </div>
         )}
       </div>

@@ -15,3 +15,6 @@ tools/art/out/
 # The logos Worker's local files
 cloud/logos-worker/.wrangler/
 cloud/logos-worker/.dev.vars
+
+# The admin site's local Wrangler files
+admin/.wrangler/

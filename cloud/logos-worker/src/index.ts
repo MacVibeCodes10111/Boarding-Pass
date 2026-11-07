@@ -22,8 +22,10 @@
 //   accounts) and clears out refused files. CLEANUP_KEY opens only that list.
 //
 //   Friends' schedules (A4) share this Worker and its cap: see schedules.ts.
+//   Logo review for the admin site (A6): see admin.ts.
 // ============================================================================
 import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { adminRoute } from './admin';
 import { ID, dropSchedule, putSchedule, readSchedules } from './schedules';
 
 export interface Env {
@@ -259,6 +261,10 @@ export default {
         return json(200, { ok: true }, cors);
       }
       return json(405, { error: 'method not allowed' }, cors);
+    }
+    if (parts[0] === 'admin') {
+      if (parts.length > 3) return json(404, { error: 'not found' }, cors);
+      return adminRoute(req, env, parts, url, tokenOf(req), rpc, json, cors, CAP_BYTES);
     }
     if (parts[0] !== 'logo' || parts.length > 2) return json(404, { error: 'not found' }, cors);
     const sub = parts[1];

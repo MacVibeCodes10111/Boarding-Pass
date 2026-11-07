@@ -9,7 +9,7 @@ workers_dev = true
 [vars]
 SUPABASE_URL = "https://dlgkdknfxhmtkhpegufq.supabase.co"
 SUPABASE_KEY = "sb_publishable_AP8t-FaDMPZ0dHYFezBqPQ_MDoYkfXv"
-ALLOWED_ORIGINS = "https://play.boardingpass.my,https://test.boardingpass.my,tauri://localhost,http://tauri.localhost,https://tauri.localhost,http://localhost:1420"
+ALLOWED_ORIGINS = "https://play.boardingpass.my,https://test.boardingpass.my,tauri://localhost,http://tauri.localhost,https://tauri.localhost,http://localhost:1420,https://bp-admin.boardingpass-game.workers.dev,http://localhost:1430"
 
 [triggers]
 crons = ["17 4 * * *"]
