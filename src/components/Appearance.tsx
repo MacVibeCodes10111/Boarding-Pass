@@ -17,9 +17,11 @@ import {
   highlightWarning,
   hsvToHex,
   isLightColour,
+  friendsColourOf,
   normHex,
   type ThemeSpec,
 } from '../ui/theme';
+import { featureOn } from '../game/features';
 import type { MapStyleChoice } from './DashboardChrome';
 
 // ---------------------------------------------------------------------------
@@ -197,11 +199,12 @@ export function ColourPicker({ value, onChange, label }: { value: string; onChan
 // ---------------------------------------------------------------------------
 // The Appearance window
 // ---------------------------------------------------------------------------
-type Target = 'base' | 'accent' | 'fleet';
+type Target = 'base' | 'accent' | 'fleet' | 'friends';
 const TARGETS: { id: Target; label: string; hint: string }[] = [
   { id: 'base', label: 'Background', hint: 'Panels, menus and text are worked out from it.' },
   { id: 'accent', label: 'Highlight', hint: 'Buttons, selections and your airline in menus.' },
   { id: 'fleet', label: 'Your aircraft', hint: 'Your aircraft, labels and trails on the map.' },
+  { id: 'friends', label: 'Friends’ aircraft', hint: 'Your friends’ airlines on the map. Each theme has its own.' },
 ];
 
 /** A small mock-up of a theme: background, a panel with text, the highlight and an aircraft. */
@@ -214,8 +217,11 @@ function ThemeSwatch({ spec }: { spec: ThemeSpec }) {
         <span style={{ height: 4, width: '55%', borderRadius: 2, background: p.muted }} />
         <span style={{ height: 9, width: '62%', borderRadius: 3, background: p.brand, marginTop: 3 }} />
       </div>
-      <span style={{ position: 'absolute', right: 12, top: 16, transform: 'rotate(45deg)', color: p.fleet, display: 'flex' }}>
-        <Icon name="fleet" size={24} />
+      <span style={{ position: 'absolute', right: 12, top: 8, transform: 'rotate(45deg)', color: p.fleet, display: 'flex' }}>
+        <Icon name="fleet" size={22} />
+      </span>
+      <span style={{ position: 'absolute', right: 30, bottom: 6, transform: 'rotate(100deg)', color: p.friends, display: 'flex' }}>
+        <Icon name="fleet" size={15} />
       </span>
     </div>
   );
@@ -247,14 +253,18 @@ function AppearanceModal({ onClose, mapStyle, onMapStyle }: { onClose: () => voi
     []
   );
 
-  const valueOf = (t: Target) => (t === 'base' ? live.base : t === 'accent' ? live.accent : live.fleet ?? live.accent);
+  const valueOf = (t: Target) => (t === 'base' ? live.base : t === 'accent' ? live.accent : t === 'friends' ? friendsColourOf(live) : live.fleet ?? live.accent);
   const setColour = (t: Target, hex: string) => {
-    const next: ThemeSpec = { ...live, preset: 'custom' };
+    // Going custom keeps the template's friends' colour unless that's what changed
+    const next: ThemeSpec = { ...live, preset: 'custom', friends: friendsColourOf(live) };
     if (t === 'base') next.base = hex;
     else if (t === 'accent') next.accent = hex;
+    else if (t === 'friends') next.friends = hex;
     else next.fleet = hex;
     apply(next);
   };
+  // Only once friends' aircraft can be on the map
+  const targets = TARGETS.filter((t) => t.id !== 'friends' || featureOn('friends'));
   const palette = buildPalette(live);
   const warning = highlightWarning(palette);
   const isCustom = !THEME_PRESETS.some((p) => p.preset === live.preset);
@@ -282,7 +292,7 @@ function AppearanceModal({ onClose, mapStyle, onMapStyle }: { onClose: () => voi
                 key={p.preset}
                 type="button"
                 aria-pressed={on}
-                onClick={() => p.preset !== 'custom' && apply({ preset: p.preset, base: p.base, accent: p.accent, fleet: p.fleet })}
+                onClick={() => p.preset !== 'custom' && apply({ preset: p.preset, base: p.base, accent: p.accent, fleet: p.fleet, friends: p.friends ?? null })}
                 style={{
                   textAlign: 'left',
                   padding: 8,
@@ -305,8 +315,8 @@ function AppearanceModal({ onClose, mapStyle, onMapStyle }: { onClose: () => voi
         </div>
 
         <h3 style={{ margin: '20px 0 8px', fontSize: 13.5, fontWeight: 650, color: C.text }}>Make it yours</h3>
-        <div role="radiogroup" aria-label="Colour to change" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
-          {TARGETS.map((t) => {
+        <div role="radiogroup" aria-label="Colour to change" style={{ display: 'grid', gridTemplateColumns: `repeat(${targets.length === 4 ? 2 : 3}, minmax(0, 1fr))`, gap: 8 }}>
+          {targets.map((t) => {
             const on = target === t.id;
             const same = t.id === 'fleet' && live.fleet === null;
             return (

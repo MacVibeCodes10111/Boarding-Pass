@@ -1,11 +1,11 @@
 // ============================================================================
 // THE FRIENDS TAB (Update A, phase A3)
-//   Your code, adding by code, requests, friends and blocks. The server decides
-//   everything (cloud/supabase/2026-11-06-friends.sql). All names here came from
-//   other players, so they only ever appear as plain text.
+//   One shared airline's code, adding by code, requests, friends and blocks. The
+//   server decides everything (cloud/supabase/2026-11-07-airlines.sql). All names
+//   here came from other players, so they only ever appear as plain text.
 // ============================================================================
 import { useCallback, useEffect, useState } from 'react';
-import { fetchSharedLogo, sharedCareerId } from '../game/cloud';
+import { fetchSharedLogo, type MyAirline } from '../game/cloud';
 import { featureOn } from '../game/features';
 import { blockFriend, cleanFriendCode, formatFriendCode, loadFriends, newFriendCode, removeFriend, respondToFriend, sendFriendRequest, setFriendOnMap, unblockFriend, type FriendCard, type FriendsData } from '../game/friends';
 import { refreshFriendsMap } from '../game/friendsMap';
@@ -59,7 +59,7 @@ function AirlineName({ card }: { card: FriendCard | null }) {
 }
 
 /** Asks once more before something that's hard to take back. */
-function ConfirmButton(props: { label: string; ask: string; disabled?: boolean; onConfirm: () => void }) {
+export function ConfirmButton(props: { label: string; ask: string; disabled?: boolean; onConfirm: () => void }) {
   const [asking, setAsking] = useState(false);
   if (!asking)
     return (
@@ -79,7 +79,8 @@ function ConfirmButton(props: { label: string; ask: string; disabled?: boolean; 
   );
 }
 
-export function FriendsTab(props: { busy: boolean; act: Act; onShareFirst: () => void }) {
+export function FriendsTab(props: { me: MyAirline; busy: boolean; act: Act }) {
+  const me = props.me.id;
   const [data, setData] = useState<FriendsData | null | undefined>(undefined);
   const [typed, setTyped] = useState('');
   const [answer, setAnswer] = useState('');
@@ -88,11 +89,17 @@ export function FriendsTab(props: { busy: boolean; act: Act; onShareFirst: () =>
   const mapFeature = featureOn('friends_map');
   const load = useCallback(async () => {
     try {
-      setData(await loadFriends());
+      setData(await loadFriends(me));
     } catch {
       setData((d) => d ?? null);
     }
-  }, []);
+  }, [me]);
+  // Another airline: nothing of the last one's shows while this one loads
+  useEffect(() => {
+    setData(undefined);
+    setAnswer('');
+    setTyped('');
+  }, [me]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -108,13 +115,12 @@ export function FriendsTab(props: { busy: boolean; act: Act; onShareFirst: () =>
   if (data === undefined) return <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>Loading your friends…</p>;
   if (data === null) return <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>Your friends can’t be loaded right now. Try again in a moment.</p>;
 
-  const notSharing = sharedCareerId() === null;
   const send = () => {
     const code = cleanFriendCode(typed);
     if (code.length !== 8) return setAnswer('Friend codes have 8 letters and numbers.');
     setAnswer('');
     void change('Sending…', async () => {
-      const said = await sendFriendRequest(code);
+      const said = await sendFriendRequest(me, code);
       setAnswer(said);
       setTyped('');
     });
@@ -124,7 +130,7 @@ export function FriendsTab(props: { busy: boolean; act: Act; onShareFirst: () =>
     <div style={{ display: 'grid', gap: 6 }}>
       <div style={{ ...rowStyle(), justifyContent: 'space-between' }}>
         <span style={{ flex: '1 1 180px', minWidth: 0 }}>
-          <span style={{ display: 'block', fontSize: 12, color: C.muted }}>Your friend code: give it only to people you know</span>
+          <span style={{ display: 'block', fontSize: 12, color: C.muted }}>{props.me.airline}’s friend code: give it only to people you know</span>
           <span className="num" style={{ display: 'block', fontSize: 21, fontWeight: 700, letterSpacing: '0.09em', marginTop: 1 }}>
             {formatFriendCode(data.code)}
           </span>
@@ -147,7 +153,7 @@ export function FriendsTab(props: { busy: boolean; act: Act; onShareFirst: () =>
             disabled={props.busy}
             onConfirm={() =>
               void change('Making a new code…', async () => {
-                if (!(await newFriendCode())) setAnswer('That’s enough new codes for today. Try again tomorrow.');
+                if (!(await newFriendCode(me))) setAnswer('That’s enough new codes for today. Try again tomorrow.');
               })
             }
           />
@@ -176,15 +182,9 @@ export function FriendsTab(props: { busy: boolean; act: Act; onShareFirst: () =>
           Add friend
         </Button>
       </form>
-      {notSharing && (
-        <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>
-          To ask someone, share your airline first in{' '}
-          <button type="button" onClick={props.onShareFirst} style={{ border: 0, padding: 0, background: 'none', color: C.accent, font: 'inherit', cursor: 'pointer', textDecoration: 'underline' }}>
-            My airline
-          </button>
-          , so they can see who’s asking.
-        </p>
-      )}
+      <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>
+        {data.mode === 'sandbox' ? 'A Sandbox airline: its friends are Sandbox airlines too.' : 'A Career airline: its friends are Career airlines too.'}
+      </p>
       {answer && (
         <p role="status" style={{ fontSize: 12.5, margin: 0, color: C.text }}>
           {answer}
@@ -203,17 +203,17 @@ export function FriendsTab(props: { busy: boolean; act: Act; onShareFirst: () =>
               disabled={props.busy}
               onClick={() =>
                 void change('Accepting…', async () => {
-                  const said = await respondToFriend(r.id, true);
+                  const said = await respondToFriend(me, r.id, true);
                   if (said) setAnswer(said);
                 })
               }
             >
               Accept
             </Button>
-            <Button size="sm" disabled={props.busy} onClick={() => void change('Declining…', () => respondToFriend(r.id, false))}>
+            <Button size="sm" disabled={props.busy} onClick={() => void change('Declining…', () => respondToFriend(me, r.id, false))}>
               Decline
             </Button>
-            <ConfirmButton label="Block" ask="Block them" disabled={props.busy} onConfirm={() => void change('Blocking…', () => blockFriend(r.id))} />
+            <ConfirmButton label="Block" ask="Block them" disabled={props.busy} onConfirm={() => void change('Blocking…', () => blockFriend(me, r.id))} />
           </span>
         </div>
       ))}
@@ -226,16 +226,17 @@ export function FriendsTab(props: { busy: boolean; act: Act; onShareFirst: () =>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             {mapFeature && (
               <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, cursor: 'pointer', marginRight: 2 }}>
-                <input type="checkbox" checked={f.onMap} disabled={props.busy} onChange={(e) => void change('Saving…', () => setFriendOnMap(f.id, e.target.checked))} style={{ width: 16, height: 16, accentColor: C.brand }} />
+                <input type="checkbox" checked={f.onMap} disabled={props.busy} onChange={(e) => void change('Saving…', () => setFriendOnMap(me, f.id, e.target.checked))} style={{ width: 16, height: 16, accentColor: C.brand }} />
                 On map
               </label>
             )}
-            <ConfirmButton label="Remove" ask="Remove them" disabled={props.busy} onConfirm={() => void change('Removing…', () => removeFriend(f.id))} />
-            <ConfirmButton label="Block" ask="Block them" disabled={props.busy} onConfirm={() => void change('Blocking…', () => blockFriend(f.id))} />
+            <ConfirmButton label="Remove" ask="Remove them" disabled={props.busy} onConfirm={() => void change('Removing…', () => removeFriend(me, f.id))} />
+            <ConfirmButton label="Block" ask="Block them" disabled={props.busy} onConfirm={() => void change('Blocking…', () => blockFriend(me, f.id))} />
           </span>
         </div>
       ))}
       {data.friends.length === 0 && data.incoming.length === 0 && <p style={{ fontSize: 12.5, color: C.muted, margin: '4px 0 0' }}>No friends yet. Swap codes with someone you know.</p>}
+      <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>Blocking stops every airline of that player reaching any of yours.</p>
       {mapFeature && data.friends.length > 20 && <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>The map shows up to 20 friends’ airlines at once, the most recently active first.</p>}
 
       {data.outgoing.length > 0 && <p style={headStyle()}>Waiting for an answer</p>}
@@ -244,7 +245,7 @@ export function FriendsTab(props: { busy: boolean; act: Act; onShareFirst: () =>
           <span className="num" style={{ flex: '1 1 150px', fontSize: 13.5, fontWeight: 600, letterSpacing: '0.05em' }}>
             {formatFriendCode(r.code)}
           </span>
-          <Button size="sm" variant="ghost" disabled={props.busy} onClick={() => void change('Cancelling…', () => removeFriend(r.id))}>
+          <Button size="sm" variant="ghost" disabled={props.busy} onClick={() => void change('Cancelling…', () => removeFriend(me, r.id))}>
             Cancel
           </Button>
         </div>

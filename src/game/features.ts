@@ -43,7 +43,7 @@ const OLD_SHARING_KEY = 'bp_online_sharing_v1';
 // Change LEGAL_VERSION when they change in a way players should see again.
 // ---------------------------------------------------------------------------
 export const LEGAL_KEY = 'bp_online_legal_v1';
-export const LEGAL_VERSION = '2026-11-06b';
+export const LEGAL_VERSION = '2026-11-07';
 export const LEGAL_DOCS = [
   { label: 'Terms of use', url: 'https://boardingpass.my/terms.html' },
   { label: 'Privacy policy', url: 'https://boardingpass.my/privacy.html' },

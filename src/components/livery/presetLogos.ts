@@ -1,10 +1,10 @@
 // ============================================================================
 // PRESET LOGOS (v2.67)
 //   Original logo designs drawn in code (no outside artwork, so no copyright
-//   to worry about), in the player's two colours, as 128×128 pictures ready to
+//   to worry about), in the player's two colours, as 512×512 pictures ready to
 //   add to a livery like an uploaded logo.
 // ============================================================================
-import { LOGO_PX } from '../../game/livery';
+import { LOGO_PX, MAX_LOGO_CHARS } from '../../game/livery';
 
 type Draw = (g: CanvasRenderingContext2D, a: string, b: string, initial: string) => void;
 const S = LOGO_PX;
@@ -273,14 +273,20 @@ export const PRESET_LOGOS: { id: string; label: string; draw: Draw }[] = [
   },
 ];
 
-/** A preset drawn as a logo data URL. */
-export function presetLogo(id: string, a: string, b: string, airlineName: string): string | null {
+/** A preset drawn as a logo data URL: small for the buttons, big (sharp on an aircraft) for the one picked. */
+export function presetLogo(id: string, a: string, b: string, airlineName: string, big = false): string | null {
   const p = PRESET_LOGOS.find((x) => x.id === id);
   if (!p) return null;
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = S;
-  const g = cv.getContext('2d')!;
-  p.draw(g, a, b, (airlineName.trim()[0] || 'A').toUpperCase());
-  const webp = cv.toDataURL('image/webp', 0.9);
-  return webp.startsWith('data:image/webp') ? webp : cv.toDataURL('image/png');
+  // Drawn at 4× (sharp on a big logo), or at the drawing size if that's ever too big to keep
+  for (const k of big ? [4, 2, 1] : [1]) {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = S * k;
+    const g = cv.getContext('2d')!;
+    g.scale(k, k);
+    p.draw(g, a, b, (airlineName.trim()[0] || 'A').toUpperCase());
+    const webp = cv.toDataURL('image/webp', 0.9);
+    const url = webp.startsWith('data:image/webp') ? webp : cv.toDataURL('image/png');
+    if (url.length <= MAX_LOGO_CHARS) return url;
+  }
+  return null;
 }

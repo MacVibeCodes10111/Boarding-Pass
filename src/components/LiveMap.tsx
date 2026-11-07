@@ -33,6 +33,7 @@ import {
 import { fetchAerowayAround } from '../game/mvt';
 import { AI_3D_MAX, labelHeightM, PitchTracker, plane3dInstance, pushPlane3d, pushRoute3d, scaleFor, thinRoute, type RoutePoint, type Scale3d } from '../game/planes3d';
 import { createAircraftLayer, hexToRgb, type Aircraft3d, type AircraftLayerHandle } from '../game/aircraftLayer';
+import { contrast, mix } from '../ui/theme';
 import type { LonLat } from '../game/geo';
 import type { UtcClock } from '../game/clock';
 import {
@@ -57,6 +58,7 @@ import { airportGateCode, gateRank } from '../game/gateCode';
 import { AIRCRAFT_PHOTOS, aircraftArt } from '../game/aircraftPhotos';
 import { cloudSkyCss } from '../game/cloudSky';
 import { friendLivery } from '../game/friendsMap';
+import { openFriendAirline } from './FriendAirline';
 import { paintedPhoto } from '../game/liveryPaint';
 import { liveryIndexOf, specialLabel } from '../game/livery';
 import { LiveryContext } from './AircraftPhoto';
@@ -103,10 +105,16 @@ export type AiDensity = 'off' | 'low' | 'medium' | 'high';
 /** Share of AI flights drawn: buckets 0..3 per flight, so each level is a stable subset. */
 const DENSITY_BUCKETS: Record<AiDensity, number> = { off: 0, low: 1, medium: 2, high: 4 };
 const AI_TINT = '#cbd5e1';
-/** Friends' aircraft stand out from the other airlines, and from your own. */
-const FRIEND_TINT = '#e879f9';
-const FRIEND_TINT_LIGHT = '#a21caf';
-const friendTintFor = (id: MapStyleId) => (id === 'light' ? FRIEND_TINT_LIGHT : FRIEND_TINT);
+/**
+ * Friends' aircraft stand out from the other airlines, and from your own, in the theme's colour for
+ * them (Appearance). On the light map a pale choice is darkened until it reads.
+ */
+export function friendTintFor(id: MapStyleId): string {
+  let c = C.friends;
+  if (id !== 'light') return c;
+  for (let i = 0; i < 8 && contrast(c, '#f1f5f9') < 3; i++) c = mix(c, '#000000', 0.18);
+  return c;
+}
 const aiIconName = (f: AiFlight) => `${f.friend ? 'friend' : 'ai'}-${f.group}`;
 /** Friends' aircraft are drawn a little bigger than the other airlines'. */
 const aiIconScale = (f: AiFlight) => (AI_ICON_SCALE[f.group] ?? 0.56) * (f.friend ? 1.2 : 1);
@@ -184,7 +192,7 @@ const SATELLITE_STYLE = {
     ...SATELLITE_LABELS,
   ],
 };
-const mapStyleFor = (id: MapStyleId): any =>
+export const mapStyleFor = (id: MapStyleId): any =>
   id === 'light'
     ? 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json'
     : id === 'satellite'
@@ -197,7 +205,7 @@ const mapStyleFor = (id: MapStyleId): any =>
  * (GHSA-jrc7-96c5-q579, fixed only in MapLibre 6.5+); this one is built from
  * fixed text with DOM calls, so nothing from outside is ever read as HTML.
  */
-class TrustedCredits {
+export class TrustedCredits {
   private map: any;
   private box?: HTMLDetailsElement;
   private eox?: HTMLElement;
@@ -261,7 +269,7 @@ function applyMapTheme(map: any, id: MapStyleId) {
   for (const l of ['airports-labels', 'ai-planes-symbol', 'live-planes-symbol', 'ground-planes-symbol', 'navaids-labels']) set(l, 'text-halo-color', '#ffffff');
   set('airports-labels', 'text-color', ['case', ['==', ['get', 'is_selected'], 1], '#b45309', ['==', ['get', 'is_hub'], 1], '#047857', '#334155']);
   set('ai-planes-symbol', 'text-color', '#475569');
-  set('ai-planes-dot', 'circle-color', ['case', ['has', 'friend'], FRIEND_TINT_LIGHT, '#475569']);
+  set('ai-planes-dot', 'circle-color', ['case', ['has', 'friend'], friendTintFor('light'), '#475569']);
   set('navaids-labels', 'text-color', '#6d28d9');
   set('navaids-points', 'circle-color', '#ffffff');
   set('routes-arc', 'line-color', MAP_C.accentStrong);
@@ -669,7 +677,7 @@ function addLayers(map: any) {
     type: 'circle',
     source: 'ai-planes',
     maxzoom: AI_DETAIL_LEVELS.auto.dotsBelow,
-    paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 1, ['case', ['has', 'friend'], 2.6, 1.3], 4, ['case', ['has', 'friend'], 4, 2.2]], 'circle-color': ['case', ['has', 'friend'], FRIEND_TINT, AI_TINT], 'circle-opacity': ['case', ['has', 'friend'], 1, 0.75] },
+    paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 1, ['case', ['has', 'friend'], 2.6, 1.3], 4, ['case', ['has', 'friend'], 4, 2.2]], 'circle-color': ['case', ['has', 'friend'], C.friends, AI_TINT], 'circle-opacity': ['case', ['has', 'friend'], 1, 0.75] },
   });
   // Aircraft on the ground, at true scale so parked aircraft fit their stands
   map.addLayer({
@@ -1379,7 +1387,11 @@ export function LiveMap(props: LiveMapProps) {
             })
               .setLngLat(coords)
               .setHTML(
-                `${plane ? planeHeroHtml(plane) : ''}<div class="bp-live-popup-body">${html}</div><button type="button" class="bp-pop-follow" style="display:block;width:100%;margin-top:10px;padding:7px 10px;border:0;border-radius:8px;background:${C.brand};color:#0c1320;font:inherit;font-weight:650;cursor:pointer">${stillFollowing ? 'Stop following' : 'Follow'}</button>`
+                `${plane ? planeHeroHtml(plane) : ''}<div class="bp-live-popup-body">${html}</div><div style="display:flex;gap:8px;margin-top:10px"><button type="button" class="bp-pop-follow" style="flex:1;min-width:0;padding:7px 10px;border:0;border-radius:8px;background:${C.brand};color:#0c1320;font:inherit;font-weight:650;cursor:pointer">${stillFollowing ? 'Stop following' : 'Follow'}</button>${
+                  plane?.friendOf
+                    ? `<button type="button" class="bp-pop-info" aria-label="About this airline" title="About this airline" style="flex:none;display:flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid ${C.line};border-radius:8px;background:${C.raised};color:${C.text};font:inherit;font-weight:650;cursor:pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r=".6" fill="currentColor"/></svg>Airline</button>`
+                    : ''
+                }</div>`
               )
               .addTo(map);
             const followBtn = popup.getElement?.()?.querySelector('.bp-pop-follow') as HTMLElement | null;
@@ -1393,6 +1405,12 @@ export function LiveMap(props: LiveMapProps) {
               }
               const label = popup.getElement?.()?.querySelector('.bp-live-popup-body b')?.textContent?.trim() || 'aircraft';
               startFollow(map, popup.getLngLat().toArray() as [number, number], label);
+            });
+            const infoBtn = popup.getElement?.()?.querySelector('.bp-pop-info') as HTMLElement | null;
+            for (const ev of ['mousedown', 'touchstart', 'pointerdown']) infoBtn?.addEventListener(ev, (e) => e.stopPropagation());
+            infoBtn?.addEventListener('click', (e) => {
+              e.stopPropagation();
+              if (plane?.friendOf) openFriendAirline(String(plane.friendOf));
             });
             // paint the picture in the airline's livery once it's ready
             const heroImg = popup.getElement?.()?.querySelector('.bp-pop-hero img[data-model]') as HTMLImageElement | null;
@@ -1783,9 +1801,22 @@ export function LiveMap(props: LiveMapProps) {
   // Theme change (Appearance): your aircraft take the new colour. The rest of the map keeps its own palette.
   const themeVersion = useThemeVersion();
   const fleetShown = useRef(C.fleet);
+  const friendsShown = useRef(C.friends);
   useEffect(() => {
     const map = mapRef.current;
-    if (!mapReady || !map || fleetShown.current === C.fleet) return;
+    if (!mapReady || !map) return;
+    // Friends' aircraft too
+    if (friendsShown.current !== C.friends) {
+      friendsShown.current = C.friends;
+      try {
+        const tint = friendTintFor(latest.current.mapStyle);
+        RADAR_GROUPS.forEach((g) => putImage(map, `friend-${g}`, createRadarGroupImageData(g, tint), MAP_ICON_PIXEL_RATIO));
+        if (map.getLayer('ai-planes-dot')) map.setPaintProperty('ai-planes-dot', 'circle-color', ['case', ['has', 'friend'], tint, latest.current.mapStyle === 'light' ? '#475569' : AI_TINT]);
+      } catch {
+        /* the map is reloading its style; installMapContent uses the new colour */
+      }
+    }
+    if (fleetShown.current === C.fleet) return;
     fleetShown.current = C.fleet;
     try {
       RADAR_GROUPS.forEach((g) => {

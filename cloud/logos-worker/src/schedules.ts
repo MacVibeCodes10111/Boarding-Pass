@@ -1,11 +1,11 @@
 // ============================================================================
 // FRIENDS' SCHEDULES (Update A, phase A4)
-//   PUT    /schedule?channel=…     the player's own schedule (src/game/scheduleSnapshot.ts)
-//   DELETE /schedule?channel=…     removes it: always works
-//   POST   /schedules?channel=…    { known: { id: version } } the viewer's friends, with
-//                                  the schedules that changed since those versions
+//   PUT    /schedule?channel=…&airline=…    one of the player's airlines' schedule (src/game/scheduleSnapshot.ts)
+//   DELETE /schedule?channel=…&airline=…    removes it: always works
+//   POST   /schedules?channel=…&airline=…   { known: { id: version } } that airline's friends, with
+//                                            the schedules that changed since those versions
 //
-//   Kept in the same bucket as logos, under sched/<channel>/<public id>, and counted
+//   Kept in the same bucket as logos, under sched/<channel>/<airline id>, and counted
 //   against the same hard cap. No address here serves a schedule without a signed-in
 //   viewer: Supabase says who that viewer may see each time, so turning sharing off,
 //   removing a friend or blocking takes effect on the very next request.
@@ -21,29 +21,31 @@ const json = (status: number, body: unknown, cors: Cors) =>
 /** The game sends every 5 minutes at most. */
 const MIN_GAP_MS = 60_000;
 const MAX_KNOWN_CHARS = 4000;
-const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const keyFor = (channel: string, publicId: string) => `sched/${channel}/${publicId}`;
 
 interface Row {
+  user_id: string;
   public_id: string;
   bytes: number;
   version: number;
   updated_at: number;
 }
 
-export async function putSchedule(req: Request, env: Env, user: string, channel: string, token: string, capBytes: number, rpc: Rpc, cors: Cors): Promise<Response> {
+export async function putSchedule(req: Request, env: Env, user: string, channel: string, airline: string, token: string, capBytes: number, rpc: Rpc, cors: Cors): Promise<Response> {
   if (Number(req.headers.get('content-length') ?? 0) > MAX_SNAPSHOT_BYTES) return json(413, { error: 'that schedule is too big' }, cors);
   const raw = await req.text();
   if (raw.length > MAX_SNAPSHOT_BYTES) return json(413, { error: 'that schedule is too big' }, cors);
   const now = Date.now();
-  const had = await env.DB.prepare('SELECT public_id, bytes, version, updated_at FROM schedules WHERE user_id = ?1 AND channel = ?2').bind(user, channel).first<Row>();
+  const had = await env.DB.prepare('SELECT user_id, public_id, bytes, version, updated_at FROM schedules WHERE channel = ?1 AND public_id = ?2').bind(channel, airline).first<Row>();
+  if (had && had.user_id !== user) return json(403, { error: 'sharing flights isn’t on' }, cors);
   if (had && now - had.updated_at < MIN_GAP_MS) return json(429, { error: 'wait a minute' }, cors);
 
-  // The server's own switch, and the player's own choice
-  const gate = await rpc(env, 'schedule_gate', { p_channel: channel }, token);
+  // The server's own switch, and the player's own choice for this airline of theirs
+  const gate = await rpc(env, 'schedule_gate', { p_channel: channel, p_me: airline }, token);
   if (!gate) return json(503, { error: 'try again later' }, cors);
-  const publicId = gate.data;
-  if (typeof publicId !== 'string' || !ID.test(publicId)) return json(403, { error: 'sharing flights isn’t on' }, cors);
+  if (gate.data !== airline) return json(403, { error: 'sharing flights isn’t on' }, cors);
+  const publicId = airline;
 
   let parsed: unknown;
   try {
@@ -68,34 +70,34 @@ export async function putSchedule(req: Request, env: Env, user: string, channel:
     return json(500, { error: 'it didn’t go through; try again' }, cors);
   }
   const row = await env.DB.prepare(
-    'INSERT INTO schedules (user_id, channel, public_id, bytes, version, updated_at) VALUES (?1, ?2, ?3, ?4, 1, ?5) ON CONFLICT (user_id, channel) DO UPDATE SET public_id = ?3, bytes = ?4, version = version + 1, updated_at = ?5 RETURNING version',
+    'INSERT INTO schedules (user_id, channel, public_id, bytes, version, updated_at) VALUES (?1, ?2, ?3, ?4, 1, ?5) ON CONFLICT (channel, public_id) DO UPDATE SET bytes = ?4, version = version + 1, updated_at = ?5 RETURNING version',
   )
     .bind(user, channel, publicId, body.length, now)
     .first<{ version: number }>();
   return json(200, { version: row?.version ?? 1, flights: snap.flights.length }, cors);
 }
 
-/** Removes a player's schedule, if it was there before `before`, and lowers the total. */
-export async function dropSchedule(env: Env, user: string, channel: string | null, before = Infinity): Promise<void> {
-  const { results } = await env.DB.prepare('SELECT channel, public_id, bytes, updated_at FROM schedules WHERE user_id = ?1 AND (?2 IS NULL OR channel = ?2)')
-    .bind(user, channel)
+/** Removes a player's schedules (one airline's, or all in a channel, or all), if they were there before `before`, and lowers the total. */
+export async function dropSchedule(env: Env, user: string, channel: string | null, airline: string | null, before = Infinity): Promise<void> {
+  const { results } = await env.DB.prepare('SELECT channel, public_id, bytes, updated_at FROM schedules WHERE user_id = ?1 AND (?2 IS NULL OR channel = ?2) AND (?3 IS NULL OR public_id = ?3)')
+    .bind(user, channel, airline)
     .all<Row & { channel: string }>();
   for (const r of results) {
     // Shared again since they asked: the new one stays
     if (r.updated_at >= before) continue;
     await env.LOGOS.delete(keyFor(r.channel, r.public_id));
     await env.DB.batch([
-      env.DB.prepare('DELETE FROM schedules WHERE user_id = ?1 AND channel = ?2').bind(user, r.channel),
+      env.DB.prepare('DELETE FROM schedules WHERE channel = ?1 AND public_id = ?2').bind(r.channel, r.public_id),
       env.DB.prepare('UPDATE usage SET bytes = MAX(0, bytes - ?1), objects = MAX(0, objects - 1) WHERE id = 1').bind(r.bytes),
     ]);
   }
 }
 
 /**
- * The viewer's friends on the map, with any schedule they don't have yet. The stored files are
- * joined into the reply as they are, without being read, to stay inside a Worker's small CPU allowance.
+ * The friends of the viewer's airline on the map, with any schedule they don't have yet. The stored files
+ * are joined into the reply as they are, without being read, to stay inside a Worker's small CPU allowance.
  */
-export async function readSchedules(req: Request, env: Env, channel: string, token: string, rpc: Rpc, cors: Cors): Promise<Response> {
+export async function readSchedules(req: Request, env: Env, channel: string, airline: string, token: string, rpc: Rpc, cors: Cors): Promise<Response> {
   const raw = await req.text();
   if (raw.length > MAX_KNOWN_CHARS) return json(413, { error: 'too long' }, cors);
   let known: Record<string, unknown> = {};
@@ -105,7 +107,7 @@ export async function readSchedules(req: Request, env: Env, channel: string, tok
   } catch {
     return json(400, { error: 'send { known: {...} }' }, cors);
   }
-  const answer = await rpc(env, 'friends_on_map', { p_channel: channel }, token);
+  const answer = await rpc(env, 'friends_on_map', { p_channel: channel, p_me: airline }, token);
   if (!answer) return json(503, { error: 'try again later' }, cors);
   const friends = (Array.isArray(answer.data) ? answer.data : []) as { id: string }[];
   if (!friends.length) return json(200, { airlines: [] }, cors);

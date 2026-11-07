@@ -143,23 +143,20 @@ export function upsertSaveSlot(list: SaveGameState[], state: SaveGameState): Sav
   return [serializeSave(state), ...list.filter((s) => s.saveId !== state.saveId)];
 }
 
-export function downloadSaveFile(state: SaveGameState) {
-  const blob = new Blob([protectSave(serializeSave(state))], { type: 'application/octet-stream' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${(state.airlineIata || 'bp').toLowerCase()}_career.boardingpass`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  // Revoke after the click has been processed (immediate revoke can cancel it in some browsers)
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+export type ImportedSave = { ok: true; save: SaveGameState } | { ok: false; message: string };
+
+/**
+ * Reads a save file exported by an older version (the game no longer makes them): protected (v2.38+) or
+ * a plain .json from before. Careers live only in the game now, and a file can be kept and loaded again
+ * at any time, so whatever is in it opens as a new Sandbox career, never replacing or rolling back one.
+ */
+export function readSaveFileText(text: string, now = Date.now()): ImportedSave {
+  const opened = openSaveFile(text);
+  if (!opened.ok) return opened;
+  return { ok: true, save: { ...asUnprotected(opened.save), saveId: `SAVE-${now}` } };
 }
 
-export type ImportedSave = { ok: true; save: SaveGameState; unprotected: boolean } | { ok: false; message: string };
-
-/** Reads an exported save file: protected (v2.38+) or a plain .json from before. */
-export function readSaveFileText(text: string): ImportedSave {
+function openSaveFile(text: string): ImportedSave {
   const t = text.trim();
   if (isProtectedSave(t)) {
     const opened = openProtectedSave<SaveGameState>(t);
@@ -169,13 +166,12 @@ export function readSaveFileText(text: string): ImportedSave {
         message: opened.reason === 'tampered' ? 'This save file was changed outside the game, so it can\u2019t be loaded.' : 'This file isn\u2019t a Boarding Pass save, or it is damaged.',
       };
     if (!isValidSave(opened.value)) return { ok: false, message: 'This file isn\u2019t a Boarding Pass save, or it is damaged.' };
-    return { ok: true, save: opened.value, unprotected: false };
+    return { ok: true, save: opened.value };
   }
   try {
     const parsed = JSON.parse(t);
     if (!isValidSave(parsed)) return { ok: false, message: 'This file isn\u2019t a Boarding Pass save, or it is damaged.' };
-    const save = asUnprotected(parsed);
-    return { ok: true, save, unprotected: save.gameMode !== parsed.gameMode };
+    return { ok: true, save: parsed };
   } catch {
     return { ok: false, message: 'This file isn\u2019t a Boarding Pass save, or it is damaged.' };
   }

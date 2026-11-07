@@ -241,7 +241,7 @@ The first build takes 5–15 minutes. Windows may warn that the app is from an u
 ## Playing
 
 - The game needs the internet for the map.
-- Your careers save themselves every minute and live in the app, not in this folder. To move a career between computers: **Menu → Export save file**, then **Import save file** on the home screen of the other computer.
+- Your careers save themselves every minute and live in the app, not in this folder. To move a career between devices, use **Cloud saves**. Save files from older versions still open (**Import old save file** on the home screen), always as a new Sandbox career.
 - **3D view** (Map layers → 3D aircraft):
   - Tilt and turn: right-drag on Windows, two-finger click and drag (or Control-drag) on a Mac.
   - Raise or lower the camera: hold the middle mouse button and drag, or Alt-drag (Option-drag on a Mac).

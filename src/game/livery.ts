@@ -122,7 +122,7 @@ export interface Livery {
   /** What the player calls it ("Main", "Retro"). */
   name?: string;
   layers: Layer[];
-  /** Uploaded logos: id → 128×128 WebP or PNG data URL. */
+  /** Uploaded logos: id → square WebP or PNG data URL (up to LOGO_MAX_PX, MAX_LOGO_BYTES). */
   logos: Record<string, string>;
   /** The logo shown as the airline's logo (in the corner of the screen and beside its flights), v2.67. */
   badge?: string;
@@ -160,9 +160,21 @@ export function tidyFleetLiveries<T extends { livery?: number }>(fleet: T[], liv
   });
   return changed ? out : fleet;
 }
+/** The ready-made logos' drawing size (they're drawn at 4× this). */
 export const LOGO_PX = 128;
-/** Biggest logo data URL kept (characters, about 16 KB of image). */
-export const MAX_LOGO_CHARS = 22_000;
+/**
+ * Uploaded logos keep their own size, up to this many pixels square. Above it nobody could see the
+ * difference on an aircraft, and friends' games decode every one they're shown.
+ */
+export const LOGO_MAX_PX = 1024;
+/**
+ * The most a logo can be. Logos live in the save (and in cloud saves, and on the logo server for
+ * friends), so this keeps a career with every slot filled well under what a browser can store.
+ * Must match MAX_LOGO_BYTES in cloud/logos-worker/src/index.ts.
+ */
+export const MAX_LOGO_BYTES = 48 * 1024;
+/** The same as a data URL's length (base64 is 4 characters for every 3 bytes, plus its header). */
+export const MAX_LOGO_CHARS = 'data:image/webp;base64,'.length + Math.ceil(MAX_LOGO_BYTES / 3) * 4;
 
 export const REGION_LABEL: Record<Region, string> = { fuselage: 'Fuselage', tail: 'Tail', engines: 'Engines', wings: 'Wings', winglets: 'Wingtips', stabiliser: 'Tailplane', all: 'Whole aircraft' };
 /** The parts a livery can paint (v2.71): wings and tailplanes stay the aircraft's own grey and white. Wingtips only on types with winglets. */

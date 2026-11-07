@@ -1,4 +1,4 @@
-# Boarding Pass logos (Update A, phase A2): keeps players' 128x128 livery logos
+# Boarding Pass logos (Update A, phase A2): keeps players' livery logos (square, up to 1024x1024 and 48 KB)
 # in the R2 bucket, with a hard cap on the whole bucket. See README.md to deploy.
 # Everything here is public. The one secret, CLEANUP_KEY, lives only in Cloudflare.
 name = "bp-logos"

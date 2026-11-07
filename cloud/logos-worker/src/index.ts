@@ -1,10 +1,12 @@
 // ============================================================================
 // BOARDING PASS LOGOS (Update A, phase A2)
-//   PUT    /logo?channel=main|dev        a 128×128 still WebP or PNG, ≤ 16 KB
-//   POST   /logo/sync?channel=…          { keep: [hash…] } drops the player's others
-//   GET    /logo/mine?channel=…          the player's logos and their review status
-//   DELETE /logo?channel=…                drops all the player's logos
-//   GET    /logo/<hash>                  anyone: the picture, once approved
+//   PUT    /logo?channel=main|dev&airline=…   a square still WebP or PNG, up to 1024×1024 and 48 KB
+//   POST   /logo/sync?channel=…&airline=…     { keep: [hash…] } drops that airline's others
+//   GET    /logo/mine?channel=…&airline=…     that airline's logos and their review status
+//   DELETE /logo?channel=…&airline=…          drops all that airline's logos
+//   GET    /logo/<hash>                       anyone: the picture, once approved
+//
+//   Logos belong to one of the player's shared airlines (its public id).
 //
 //   A logo's name is the SHA-256 of its bytes, worked out here, so a file never
 //   changes and the same picture is stored once however many players use it.
@@ -22,7 +24,7 @@
 //   Friends' schedules (A4) share this Worker and its cap: see schedules.ts.
 // ============================================================================
 import { createRemoteJWKSet, jwtVerify } from 'jose';
-import { dropSchedule, putSchedule, readSchedules } from './schedules';
+import { ID, dropSchedule, putSchedule, readSchedules } from './schedules';
 
 export interface Env {
   LOGOS: R2Bucket;
@@ -37,10 +39,11 @@ export interface Env {
 
 /** Hard cap on everything in the bucket: under R2's 10 GB free storage, with room for R2's own overhead. */
 const CAP_BYTES = 9_500_000_000;
-const MAX_LOGO_BYTES = 16 * 1024;
-const LOGO_PX = 128;
-/** Two liveries of five logos, for the one career a player shares. */
-const MAX_LOGOS_PER_PLAYER = 10;
+/** The same as MAX_LOGO_BYTES and LOGO_MAX_PX in src/game/livery.ts. */
+const MAX_LOGO_BYTES = 48 * 1024;
+const LOGO_MAX_PX = 1024;
+/** Two liveries of five logos, for each shared airline. */
+const MAX_LOGOS_PER_AIRLINE = 10;
 const MAX_UPLOADS_PER_DAY = 40;
 const DAY_MS = 86_400_000;
 /** Not "immutable": a logo refused after approval has to drop out of browsers' caches. */
@@ -128,34 +131,35 @@ async function release(env: Env, hash: string) {
   await env.DB.prepare('UPDATE usage SET bytes = MAX(0, bytes - ?1), objects = MAX(0, objects - 1) WHERE id = 1').bind(gone.bytes).run();
 }
 
-async function upload(req: Request, env: Env, user: string, channel: string, cors: Cors): Promise<Response> {
+async function upload(req: Request, env: Env, user: string, channel: string, airline: string, cors: Cors): Promise<Response> {
   const len = Number(req.headers.get('content-length') ?? 0);
-  if (len > MAX_LOGO_BYTES) return json(413, { error: 'a logo can be 16 KB at most' }, cors);
+  if (len > MAX_LOGO_BYTES) return json(413, { error: 'a logo can be 48 KB at most' }, cors);
   const buf = await req.arrayBuffer();
   const body = new Uint8Array(buf);
-  if (!body.length || body.length > MAX_LOGO_BYTES) return json(413, { error: 'a logo can be 16 KB at most' }, cors);
+  if (!body.length || body.length > MAX_LOGO_BYTES) return json(413, { error: 'a logo can be 48 KB at most' }, cors);
   const pic = sniff(body);
   if (!pic) return json(415, { error: 'logos must be still PNG or WebP pictures' }, cors);
-  if (pic.w !== LOGO_PX || pic.h !== LOGO_PX) return json(422, { error: `logos must be ${LOGO_PX}×${LOGO_PX}` }, cors);
+  // Square like the game makes them, and no bigger than it does: a tiny file can still be a huge picture to open
+  if (pic.w !== pic.h || pic.w < 16 || pic.w > LOGO_MAX_PX) return json(422, { error: `logos must be square, up to ${LOGO_MAX_PX}×${LOGO_MAX_PX}` }, cors);
 
   // The server's own switch: the game can be changed, so its flags can't be relied on
-  const gate = await rpc(env, 'logo_gate', { p_channel: channel }, tokenOf(req));
+  const gate = await rpc(env, 'logo_gate', { p_channel: channel, p_airline: airline }, tokenOf(req));
   if (!gate) return json(503, { error: 'logos can’t be uploaded right now; try again later' }, cors);
   if (gate.data !== true) return json(403, { error: 'logos aren’t available right now' }, cors);
 
   const hash = hex(await crypto.subtle.digest('SHA-256', buf));
   const now = Date.now();
   const file = await env.DB.prepare('SELECT status FROM logo_files WHERE hash = ?1').bind(hash).first<{ status: string }>();
-  const own = await env.DB.prepare('SELECT 1 AS y FROM logo_owners WHERE user_id = ?1 AND channel = ?2 AND hash = ?3').bind(user, channel, hash).first();
-  const link = env.DB.prepare('INSERT INTO logo_owners (user_id, channel, hash, seen_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT DO UPDATE SET seen_at = ?4').bind(user, channel, hash, now);
+  const own = await env.DB.prepare('SELECT 1 AS y FROM logo_owners WHERE user_id = ?1 AND channel = ?2 AND airline = ?3 AND hash = ?4').bind(user, channel, airline, hash).first();
+  const link = env.DB.prepare('INSERT INTO logo_owners (user_id, channel, airline, hash, seen_at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT DO UPDATE SET seen_at = ?5').bind(user, channel, airline, hash, now);
   // Already here: no new file, so it doesn't count against anything but the player's own list
   if (file && own) {
     await link.run();
     return json(200, { hash, status: file.status }, cors);
   }
   if (!own) {
-    const mine = await env.DB.prepare('SELECT COUNT(*) AS n FROM logo_owners WHERE user_id = ?1 AND channel = ?2').bind(user, channel).first<{ n: number }>();
-    if ((mine?.n ?? 0) >= MAX_LOGOS_PER_PLAYER) return json(403, { error: `you can share ${MAX_LOGOS_PER_PLAYER} logos at most` }, cors);
+    const mine = await env.DB.prepare('SELECT COUNT(*) AS n FROM logo_owners WHERE user_id = ?1 AND channel = ?2 AND airline = ?3').bind(user, channel, airline).first<{ n: number }>();
+    if ((mine?.n ?? 0) >= MAX_LOGOS_PER_AIRLINE) return json(403, { error: `an airline can share ${MAX_LOGOS_PER_AIRLINE} logos at most` }, cors);
   }
   const recent = await env.DB.prepare('SELECT COUNT(*) AS n FROM uploads_log WHERE user_id = ?1 AND at > ?2').bind(user, now - DAY_MS).first<{ n: number }>();
   if ((recent?.n ?? 0) >= MAX_UPLOADS_PER_DAY) return json(429, { error: 'that’s enough uploads for today; try again tomorrow' }, cors);
@@ -189,21 +193,21 @@ async function upload(req: Request, env: Env, user: string, channel: string, cor
   return json(200, { hash, status: row?.status ?? 'pending' }, cors);
 }
 
-async function statuses(env: Env, user: string, channel: string): Promise<Record<string, string>> {
-  const { results } = await env.DB.prepare('SELECT f.hash, f.status FROM logo_owners o JOIN logo_files f ON f.hash = o.hash WHERE o.user_id = ?1 AND o.channel = ?2')
-    .bind(user, channel)
+async function statuses(env: Env, user: string, channel: string, airline: string): Promise<Record<string, string>> {
+  const { results } = await env.DB.prepare('SELECT f.hash, f.status FROM logo_owners o JOIN logo_files f ON f.hash = o.hash WHERE o.user_id = ?1 AND o.channel = ?2 AND o.airline = ?3')
+    .bind(user, channel, airline)
     .all<{ hash: string; status: string }>();
   return Object.fromEntries(results.map((r) => [r.hash, r.status]));
 }
 
-async function keepOnly(env: Env, user: string, channel: string, keep: string[]) {
+async function keepOnly(env: Env, user: string, channel: string, airline: string, keep: string[]) {
   const list = JSON.stringify(keep);
-  const { results } = await env.DB.prepare('DELETE FROM logo_owners WHERE user_id = ?1 AND channel = ?2 AND hash NOT IN (SELECT value FROM json_each(?3)) RETURNING hash')
-    .bind(user, channel, list)
+  const { results } = await env.DB.prepare('DELETE FROM logo_owners WHERE user_id = ?1 AND channel = ?2 AND airline = ?3 AND hash NOT IN (SELECT value FROM json_each(?4)) RETURNING hash')
+    .bind(user, channel, airline, list)
     .all<{ hash: string }>();
   for (const r of results) await release(env, r.hash);
   // Still in use: a removal queued before now mustn't take these (see nightly)
-  await env.DB.prepare('UPDATE logo_owners SET seen_at = ?1 WHERE user_id = ?2 AND channel = ?3').bind(Date.now(), user, channel).run();
+  await env.DB.prepare('UPDATE logo_owners SET seen_at = ?1 WHERE user_id = ?2 AND channel = ?3 AND airline = ?4').bind(Date.now(), user, channel, airline).run();
 }
 
 /** Clears logos of players who stopped sharing or deleted their account, and files refused in review. */
@@ -218,14 +222,16 @@ async function nightly(env: Env) {
   }
   if (!env.CLEANUP_KEY) return;
   const taken = await rpc(env, 'logo_removals_take', { p_key: env.CLEANUP_KEY });
-  const rows = (Array.isArray(taken?.data) ? taken.data : []) as { id: number; user_id: string; channel: string | null; kind?: string; at: number }[];
+  const rows = (Array.isArray(taken?.data) ? taken.data : []) as { id: number; user_id: string; channel: string | null; kind?: string; airline?: string | null; at: number }[];
   if (!rows.length) return;
   for (const r of rows) {
-    await dropSchedule(env, r.user_id, r.channel, r.at);
+    // One airline, or everything the player had in that channel (or everywhere: a deleted account)
+    const airline = r.airline ?? null;
+    await dropSchedule(env, r.user_id, r.channel, airline, r.at);
     if (r.kind === 'schedule') continue;
     // Only what was there when they asked: a player who shares again keeps their new logos
-    const { results } = await env.DB.prepare('DELETE FROM logo_owners WHERE user_id = ?1 AND (?2 IS NULL OR channel = ?2) AND seen_at < ?3 RETURNING hash')
-      .bind(r.user_id, r.channel, r.at)
+    const { results } = await env.DB.prepare('DELETE FROM logo_owners WHERE user_id = ?1 AND (?2 IS NULL OR channel = ?2) AND (?3 IS NULL OR airline = ?3) AND seen_at < ?4 RETURNING hash')
+      .bind(r.user_id, r.channel, airline, r.at)
       .all<{ hash: string }>();
     for (const o of results) await release(env, o.hash);
   }
@@ -242,12 +248,14 @@ export default {
       if (parts.length > 1) return json(404, { error: 'not found' }, cors);
       const ch = url.searchParams.get('channel');
       if (ch !== 'main' && ch !== 'dev') return json(400, { error: 'which channel?' }, cors);
+      const air = url.searchParams.get('airline') ?? '';
+      if (!ID.test(air)) return json(400, { error: 'which airline?' }, cors);
       const who = await userOf(req, env);
       if (!who) return json(401, { error: 'sign in first' }, cors);
-      if (parts[0] === 'schedules') return req.method === 'POST' ? readSchedules(req, env, ch, tokenOf(req), rpc, cors) : json(405, { error: 'method not allowed' }, cors);
-      if (req.method === 'PUT') return putSchedule(req, env, who, ch, tokenOf(req), CAP_BYTES, rpc, cors);
+      if (parts[0] === 'schedules') return req.method === 'POST' ? readSchedules(req, env, ch, air, tokenOf(req), rpc, cors) : json(405, { error: 'method not allowed' }, cors);
+      if (req.method === 'PUT') return putSchedule(req, env, who, ch, air, tokenOf(req), CAP_BYTES, rpc, cors);
       if (req.method === 'DELETE') {
-        await dropSchedule(env, who, ch);
+        await dropSchedule(env, who, ch, air);
         return json(200, { ok: true }, cors);
       }
       return json(405, { error: 'method not allowed' }, cors);
@@ -272,13 +280,15 @@ export default {
 
     const channel = url.searchParams.get('channel');
     if (channel !== 'main' && channel !== 'dev') return json(400, { error: 'which channel?' }, cors);
+    const airline = url.searchParams.get('airline') ?? '';
+    if (!ID.test(airline)) return json(400, { error: 'which airline?' }, cors);
     const user = await userOf(req, env);
     if (!user) return json(401, { error: 'sign in first' }, cors);
 
-    if (req.method === 'GET') return json(200, { logos: await statuses(env, user, channel) }, cors);
-    if (req.method === 'PUT' && !sub) return upload(req, env, user, channel, cors);
+    if (req.method === 'GET') return json(200, { logos: await statuses(env, user, channel, airline) }, cors);
+    if (req.method === 'PUT' && !sub) return upload(req, env, user, channel, airline, cors);
     if (req.method === 'DELETE' && !sub) {
-      await keepOnly(env, user, channel, []);
+      await keepOnly(env, user, channel, airline, []);
       return json(200, { ok: true }, cors);
     }
     if (req.method === 'POST' && sub === 'sync') {
@@ -290,9 +300,9 @@ export default {
       } catch {
         return json(400, { error: 'send { keep: [...] }' }, cors);
       }
-      if (!Array.isArray(keep) || keep.length > MAX_LOGOS_PER_PLAYER || !keep.every((k) => typeof k === 'string' && HASH.test(k))) return json(400, { error: 'send { keep: [...] }' }, cors);
-      await keepOnly(env, user, channel, keep as string[]);
-      return json(200, { logos: await statuses(env, user, channel) }, cors);
+      if (!Array.isArray(keep) || keep.length > MAX_LOGOS_PER_AIRLINE || !keep.every((k) => typeof k === 'string' && HASH.test(k))) return json(400, { error: 'send { keep: [...] }' }, cors);
+      await keepOnly(env, user, channel, airline, keep as string[]);
+      return json(200, { logos: await statuses(env, user, channel, airline) }, cors);
     }
     return json(405, { error: 'method not allowed' }, cors);
   },

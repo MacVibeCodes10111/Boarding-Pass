@@ -24,8 +24,13 @@ export interface ProfileStats {
   /** When the airline started (YYYY-MM-DD), if its save says. */
   founded?: string;
 }
+/** Career and Sandbox airlines never meet online. An edited save plays as Sandbox, so it's shared as one. */
+export type OnlineMode = 'career' | 'sandbox';
+export const onlineModeOf = (s: Pick<SaveGameState, 'gameMode'>): OnlineMode => (s.gameMode === 'sandbox' ? 'sandbox' : 'career');
+
 export interface Profile {
   saveId: string;
+  mode: OnlineMode;
   airline: string;
   code: string;
   callsign: string;
@@ -118,6 +123,7 @@ export function buildProfile(s: SaveGameState, opts: { logos?: boolean } = {}): 
   }
   return {
     saveId: s.saveId,
+    mode: onlineModeOf(s),
     airline: s.airlineName.trim(),
     code: (s.airlineIata ?? '').toUpperCase(),
     callsign: s.airlineCallsign ?? '',

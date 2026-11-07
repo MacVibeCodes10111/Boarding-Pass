@@ -8,6 +8,9 @@
 //   different airline, like any two airlines on one route. Friends' flights don't
 //   hold other traffic back on the runways either, and yours don't wait for theirs.
 //
+//   Friends are an airline's: the map shows the friends of the career being played,
+//   if it's shared (setFriendsMapAirline).
+//
 //   Kept in memory only: nothing of a friend's is saved on this device, so removing
 //   a friend, blocking or a friend turning this off ends at the next refresh.
 // ============================================================================
@@ -156,12 +159,22 @@ export function wantFriendsMap(on: boolean) {
   if (!on) clearFriendsMap();
 }
 
+/** Whose friends: the shared airline of the career being played, or null. */
+let viewer: string | null = null;
+export function setFriendsMapAirline(airline: string | null) {
+  if (airline === viewer) return;
+  viewer = airline;
+  clearFriendsMap();
+}
+
 /** Asks who's on the map now. If that can't be answered, what's showing stays until it can. */
 export async function refreshFriendsMap(): Promise<void> {
-  if (!wanted) return;
+  const me = viewer;
+  if (!wanted || !me) return;
   const known = Object.fromEntries(shown.map((f) => [f.id, f.version]));
-  const answer = await fetchFriendSchedules(known);
-  if (answer && wanted) setShown(mergeFriendAnswer(shown, answer));
+  const answer = await fetchFriendSchedules(me, known);
+  // Still the same airline: a career switch while asking would mix two airlines' friends
+  if (answer && wanted && viewer === me) setShown(mergeFriendAnswer(shown, answer));
 }
 
 /** Takes everything off the map (the layer was turned off, or the feature is off). */
@@ -185,9 +198,27 @@ export async function friendLivery(owner: string, index: number): Promise<Livery
   return r?.liveries[index] ?? r?.liveries[0] ?? null;
 }
 
+/** All of a friend's liveries (main, then special if they have one). Empty if they can't be fetched. */
+export async function friendLiveries(owner: string): Promise<Livery[]> {
+  const fr = shown.find((f) => f.id === owner);
+  if (!fr) return [];
+  const key = `${owner}|${fr.updatedAt}`;
+  let got = pictures.get(key);
+  if (!got) {
+    got = loadLiveries(owner);
+    pictures.set(key, got);
+  }
+  const r = await got;
+  return (r?.liveries ?? []).filter((l): l is Livery => l !== null);
+}
+
+/** The shared airline of the career being played, if it's shared. */
+export const friendsMapViewer = () => viewer;
+
 async function loadLiveries(owner: string) {
   try {
-    const r = (await cloudRpc('friend_liveries', { p_id: owner })) as { liveries?: unknown; updatedAt?: unknown } | null;
+    if (!viewer) return null;
+    const r = (await cloudRpc('friend_liveries', { p_me: viewer, p_id: owner })) as { liveries?: unknown; updatedAt?: unknown } | null;
     if (!r || !Array.isArray(r.liveries)) return null;
     const hashes = new Set<string>();
     for (const lv of r.liveries as { badge?: unknown; layers?: { logo?: unknown }[] }[]) {

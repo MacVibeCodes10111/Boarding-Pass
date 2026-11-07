@@ -1,15 +1,18 @@
 // ============================================================================
-// LOGO UPLOADS (v2.66)
-//   A picture the player picks becomes a 128×128 logo: fitted in the square
-//   (or cropped to fill it), optionally with its white background taken out,
-//   and saved again as WebP (PNG where the browser can't), small enough to
-//   keep in the save. Saving it again drops whatever else the file carried
-//   (camera details, location). SVG isn't accepted: it can carry scripts.
+// LOGO UPLOADS (v2.66; any size since 2026-11-07)
+//   A picture the player picks becomes a square logo at its own size (up to
+//   LOGO_MAX_PX): fitted in the square (or cropped to fill it), optionally with
+//   its white background taken out, and saved again as WebP (PNG where the
+//   browser can't). If that's over MAX_LOGO_BYTES it's saved a little smaller
+//   until it fits, so no picture is turned away for its size. Saving it again
+//   drops whatever else the file carried (camera details, location). SVG isn't
+//   accepted: it can carry scripts.
 // ============================================================================
-import { LOGO_PX, MAX_LOGO_CHARS } from '../../game/livery';
+import { LOGO_MAX_PX, MAX_LOGO_CHARS } from '../../game/livery';
 
 export const LOGO_TYPES = 'image/png,image/jpeg,image/webp';
-const MAX_FILE_BYTES = 8 * 1024 * 1024;
+/** What can be opened at all (a phone photo is a few MB). */
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 export interface LogoOptions {
   fit: 'contain' | 'cover';
@@ -35,23 +38,40 @@ function readImage(file: File): Promise<HTMLImageElement> {
 /** The picked file as a logo data URL, or an error message. */
 export async function makeLogo(file: File, opt: LogoOptions): Promise<{ url: string } | { error: string }> {
   if (!/^image\/(png|jpeg|webp)$/.test(file.type)) return { error: 'Pick a PNG, JPG or WebP picture.' };
-  if (file.size > MAX_FILE_BYTES) return { error: 'That picture is over 8 MB. Pick a smaller one.' };
+  if (file.size > MAX_FILE_BYTES) return { error: 'That picture is over 25 MB. Pick a smaller one.' };
   let im: HTMLImageElement;
   try {
     im = await readImage(file);
   } catch (e) {
     return { error: (e as Error).message };
   }
-  const c = document.createElement('canvas');
-  c.width = c.height = LOGO_PX;
-  const g = c.getContext('2d', { willReadFrequently: true })!;
   const w = im.naturalWidth, h = im.naturalHeight;
   if (!w || !h) return { error: 'That picture is empty.' };
-  const k = opt.fit === 'cover' ? Math.max(LOGO_PX / w, LOGO_PX / h) : Math.min(LOGO_PX / w, LOGO_PX / h);
+  // Its own size, square; the smallest few steps only matter for a very busy photo
+  const full = Math.max(16, Math.min(LOGO_MAX_PX, opt.fit === 'cover' ? Math.min(w, h) : Math.max(w, h)));
+  for (const side of [full, 768, 512, 384, 256, 192, 128].filter((x, i) => i === 0 || x < full)) {
+    const c = drawLogo(im, side, opt);
+    for (const q of [0.92, 0.85, 0.75, 0.6]) {
+      const url = c.toDataURL('image/webp', q);
+      if (!url.startsWith('data:image/webp')) break; // this browser can't make WebP
+      if (url.length <= MAX_LOGO_CHARS) return { url };
+    }
+    const png = c.toDataURL('image/png');
+    if (png.length <= MAX_LOGO_CHARS) return { url: png };
+  }
+  return { error: 'That picture is too detailed to keep as a logo. Try a simpler one.' };
+}
+
+function drawLogo(im: HTMLImageElement, side: number, opt: LogoOptions): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = c.height = side;
+  const g = c.getContext('2d', { willReadFrequently: opt.removeWhite })!;
+  const w = im.naturalWidth, h = im.naturalHeight;
+  const k = opt.fit === 'cover' ? Math.max(side / w, side / h) : Math.min(side / w, side / h);
   g.imageSmoothingQuality = 'high';
-  g.drawImage(im, (LOGO_PX - w * k) / 2, (LOGO_PX - h * k) / 2, w * k, h * k);
+  g.drawImage(im, (side - w * k) / 2, (side - h * k) / 2, w * k, h * k);
   if (opt.removeWhite) {
-    const d = g.getImageData(0, 0, LOGO_PX, LOGO_PX);
+    const d = g.getImageData(0, 0, side, side);
     const p = d.data;
     for (let i = 0; i < p.length; i += 4) {
       const m = Math.min(p[i], p[i + 1], p[i + 2]);
@@ -60,11 +80,5 @@ export async function makeLogo(file: File, opt: LogoOptions): Promise<{ url: str
     }
     g.putImageData(d, 0, 0);
   }
-  for (const q of [0.9, 0.8, 0.65, 0.5]) {
-    const url = c.toDataURL('image/webp', q);
-    if (url.startsWith('data:image/webp') && url.length <= MAX_LOGO_CHARS) return { url };
-  }
-  const png = c.toDataURL('image/png');
-  if (png.length <= MAX_LOGO_CHARS) return { url: png };
-  return { error: 'That picture is too detailed to keep as a logo. Try a simpler one.' };
+  return c;
 }

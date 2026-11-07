@@ -968,7 +968,7 @@ export function LiveryEditor(props: {
           Take out a white background
         </label>
       </div>
-      <div style={{ fontSize: 11.5, color: C.muted }}>PNG, JPG or WebP, made into a 128×128 logo. Only upload pictures you own or have the right to use. Up to {MAX_LOGOS}. Your airline logo is set in Menu → Airline details.</div>
+      <div style={{ fontSize: 11.5, color: C.muted }}>PNG, JPG or WebP, kept at its own size up to 1024×1024 and 48 KB (made smaller if it’s bigger). Only upload pictures you own or have the right to use. Up to {MAX_LOGOS}. Your airline logo is set in Menu → Airline details.</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
         <span style={{ fontSize: 12, fontWeight: 650, color: C.textSoft }}>Ready-made logos</span>
         <input type="color" aria-label="Preset main colour" value={presetA} onChange={(e) => setPresetA(e.target.value)} style={{ width: 26, height: 22, padding: 0, border: `1px solid ${C.border}`, borderRadius: 5 }} />
@@ -983,7 +983,7 @@ export function LiveryEditor(props: {
               title={`${p.label}: add it to this livery`}
               aria-label={`Add the ${p.label} logo`}
               onClick={() => {
-                if (addLogo(p.url!)) flash(`${p.label} logo added. Click the aircraft to place it.`);
+                if (addLogo(presetLogo(p.id, presetA, presetB, name, true) ?? p.url!)) flash(`${p.label} logo added. Click the aircraft to place it.`);
               }}
               style={{ width: 44, height: 44, borderRadius: 8, border: `1px solid ${C.line}`, background: C.bg, padding: 3, cursor: 'pointer' }}
             >

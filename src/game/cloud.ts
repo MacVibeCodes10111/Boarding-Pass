@@ -27,7 +27,7 @@
 import type { SupabaseClient, User } from '@supabase/supabase-js';
 import { IS_DEV } from './channel';
 import { clearOnlineState, featureOn, setFeatures } from './features';
-import { buildProfile, logoBytes, profileKey, type Profile } from './profile';
+import { buildProfile, logoBytes, profileKey, type OnlineMode, type Profile } from './profile';
 import { buildSnapshot } from './scheduleSnapshot';
 import { normaliseLogo } from './livery';
 import { IS_MAC } from './platform';
@@ -316,13 +316,9 @@ export function onForgetOnline(fn: () => void): () => void {
 function forgetSharing() {
   clearOnlineState();
   for (const fn of forgetListeners) fn();
-  sharedSaveId = null;
-  mapOn = false;
-  lastScheduleAt = 0;
-  lastScheduleKey = '';
-  lastPublishAt = 0;
-  lastPublishKey = '';
-  logosInSync = '';
+  mine = null;
+  published.clear();
+  scheduled.clear();
   logoStatus = {};
 }
 
@@ -336,42 +332,84 @@ export async function refreshFeatures(): Promise<void> {
   } catch {
     setFeatures(null);
   }
-  if (featureOn('profiles')) await refreshSharedCareer();
+  if (featureOn('profiles')) await refreshMyAirlines();
 }
 
 // ---------------------------------------------------------------------------
-// The shared airline (A1): one career per account, kept on the server so every
-// device agrees. It's published when the player turns it on, then when its
-// details change, every few minutes at most.
+// Shared airlines (A1, per airline since 2026-11-07): each shared career is an
+// airline of its own online, with its own friend code, friends and map choice.
+// Up to 10 a player. A career is shared from inside it; the list is kept on the
+// server so every device agrees. Each is published when it's shared, then when
+// its details change, every few minutes at most.
 // ---------------------------------------------------------------------------
-const PUBLISH_EVERY_MS = 5 * 60_000;
-let sharedSaveId: string | null = null;
-let lastPublishAt = 0;
-let lastPublishKey = '';
+export interface MyAirline {
+  /** Its public id: what other players and the Worker know it by. */
+  id: string;
+  saveId: string;
+  airline: string;
+  code: string;
+  friendCode: string;
+  mode: OnlineMode;
+  /** Its flights are shown on its friends' maps. */
+  mapOn: boolean;
+}
 
-export const sharedCareerId = () => sharedSaveId;
+const PUBLISH_EVERY_MS = 5 * 60_000;
+export const MAX_SHARED_AIRLINES = 10;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const FRIEND_CODE = /^[2-9BCDFGHJKLMNPQRSTVWXZ]{8}$/;
+
+/** Null until the server has been asked. */
+let mine: MyAirline[] | null = null;
+/** For each shared career: when it was last sent, what was sent, and which logos are in step. */
+const published = new Map<string, { at: number; key: string; logos: string }>();
+
+export const myAirlines = (): MyAirline[] => mine ?? [];
+export const myAirlinesKnown = () => mine !== null;
+/** The shared airline of this career, if it's shared. */
+export const airlineFor = (saveId: string | null | undefined): MyAirline | null => (saveId ? (mine ?? []).find((a) => a.saveId === saveId) ?? null : null);
+
+/** What the server sent, safe to use. */
+export function normaliseMyAirlines(x: unknown): MyAirline[] {
+  if (!Array.isArray(x)) return [];
+  const out: MyAirline[] = [];
+  for (const v of x) {
+    if (!v || typeof v !== 'object') continue;
+    const o = v as Record<string, unknown>;
+    if (typeof o.id !== 'string' || !UUID.test(o.id) || typeof o.saveId !== 'string' || !o.saveId) continue;
+    out.push({
+      id: o.id,
+      saveId: o.saveId.slice(0, 80),
+      airline: typeof o.airline === 'string' ? o.airline.slice(0, 40) : '',
+      code: typeof o.code === 'string' ? o.code.slice(0, 3) : '',
+      friendCode: typeof o.friendCode === 'string' && FRIEND_CODE.test(o.friendCode) ? o.friendCode : '',
+      mode: o.mode === 'sandbox' ? 'sandbox' : 'career',
+      mapOn: o.mapOn === true,
+    });
+  }
+  return out.slice(0, MAX_SHARED_AIRLINES);
+}
 
 const PUBLISH_PROBLEM: Record<string, string> = {
   bad_name: 'That airline’s name, code or callsign can’t be shared. Change it in Airline details and try again.',
   bad_text: 'A name or text on this airline’s liveries can’t be shared. Change it in the livery editor and try again.',
   bad_livery: 'This airline’s liveries can’t be shared. Open them in the livery editor, save, and try again.',
   too_big: 'These liveries are too detailed to share. Remove some brush painting and try again.',
+  too_many: `You can share ${MAX_SHARED_AIRLINES} airlines at most. Stop sharing one first.`,
   off: 'Sharing isn’t available right now.',
 };
 
-async function refreshSharedCareer() {
+/** Reads the player's shared airlines from the server. */
+export async function refreshMyAirlines(): Promise<void> {
   const c = await signedInClient().catch(() => null);
   if (!c) return;
-  const { data, error } = await c.rpc('profile_mine', { p_channel: CHANNEL });
+  const { data, error } = await c.rpc('airlines_mine', { p_channel: CHANNEL });
   if (error) return;
-  const next = (data as { saveId?: string } | null)?.saveId ?? null;
-  const nextMap = (data as { mapOn?: boolean } | null)?.mapOn === true;
-  if (next !== sharedSaveId || nextMap !== mapOn) {
-    sharedSaveId = next;
-    mapOn = nextMap;
+  const next = normaliseMyAirlines(data);
+  if (JSON.stringify(next) !== JSON.stringify(mine)) {
+    mine = next;
     notify();
   }
-  await refreshLogoReview(c);
 }
 
 const profileOf = (s: SaveGameState) => buildProfile(s, { logos: logosReady() });
@@ -386,124 +424,131 @@ async function publish(c: SupabaseClient, p: Profile): Promise<string> {
     p_colours: p.colours,
     p_liveries: p.liveries,
     p_stats: p.stats,
+    p_mode: p.mode,
   });
   if (error) throw new Error(friendlyAuthError(error.message));
-  if (data === 'saved') {
-    lastPublishAt = Date.now();
-    lastPublishKey = profileKey(p);
-  }
+  if (data === 'saved') published.set(p.saveId, { at: Date.now(), key: profileKey(p), logos: published.get(p.saveId)?.logos ?? '' });
   return String(data);
 }
 
-/** Shares this career (replacing any other this account was sharing). Says why if it can't. */
+/** Shares this career as an airline of its own (or updates it). Says why if it can't. */
 export async function shareCareer(s: SaveGameState): Promise<void> {
   const c = await signedInClient();
   if (!c) throw new Error('Sign in to share your airline.');
   const p = profileOf(s);
   const r = await publish(c, p);
   if (r !== 'saved' && r !== 'too_soon') throw new Error(PUBLISH_PROBLEM[r] ?? 'Sharing didn’t work. Try again later.');
-  const changed = sharedSaveId !== s.saveId;
-  sharedSaveId = s.saveId;
-  notify();
-  await syncLogos(c, p);
-  // A different career is sharing now: friends see its flights instead
-  if (changed && mapOn) await sendSchedule(c, s, Date.now()).catch(() => undefined);
+  await refreshMyAirlines();
+  const air = airlineFor(s.saveId);
+  if (air) await syncLogos(c, air.id, p);
 }
 
-/** Stops sharing: the server deletes the airline's profile straight away, and its logos go with it. */
-export async function stopSharing(): Promise<void> {
+/** Stops sharing this airline: the server deletes it straight away, with its friends, and its logos and schedule go too. */
+export async function stopSharing(saveId: string): Promise<void> {
   const c = await signedInClient();
   if (!c) throw new Error('Sign in to change what you share.');
-  const { error } = await c.rpc('profile_delete', { p_channel: CHANNEL });
+  const air = airlineFor(saveId);
+  const { error } = await c.rpc('profile_delete', { p_channel: CHANNEL, p_save_id: saveId });
   if (error) throw new Error(friendlyAuthError(error.message));
-  sharedSaveId = null;
-  mapOn = false;
-  lastScheduleKey = '';
-  lastPublishKey = '';
-  logosInSync = '';
-  logoStatus = {};
+  published.delete(saveId);
+  if (mine) mine = mine.filter((a) => a.saveId !== saveId);
   notify();
+  if (!air) return;
+  scheduled.delete(air.id);
+  delete logoStatus[air.id];
   // If these don't get through, the server has queued them for the nightly clean-up
-  await logoRequest(c, '', { method: 'DELETE' }).catch(() => undefined);
-  await workerRequest(c, '/schedule', { method: 'DELETE' }).catch(() => undefined);
+  await workerRequest(c, '/logo', air.id, { method: 'DELETE' }).catch(() => undefined);
+  await workerRequest(c, '/schedule', air.id, { method: 'DELETE' }).catch(() => undefined);
 }
 
-/** After a save: sends the shared career's details if they changed. Never gets in the way of playing. */
+/** After a save: sends a shared career's details if they changed. Never gets in the way of playing. */
 export async function publishIfDue(s: SaveGameState, now = Date.now()): Promise<void> {
-  void publishScheduleIfDue(s, now);
-  if (!featureOn('profiles') || sharedSaveId !== s.saveId || now - lastPublishAt < PUBLISH_EVERY_MS) return;
+  const air = airlineFor(s.saveId);
+  if (!air) return;
+  void publishScheduleIfDue(air, s, now);
+  const last = published.get(s.saveId);
+  if (!featureOn('profiles') || now - (last?.at ?? 0) < PUBLISH_EVERY_MS) return;
   try {
     const p = profileOf(s);
-    const unchanged = profileKey(p) === lastPublishKey;
-    if (unchanged && logosInSync === logoSet(p)) return;
+    const unchanged = profileKey(p) === last?.key;
+    if (unchanged && last?.logos === logoSet(p)) return;
     const c = await signedInClient();
     if (!c) return;
     if (unchanged) {
-      lastPublishAt = now;
-      return await syncLogos(c, p);
+      published.set(s.saveId, { ...last!, at: now });
+      return await syncLogos(c, air.id, p);
     }
-    if ((await publish(c, p)) === 'saved') await syncLogos(c, p);
+    if ((await publish(c, p)) === 'saved') {
+      await syncLogos(c, air.id, p);
+      // A name or mode change shows in the Online window
+      if (p.airline !== air.airline || p.code !== air.code || p.mode !== air.mode) await refreshMyAirlines();
+    }
   } catch {
     /* offline, or the details can't be shared right now: the last good copy stays */
   }
 }
 
 // ---------------------------------------------------------------------------
-// Shared logos (A2): pictures go to the Worker, and other players see them once
-// they're approved. A player's own copy stays in their save, so nothing about
-// playing depends on any of this: a failure here is tried again later.
+// Shared logos (A2): pictures go to the Worker, each with the airline that uses
+// it, and other players see them once they're approved. A player's own copy
+// stays in their save, so nothing about playing depends on any of this: a
+// failure here is tried again later.
 // ---------------------------------------------------------------------------
-let logoStatus: Record<string, string> = {};
-/** The set of logos last fully uploaded. */
-let logosInSync = '';
+/** For each shared airline: its logos' review status. */
+let logoStatus: Record<string, Record<string, string>> = {};
 
 /** Logos are shared only once the Worker's address is in the game and the server has them switched on. */
 const logosReady = () => Boolean(LOGOS_URL) && featureOn('logos');
 const logoSet = (p: Profile) => Object.keys(p.logos).sort().join(',');
 
-/** How the shared airline's logos are doing in review. */
-export function logoReview(): { waiting: number; refused: number } {
-  const all = Object.values(logoStatus);
+/** How a shared airline's logos are doing in review. */
+export function logoReview(airline: string | null | undefined): { waiting: number; refused: number } {
+  const all = Object.values((airline && logoStatus[airline]) || {});
   return { waiting: all.filter((x) => x === 'pending').length, refused: all.filter((x) => x === 'rejected').length };
 }
 
-async function workerRequest(c: SupabaseClient, path: string, init: RequestInit): Promise<Response> {
+/** A request to the Worker, as the signed-in player, for one of their airlines (or none). */
+async function workerRequest(c: SupabaseClient, path: string, airline: string | null, init: RequestInit): Promise<Response> {
   const { data } = await c.auth.getSession();
   const token = data.session?.access_token;
   if (!token || !LOGOS_URL) throw new Error('No logo service');
-  const res = await fetch(`${LOGOS_URL}${path}?channel=${CHANNEL}`, { ...init, headers: { ...init.headers, authorization: `Bearer ${token}` } });
+  const q = `?channel=${CHANNEL}${airline ? `&airline=${encodeURIComponent(airline)}` : ''}`;
+  const res = await fetch(`${LOGOS_URL}${path}${q}`, { ...init, headers: { ...init.headers, authorization: `Bearer ${token}` } });
   if (!res.ok) throw new Error(`Logo service: ${res.status}`);
   return res;
 }
-const logoRequest = (c: SupabaseClient, path: string, init: RequestInit) => workerRequest(c, `/logo${path}`, init);
 
-/** Makes the Worker hold exactly the logos this profile uses. Fails quietly: the next save tries again. */
-async function syncLogos(c: SupabaseClient, p: Profile): Promise<void> {
+/** Makes the Worker hold exactly the logos this airline's profile uses. Fails quietly: the next save tries again. */
+async function syncLogos(c: SupabaseClient, airline: string, p: Profile): Promise<void> {
   if (!logosReady()) return;
+  const mark = (logos: string) => published.set(p.saveId, { ...(published.get(p.saveId) ?? { at: Date.now(), key: '' }), logos });
   try {
     const keep = Object.keys(p.logos);
-    const had = (await (await logoRequest(c, '/sync', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ keep }) })).json()) as { logos: Record<string, string> };
+    const had = (await (await workerRequest(c, '/logo/sync', airline, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ keep }) })).json()) as { logos: Record<string, string> };
     const next = { ...had.logos };
     for (const hash of keep) {
       if (next[hash]) continue;
       const url = p.logos[hash];
       const bytes = logoBytes(url);
-      const res = await logoRequest(c, '', { method: 'PUT', headers: { 'content-type': url.slice(5, url.indexOf(';')) }, body: bytes.slice().buffer });
+      const res = await workerRequest(c, '/logo', airline, { method: 'PUT', headers: { 'content-type': url.slice(5, url.indexOf(';')) }, body: bytes.slice().buffer });
       next[hash] = ((await res.json()) as { status: string }).status;
     }
-    logoStatus = next;
-    logosInSync = logoSet(p);
+    logoStatus = { ...logoStatus, [airline]: next };
+    mark(logoSet(p));
     notify();
   } catch {
-    logosInSync = 'failed';
+    mark('failed');
   }
 }
 
-/** Reads how this player's logos are doing in review. */
-async function refreshLogoReview(c: SupabaseClient) {
-  if (!logosReady() || !sharedSaveId) return;
+/** Reads how one of this player's airlines' logos are doing in review. */
+export async function refreshLogoReview(airline: string): Promise<void> {
+  if (!logosReady() || !UUID.test(airline)) return;
+  const c = await signedInClient().catch(() => null);
+  if (!c) return;
   try {
-    logoStatus = ((await (await logoRequest(c, '/mine', { method: 'GET' })).json()) as { logos: Record<string, string> }).logos;
+    const got = ((await (await workerRequest(c, '/logo/mine', airline, { method: 'GET' })).json()) as { logos: Record<string, string> }).logos;
+    logoStatus = { ...logoStatus, [airline]: got };
     notify();
   } catch {
     /* it'll show the last known state */
@@ -542,57 +587,54 @@ export async function cloudRpc(name: string, args: Record<string, unknown> = {})
 
 // ---------------------------------------------------------------------------
 // Showing flights to friends (A4, see scheduleSnapshot.ts). Off until the player
-// turns it on, and only ever for the career they chose to share.
+// turns it on for a shared airline, and only ever that airline's own flights.
 // ---------------------------------------------------------------------------
 const SCHEDULE_EVERY_MS = 5 * 60_000;
-let mapOn = false;
-let lastScheduleAt = 0;
-let lastScheduleKey = '';
-
-export const mapSharingOn = () => mapOn;
+/** For each shared airline: when its schedule was last sent, and what was sent. */
+const scheduled = new Map<string, { at: number; key: string }>();
 
 /** Sends this career's schedule if it changed. Fails quietly: the next save tries again. */
-async function sendSchedule(c: SupabaseClient, s: SaveGameState, now: number): Promise<void> {
+async function sendSchedule(c: SupabaseClient, airline: string, s: SaveGameState, now: number): Promise<void> {
   const body = JSON.stringify(buildSnapshot(s));
-  if (body === lastScheduleKey) return;
-  lastScheduleAt = now;
-  await workerRequest(c, '/schedule', { method: 'PUT', headers: { 'content-type': 'application/json' }, body });
-  lastScheduleKey = body;
+  if (body === scheduled.get(airline)?.key) return;
+  scheduled.set(airline, { at: now, key: scheduled.get(airline)?.key ?? '' });
+  await workerRequest(c, '/schedule', airline, { method: 'PUT', headers: { 'content-type': 'application/json' }, body });
+  scheduled.set(airline, { at: now, key: body });
 }
 
-/** Turns showing this career's flights to friends on or off. Says why if it can't. */
-export async function setMapSharing(on: boolean, career?: SaveGameState): Promise<void> {
+/** Turns showing a shared airline's flights to its friends on or off. Says why if it can't. */
+export async function setMapSharing(airline: string, on: boolean, career?: SaveGameState): Promise<void> {
   const c = await signedInClient();
   if (!c) throw new Error('Sign in to change what you share.');
-  const r = await cloudRpc('map_share_set', { p_on: on });
-  if (on && r !== 'on') throw new Error(r === 'share_first' ? 'Share your airline first.' : 'That isn’t available right now.');
-  mapOn = on;
-  lastScheduleKey = '';
+  const r = await cloudRpc('map_share_set', { p_me: airline, p_on: on });
+  if (on && r !== 'on') throw new Error(r === 'share_first' ? 'Share this airline first.' : 'That isn’t available right now.');
+  if (mine) mine = mine.map((a) => (a.id === airline ? { ...a, mapOn: on } : a));
+  scheduled.delete(airline);
   notify();
   if (on) {
-    if (career) await sendSchedule(c, career, Date.now()).catch(() => undefined);
+    if (career) await sendSchedule(c, airline, career, Date.now()).catch(() => undefined);
   } else {
     // If this doesn't get through, the server has queued it for the nightly clean-up
-    await workerRequest(c, '/schedule', { method: 'DELETE' }).catch(() => undefined);
+    await workerRequest(c, '/schedule', airline, { method: 'DELETE' }).catch(() => undefined);
   }
 }
 
-async function publishScheduleIfDue(s: SaveGameState, now: number): Promise<void> {
-  if (!mapOn || !featureOn('friends_map') || sharedSaveId !== s.saveId || now - lastScheduleAt < SCHEDULE_EVERY_MS) return;
+async function publishScheduleIfDue(air: MyAirline, s: SaveGameState, now: number): Promise<void> {
+  if (!air.mapOn || !featureOn('friends_map') || now - (scheduled.get(air.id)?.at ?? 0) < SCHEDULE_EVERY_MS) return;
   try {
     const c = await signedInClient();
-    if (c) await sendSchedule(c, s, now);
+    if (c) await sendSchedule(c, air.id, s, now);
   } catch {
     /* offline: the last good copy stays */
   }
 }
 
-/** The friends this player can have on their map, and any schedule newer than the versions given. Null if that can't be asked right now. */
-export async function fetchFriendSchedules(known: Record<string, number>): Promise<unknown> {
+/** The friends of this airline that its map can show, and any schedule newer than the versions given. Null if that can't be asked right now. */
+export async function fetchFriendSchedules(airline: string, known: Record<string, number>): Promise<unknown> {
   const c = await signedInClient().catch(() => null);
   if (!c || !LOGOS_URL) return null;
   try {
-    const res = await workerRequest(c, '/schedules', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ known }) });
+    const res = await workerRequest(c, '/schedules', airline, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ known }) });
     return await res.json();
   } catch {
     return null;
@@ -687,7 +729,7 @@ export async function setCloudPick(s: SaveGameState, on: boolean): Promise<void>
   setPicks([...next]);
   if (on) {
     const r = await pushOne(c, s, true);
-    if (r === 'too_big') throw new Error('This career is too big to sync. Use Export save file to move it.');
+    if (r === 'too_big') throw new Error('This career is too big to sync, so it stays on this device.');
     if (r === 'rate_limited') throw new Error('You’ve synced a lot this hour. It will upload later.');
   } else {
     const m = readSynced();
@@ -854,7 +896,7 @@ export async function uploadCareer(saveId: string): Promise<void> {
       : r === 'full' || r === 'not_picked'
         ? `Turn on “Keep in the cloud” for this career first (up to ${MAX_CLOUD_CAREERS}).`
         : r === 'too_big'
-          ? 'This career is too big to sync. Use Export save file to move it.'
+          ? 'This career is too big to sync, so it stays on this device.'
           : r === 'rate_limited'
             ? 'You’ve synced a lot this hour. Try again later.'
             : 'The cloud is full right now. Try again later.',
@@ -929,7 +971,7 @@ async function doSync(openSaveId: string | null): Promise<SyncReport> {
       if (r === 'saved') report.sent++;
       else if (r === 'full') report.problem = `The cloud keeps ${MAX_CLOUD_CAREERS} careers per account. Turn one off in Cloud saves to sync another.`;
       else if (r === 'server_full') report.problem = 'The cloud is full right now. Your careers are safe on this device; try again later.';
-      else if (r === 'too_big') report.problem = `${s.airlineName} is too big to sync. Use Export save file to move it.`;
+      else if (r === 'too_big') report.problem = `${s.airlineName} is too big to sync, so it stays on this device.`;
       else if (r === 'older' && s.saveId !== openSaveId) report.waiting.push(s.airlineName);
       else if (r === 'rate_limited') {
         report.problem = 'You’ve synced a lot this hour, so uploads are paused for a while. Your careers are safe on this device.';

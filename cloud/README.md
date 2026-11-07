@@ -26,7 +26,17 @@ New server code goes in the build project (`boarding-pass-build`) first; the liv
 
 The word filter on the server is made from `src/game/moderation.ts`. After changing its lists, run `npx vitest -u`, then run `supabase/moderation.sql` in both projects and check with `supabase/moderation-check.sql` (no rows means they agree). It treats letters spaced with two or more spaces (`a  s  s`) as separate words, on the server and in the game.
 
+## Airlines (since 2026-11-07)
+
+`supabase/2026-11-07-airlines.sql` and `logos-worker/migrate-2026-11-07.sql`. Everything online belongs to a shared airline, not to an account: each row of `profiles` (up to 10 per player) has its own `public_id`, friend code, friends, map setting and logos. Sharing happens inside a career (the Online window there uploads it); on the main menu the player picks which shared airline to look at. Every call is made as one of the player's airlines (`p_me`), and the server checks it's theirs. Blocks are between players, so blocking reaches all of their airlines. Each airline is Career or Sandbox (`mode`; an edited or imported save is Sandbox), and the two never meet: friends now, alliances and the marketplace later. Changing an airline's mode removes its friends. Save files: the game no longer exports them, and an old one always opens as a new Sandbox career.
+
+A friend's aircraft has an Airline button that opens their airline: liveries, stats, route map and fleet, all worked out from what they already share (`src/components/FriendAirline.tsx`, `src/game/friendAirline.ts`). Nothing new is sent for it.
+
+To go live, in this order: run `2026-11-07-airlines.sql` on the live project (the dev builds out there stop working online until step 4), run `migrate-2026-11-07.sql` on the remote D1 and set `airline` on the old `logo_owners` rows to the owner's airline's `public_id`, deploy the Worker, push `dev`, then republish the legal pages.
+
 ## Logos
+
+Logos are square PNG or WebP, kept at their own size up to 1024×1024 and 48 KB (`MAX_LOGO_BYTES` in `src/game/livery.ts` and the Worker; bigger pictures are saved smaller until they fit). They're in the save too, so 48 KB keeps a career with every logo slot filled to about 0.7 MB, well under what a browser keeps. The R2 cap (9.5 GB) holds about 200,000 of them.
 
 The pictures live in R2, through the Worker in `logos-worker/` (its README covers deploying and reviewing). A profile names each logo by the hash of its picture, so no picture data goes in the database, and a player's own copy stays in their save, so playing never depends on the Worker. New logos are hidden until approved. Stopping sharing removes logos straight away; if the Worker can't be reached, and for deleted accounts, Supabase keeps a removal list that the Worker's nightly job clears.
 
@@ -34,17 +44,17 @@ To try it locally, run the Worker with `npx wrangler dev` and add `VITE_BP_LOGOS
 
 ## Friends
 
-`supabase/2026-11-06-friends.sql`. Players are known by a `public_id` in `online_players`, never their account number, and find each other by friend code only. One row per pair in `friendships`, and everything goes through functions. Limits, all on the server: 100 friends, 50 requests waiting either way, 20 tries a day including failed ones, 5 new codes a day, and a week's wait after a refusal. A blocked player gets the same answer as a code that doesn't exist. `private.friends_cleanup` clears old requests each night (`pg_cron`).
+`supabase/2026-11-06-friends.sql`, made per airline by `2026-11-07-airlines.sql`. Airlines are known by their `public_id` in `profiles`, never the account number, and find each other by friend code only. One row per pair in `friendships`, and everything goes through functions. Limits, all on the server: 100 friends, 50 requests waiting either way, 20 tries a day including failed ones, 5 new codes a day, and a week's wait after a refusal. A blocked player gets the same answer as a code that doesn't exist. `private.friends_cleanup` clears old requests each night (`pg_cron`).
 
 ## Friends' aircraft
 
-`supabase/2026-11-06-friends-map.sql` and `logos-worker/src/schedules.ts`. Off until the player turns it on (`online_players.map_on`), and it goes off when they stop sharing their airline. The weekly schedule is one small file in R2, and the viewer's game flies it on the viewer's own clock (`src/game/friendsMap.ts`, `scheduleSnapshot.ts`). On every read, `friends_on_map` says who that viewer may see, so a block, a removal or turning it off works on the next refresh, every 10 minutes at most while a map is open. Nothing of a friend's is saved on the viewer's device.
+`supabase/2026-11-06-friends-map.sql` and `logos-worker/src/schedules.ts`. Off until the player turns it on (`profiles.map_on`, per airline), and it goes off when they stop sharing their airline. The weekly schedule is one small file in R2, and the viewer's game flies it on the viewer's own clock (`src/game/friendsMap.ts`, `scheduleSnapshot.ts`). On every read, `friends_on_map` says who that viewer may see, so a block, a removal or turning it off works on the next refresh, every 10 minutes at most while a map is open. Nothing of a friend's is saved on the viewer's device.
 
 To go live: run both scripts, run `schema.sql` on D1, deploy the Worker, then turn on `friends` and `friends_map`, in that order. The Worker has to be deployed before `friends_map` goes on, because an older one reads a schedule removal as "remove the logos too".
 
 ## Decided for the updates ahead
 
 - Other airlines' schedules go in R2 and are read through Cloudflare, not from Supabase: 20 friends at 200 KB each would use up Supabase's 5 GB a month in about 1,250 refreshes across all players. Republish only when a schedule changes.
-- A player shares one career, which they choose, because an account can have up to 10.
+- A player shares the careers they choose, up to 10, each as its own airline (changed 2026-11-07; it was one per player).
 - Friends are found by friend code. A username is half of a password sign-in, and the terms promise other players never see sign-in details.
 - Script-blocking rules (Content-Security-Policy) are in `vite.config.ts` for the web game and `src-tauri/tauri.conf.json` for the apps. A new outside address has to be added to both.

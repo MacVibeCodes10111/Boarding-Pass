@@ -83,7 +83,7 @@ function steps(p: { airlineName: string; hubIata: string; sandbox: boolean }): S
     {
       title: 'Saving',
       target: 'menu',
-      body: ['Your career saves itself every minute. Menu exports a save file, replays this tour, or takes you back to the home screen.', 'Good luck, captain.'],
+      body: ['Your career saves itself every minute. Menu has cloud saves, replays this tour, or takes you back to the home screen.', 'Good luck, captain.'],
     },
   ];
   return all.filter((s) => !(s.careerOnly && p.sandbox));

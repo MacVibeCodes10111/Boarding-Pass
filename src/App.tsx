@@ -90,7 +90,6 @@ import {
 import { clearFlightGeometryCache, runwayLanes, setGlobalNavaidsMemory } from './game/navdata';
 import {
   MAX_SAVE_SLOTS,
-  downloadSaveFile,
   hasRoomForCareer,
   hydrateSave,
   readSaveSlots,
@@ -117,10 +116,11 @@ import { APP_VERSION } from './version';
 import { MainMenu } from './components/MainMenu';
 import { CloudHost, openCloud } from './components/CloudPanel';
 import { OnlineHost, openOnline } from './components/OnlinePanel';
+import { FriendAirlineHost } from './components/FriendAirline';
 import { IS_DEV } from './game/channel';
-import { cloudDeleteSave, downloadCareer, newerCloudCopy, nextRev, publishIfDue } from './game/cloud';
+import { airlineFor, cloudDeleteSave, downloadCareer, newerCloudCopy, nextRev, onCloudChange, publishIfDue } from './game/cloud';
 import { featureOn, onFeaturesChange } from './game/features';
-import { friendsOnMap, onFriendsMapChange, refreshFriendsMap, wantFriendsMap, withFriends, type FriendOnMap } from './game/friendsMap';
+import { friendsOnMap, onFriendsMapChange, refreshFriendsMap, setFriendsMapAirline, wantFriendsMap, withFriends, type FriendOnMap } from './game/friendsMap';
 import { RouteFromBar } from './components/RouteFromBar';
 import { WelcomeTour, tourWantedForNewCareer } from './components/WelcomeTour';
 import { C, PanelTabsContext, applyThemeToDocument, useThemeVersion } from './ui/kit';
@@ -438,8 +438,11 @@ export default function App() {
   const [friendAirlines, setFriendAirlines] = useState<FriendOnMap[]>(friendsOnMap);
   useEffect(() => onFeaturesChange(() => setFriendsFlag(featureOn('friends') && featureOn('friends_map'))), []);
   useEffect(() => onFriendsMapChange(() => setFriendAirlines(friendsOnMap())), []);
+  // Friends are the playing career's, if it's shared
+  const [mapAirline, setMapAirline] = useState<string | null>(null);
   useEffect(() => {
-    const on = screen === 'dashboard' && friendsFlag && friendsLayer;
+    const on = screen === 'dashboard' && friendsFlag && friendsLayer && mapAirline !== null;
+    setFriendsMapAirline(mapAirline);
     wantFriendsMap(on);
     if (!on) return;
     let last = -Infinity;
@@ -459,11 +462,16 @@ export default function App() {
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', run);
     };
-  }, [screen, friendsFlag, friendsLayer]);
+  }, [screen, friendsFlag, friendsLayer, mapAirline]);
   const mapRef = useRef<any>(null);
 
   // Saves
   const [activeSaveId, setActiveSaveId] = useState(`SAVE-${Date.now()}`);
+  useEffect(() => {
+    const update = () => setMapAirline(airlineFor(activeSaveId)?.id ?? null);
+    update();
+    return onCloudChange(update);
+  }, [activeSaveId]);
   const [savedGames, setSavedGames] = useState<SaveGameState[]>([]);
 
   // Dealership
@@ -884,7 +892,7 @@ export default function App() {
   };
 
   const showCareersFull = () =>
-    showAlert(`You have ${MAX_SAVE_SLOTS} careers`, `That's the most this device can keep. Delete one from Your careers to make room.`, 'Use Export save file in a career’s menu first if you want to keep a copy.', 'warning');
+    showAlert(`You have ${MAX_SAVE_SLOTS} careers`, `That's the most this device can keep. Delete one from Your careers to make room.`, 'Cloud saves keep a copy of the careers you pick, so you can bring one back later.', 'warning');
 
   /** Start button: if the airline copies a real one in the traffic list, ask first. */
   const requestLaunch = () => {
@@ -1075,7 +1083,7 @@ export default function App() {
     if (persistCareer(false)) {
       flashToast(`Saved ${airlineName}`);
     } else {
-      showAlert('Could not save', 'Browser storage is full or unavailable.', 'Use Export save file in the menu to keep a copy of this career.');
+      showAlert('Could not save', 'Browser storage is full or unavailable.', 'Cloud saves (in the menu) can keep a copy of this career.');
     }
   };
 
@@ -1117,13 +1125,12 @@ export default function App() {
         return;
       }
       loadCareer(r.save);
-      if (r.unprotected)
-        showAlert(
-          'Opened in Sandbox mode',
-          `${r.save.airlineName} comes from a save file without the game's protection (exported before v2.38, or edited), so it plays in Sandbox mode.`,
-          'Saves made from now on are protected and keep their mode.',
-          'info'
-        );
+      showAlert(
+        'Opened in Sandbox mode',
+        `${r.save.airlineName} is a new Sandbox career made from the save file. Careers loaded from files always play in Sandbox, so they can't be used to get ahead in Career.`,
+        'To move a career between devices, use Cloud saves.',
+        'info'
+      );
     };
     reader.readAsText(file);
   };
@@ -1848,7 +1855,8 @@ export default function App() {
         version={APP_VERSION}
       />
       <CloudHost openSaveId={activeSaveId} onSlotsChanged={() => setSavedGames(readSaveSlots())} toast={flashToast} />
-      <OnlineHost />
+      <OnlineHost career={() => currentSaveState()} />
+      <FriendAirlineHost airports={airportByIata} mapStyle={mapStyle} />
       {liveryOpen && (
         <LiveryEditor
           liveries={liveries}
@@ -1901,7 +1909,6 @@ export default function App() {
           version={APP_VERSION}
           onClose={() => setMenuOpen(false)}
           onSave={saveCareer}
-          onExport={() => downloadSaveFile(currentSaveState())}
           onTour={() => {
             resetTransientUi();
             setTourOpen(true);

@@ -17,7 +17,6 @@ export function MainMenu(props: {
   version: string;
   onClose: () => void;
   onSave: () => void;
-  onExport: () => void;
   onCloud: () => void;
   airlineCallsign: string;
   /** Change the airline's name and radio callsign; returns an error message. */
@@ -73,7 +72,6 @@ export function MainMenu(props: {
               props.onSave();
               setSaved(true);
             })}
-            {row('download', 'Export save file', 'A protected copy to keep or move to another computer', props.onExport)}
             {row('swap', 'Cloud saves', 'Sign in to play your careers on all your devices', props.onCloud)}
             {row('edit', 'Airline name, colours and logo', `${props.airlineName}, callsign ${props.airlineCallsign}`, () => setDetails(true))}
             {row('layers', 'Livery', props.hasLivery ? 'Your airline\'s colours on its aircraft' : 'Paint your aircraft in your airline\'s colours', () => {
@@ -128,6 +126,8 @@ function AirlineDetailsModal(props: {
   const [callsign, setCallsign] = useState(props.callsign);
   const [colours, setColours] = useState(props.colours);
   const [logo, setLogo] = useState(props.logo);
+  /** The ready-made logo picked, drawn big for keeping (its button shows a small one). */
+  const [picked, setPicked] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const save = () => {
@@ -177,7 +177,7 @@ function AirlineDetailsModal(props: {
               Upload
             </Button>
             {logo && (
-              <Button size="sm" variant="ghost" onClick={() => setLogo(undefined)}>
+              <Button size="sm" variant="ghost" onClick={() => { setLogo(undefined); setPicked(null); }}>
                 Remove
               </Button>
             )}
@@ -194,6 +194,7 @@ function AirlineDetailsModal(props: {
                 if ('error' in r) setErr(r.error);
                 else {
                   setErr(null);
+                  setPicked(null);
                   setLogo(r.url);
                 }
               }}
@@ -202,13 +203,16 @@ function AirlineDetailsModal(props: {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {presets.map((p) =>
               p.url ? (
-                <button key={p.id} type="button" aria-label={`Use the ${p.label} logo`} title={p.label} onClick={() => setLogo(p.url!)} style={{ width: 40, height: 40, borderRadius: 8, border: `1px solid ${logo === p.url ? C.brand : C.line}`, background: C.bg, padding: 3, cursor: 'pointer' }}>
+                <button key={p.id} type="button" aria-label={`Use the ${p.label} logo`} title={p.label} onClick={() => {
+                    setPicked(p.id);
+                    setLogo(presetLogo(p.id, colours.a, colours.b, name, true) ?? p.url!);
+                  }} style={{ width: 40, height: 40, borderRadius: 8, border: `1px solid ${picked === p.id && logo ? C.brand : C.line}`, background: C.bg, padding: 3, cursor: 'pointer' }}>
                   <img src={p.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                 </button>
               ) : null
             )}
           </div>
-          <div style={{ fontSize: 11.5, color: C.muted }}>PNG, JPG or WebP, made into 128×128. Only upload pictures you own or have the right to use.</div>
+          <div style={{ fontSize: 11.5, color: C.muted }}>PNG, JPG or WebP, kept at its own size up to 1024×1024 and 48 KB. Only upload pictures you own or have the right to use.</div>
         </div>
         <div role="alert" style={{ minHeight: 16, fontSize: 12.5, color: C.red }}>
           {err}

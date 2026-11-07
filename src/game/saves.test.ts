@@ -78,6 +78,16 @@ describe('saves', () => {
     const plain = readSaveFileText(JSON.stringify(career('A', 1)));
     expect(plain.ok && plain.save.gameMode).toBe('sandbox');
   });
+
+  it('opens even a good Career save file as a new Sandbox career, so it can never replace or roll back one', () => {
+    const file = protectSave({ ...career('SAVE-1700000000000', 9), gameMode: 'standard' } as SaveGameState);
+    const r = readSaveFileText(file, 1800000000000);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.save.gameMode).toBe('sandbox');
+    expect(r.save.saveId).toBe('SAVE-1800000000000');
+    expect(r.save.airlineName).toBe('Airline SAVE-1700000000000');
+  });
 });
 
 describe('cloud copies arriving on this device', () => {

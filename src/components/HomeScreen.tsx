@@ -220,7 +220,7 @@ export function HomeScreen(props: HomeScreenProps) {
             </Button>
             <Button size="sm" variant="ghost" onClick={() => importRef.current?.click()}>
               <Icon name="upload" size={14} />
-              Import save file
+              Import old save file
             </Button>
             <input
               ref={importRef}

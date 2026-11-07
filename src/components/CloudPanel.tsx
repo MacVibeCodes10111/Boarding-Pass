@@ -220,7 +220,7 @@ function CloudModal(props: { onClose: () => void; openSaveId: string | null; onS
           <AgeCheck onDone={setAge} />
         ) : age === 'under13' ? (
           <p style={{ fontSize: 13.5, lineHeight: 1.5 }}>
-            Cloud saves are for players 13 and over. Your careers still save on this device, and <b>Menu → Export save file</b> can move one to another computer.
+            Cloud saves are for players 13 and over. Your careers still save on this device.
           </p>
         ) : (
           <SignInForm busy={busy} act={act} />

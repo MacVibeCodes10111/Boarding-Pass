@@ -5,16 +5,21 @@
 //   signed in. Nothing is sent anywhere until they sign in. New documents
 //   (LEGAL_VERSION in features.ts) bring the legal step back.
 //   Alliances show what's coming until their servers exist.
+//
+//   Everything is per airline. Inside a career, it's about that career: share it,
+//   its friends, its map. On the main menu, the player picks one of the airlines
+//   they've shared; sharing a new one happens inside it.
 // ============================================================================
 import { useEffect, useState } from 'react';
-import { ageStatus, currentUser, inDesktopApp, logoReview, mapSharingOn, onCloudChange, openExternal, refreshFeatures, setMapSharing, shareCareer, sharedCareerId, stopSharing, type AgeStatus, type CloudUser } from '../game/cloud';
+import { MAX_SHARED_AIRLINES, ageStatus, airlineFor, currentUser, inDesktopApp, logoReview, myAirlines, onCloudChange, openExternal, refreshFeatures, refreshLogoReview, setMapSharing, shareCareer, stopSharing, type AgeStatus, type CloudUser, type MyAirline } from '../game/cloud';
 import { LEGAL_DOCS, acceptLegal, featureOn, legalAccepted, onFeaturesChange } from '../game/features';
+import { onlineModeOf, type OnlineMode } from '../game/profile';
 import { readSaveSlots } from '../game/saves';
 import type { SaveGameState } from '../game/types';
 import { Icon } from '../ui/icons';
 import { Button, C, DISPLAY, ModalShell, Segmented, inputStyle } from '../ui/kit';
 import { AgeCheck, CHANGED_EVENT, SignInForm, openCloud } from './CloudPanel';
-import { FriendsTab } from './FriendsTab';
+import { ConfirmButton, FriendsTab } from './FriendsTab';
 
 const OPEN_EVENT = 'bp-open-online';
 type Act = (label: string, fn: () => Promise<unknown>) => Promise<void>;
@@ -23,17 +28,18 @@ type Tab = 'airline' | 'friends' | 'alliances';
 /** Opens the Online window from anywhere (the bottom bar, the home screen). */
 export const openOnline = () => window.dispatchEvent(new Event(OPEN_EVENT));
 
-export function OnlineHost() {
+/** `career` is the career being played (none on the main menu). */
+export function OnlineHost(props: { career?: () => SaveGameState }) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     const onOpen = () => setOpen(true);
     window.addEventListener(OPEN_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_EVENT, onOpen);
   }, []);
-  return open ? <OnlineModal onClose={() => setOpen(false)} /> : null;
+  return open ? <OnlineModal career={props.career} onClose={() => setOpen(false)} /> : null;
 }
 
-function OnlineModal(props: { onClose: () => void }) {
+function OnlineModal(props: { onClose: () => void; career?: () => SaveGameState }) {
   const [user, setUser] = useState<CloudUser | null | undefined>(undefined);
   const [age, setAge] = useState<AgeStatus>(ageStatus());
   const [agreed, setAgreed] = useState(legalAccepted);
@@ -92,7 +98,7 @@ function OnlineModal(props: { onClose: () => void }) {
     if (!user) return <SignInForm busy={busy} act={act} agreed />;
     if (!flagsRead) return <p style={{ color: C.muted, fontSize: 13 }}>Checking…</p>;
     if (!featureOn('online')) return <p style={{ fontSize: 13.5, lineHeight: 1.5 }}>Online features aren’t open yet. They’ll appear here when they’re ready.</p>;
-    return <OnlineArea user={user} busy={busy} act={act} onClose={props.onClose} />;
+    return <OnlineArea user={user} busy={busy} act={act} onClose={props.onClose} career={props.career} />;
   };
 
   return (
@@ -166,27 +172,60 @@ function LegalGate(props: { onDone: () => void }) {
   );
 }
 
-function OnlineArea(props: { user: CloudUser; busy: boolean; act: Act; onClose: () => void }) {
+function OnlineArea(props: { user: CloudUser; busy: boolean; act: Act; onClose: () => void; career?: () => SaveGameState }) {
   const [tab, setTab] = useState<Tab>('airline');
+  const inGame = props.career !== undefined;
+  const current = props.career?.() ?? null;
+  const airlines = myAirlines();
+  // On the main menu the player picks which of their shared airlines to look at; in a game it's the one being played
+  const [pick, setPick] = useState<string | null>(null);
+  const selected = inGame ? airlineFor(current?.saveId) : airlines.find((a) => a.id === pick) ?? airlines[0] ?? null;
+  const selectedId = selected?.id ?? null;
+  useEffect(() => {
+    if (selectedId) void refreshLogoReview(selectedId);
+  }, [selectedId]);
+
   return (
     <div>
+      {inGame ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, fontSize: 13 }}>
+          <Icon name="fleet" size={16} color={C.muted} />
+          <span style={{ flex: 1, minWidth: 0, fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{current?.airlineName ?? 'This airline'}</span>
+          <span style={{ fontSize: 12, color: selected ? C.green : C.muted }}>{selected ? `Shared · ${modeLabel(selected.mode)}` : 'Not shared'}</span>
+        </div>
+      ) : (
+        airlines.length > 0 && (
+          <label style={{ display: 'grid', gap: 4, fontSize: 12, color: C.muted, marginBottom: 10 }}>
+            Which airline
+            <select value={selected?.id ?? ''} disabled={props.busy} onChange={(e) => setPick(e.target.value)} style={inputStyle}>
+              {airlines.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.airline || a.code} · {modeLabel(a.mode)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )
+      )}
       <Segmented<Tab>
         block
         value={tab}
         onChange={setTab}
         options={[
-          { value: 'airline', label: 'My airline' },
+          { value: 'airline', label: inGame ? 'This airline' : 'My airlines' },
           { value: 'friends', label: 'Friends' },
           { value: 'alliances', label: 'Alliances' },
         ]}
       />
       <div style={{ marginTop: 12 }}>
-        {tab === 'airline' && <AirlineTab busy={props.busy} act={props.act} />}
+        {tab === 'airline' && <AirlineTab busy={props.busy} act={props.act} current={inGame ? current : null} selected={selected} />}
         {tab === 'friends' &&
-          (featureOn('friends') ? (
-            <FriendsTab busy={props.busy} act={props.act} onShareFirst={() => setTab('airline')} />
-          ) : (
+          (!featureOn('friends') ? (
             <ComingSoon icon="flag" title="Friends are on the way" lines={['Add friends with a private friend code.', 'Choose who can see your airline.', 'Block anyone you don’t want to hear from.']} />
+          ) : selected ? (
+            <FriendsTab me={selected} busy={props.busy} act={props.act} />
+          ) : (
+            <NotShared inGame={inGame} onShare={() => setTab('airline')} what="Friends belong to an airline" />
           ))}
         {tab === 'alliances' && (
           <ComingSoon icon="globe" title="Alliances are on the way" lines={['Start an alliance or join one, one at a time.', 'Up to 20 airlines in each.', 'See your alliance’s airlines together.']} />
@@ -210,6 +249,24 @@ function OnlineArea(props: { user: CloudUser; busy: boolean; act: Act; onClose: 
   );
 }
 
+const modeLabel = (m: OnlineMode) => (m === 'sandbox' ? 'Sandbox' : 'Career');
+
+/** Where to go when the airline being looked at isn't shared. */
+function NotShared(props: { inGame: boolean; what: string; onShare: () => void }) {
+  return (
+    <p style={{ fontSize: 13, color: C.muted, margin: 0, lineHeight: 1.5 }}>
+      {props.what}, so share one first.{' '}
+      {props.inGame ? (
+        <button type="button" onClick={props.onShare} style={{ border: 0, padding: 0, background: 'none', color: C.accent, font: 'inherit', cursor: 'pointer', textDecoration: 'underline' }}>
+          Share this airline
+        </button>
+      ) : (
+        'Open a career, then share it from Online there.'
+      )}
+    </p>
+  );
+}
+
 function ComingSoon(props: { icon: 'flag' | 'globe'; title: string; lines: string[] }) {
   return (
     <div style={{ padding: '22px 16px', borderRadius: 12, background: C.raised, textAlign: 'center' }}>
@@ -224,79 +281,85 @@ function ComingSoon(props: { icon: 'flag' | 'globe'; title: string; lines: strin
   );
 }
 
-function AirlineTab(props: { busy: boolean; act: Act }) {
+/**
+ * In a game: share this career, or manage it once it's shared. On the main menu: the chosen shared
+ * airline, which can be managed or stopped but not shared from here (sharing happens inside a career).
+ */
+function AirlineTab(props: { busy: boolean; act: Act; current: SaveGameState | null; selected: MyAirline | null }) {
   const row: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, background: C.raised };
-  const profiles = featureOn('profiles');
-  const careers = profiles ? readSaveSlots() : [];
-  const shared = sharedCareerId();
-  const share = (s: SaveGameState | undefined) => s && void props.act(`Sharing ${s.airlineName}…`, () => shareCareer(s));
-  const review = logoReview();
-  if (!profiles) return <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>Nothing is shared with other players. Sharing options will appear here when they’re ready, all off until you turn them on.</p>;
+  const sub: React.CSSProperties = { display: 'block', fontSize: 12, color: C.muted, lineHeight: 1.45 };
+  const { current, selected } = props;
+  if (!featureOn('profiles')) return <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>Nothing is shared with other players. Sharing options will appear here when they’re ready, all off until you turn them on.</p>;
+  const shown = `Friends can see its name, code, callsign, colours, liveries${featureOn('logos') ? ', logos (checked before other players see them)' : ''} and a summary such as fleet size. Never your money or your account.`;
+
+  if (!selected) {
+    if (!current)
+      return (
+        <div style={{ display: 'grid', gap: 6 }}>
+          <p style={{ fontSize: 13, margin: 0, lineHeight: 1.5 }}>You haven’t shared an airline yet.</p>
+          <p style={{ fontSize: 12.5, color: C.muted, margin: 0, lineHeight: 1.5 }}>Open a career and choose Online there to share it. Each airline you share gets its own friend code and its own friends, up to {MAX_SHARED_AIRLINES} airlines.</p>
+        </div>
+      );
+    const mode = onlineModeOf(current);
+    return (
+      <div style={{ display: 'grid', gap: 8 }}>
+        <p style={{ fontSize: 12.5, color: C.muted, margin: 0, lineHeight: 1.5 }}>Nothing is shared with other players unless you turn it on here.</p>
+        <div style={{ ...row, display: 'grid', gap: 10 }}>
+          <span>
+            <span style={{ display: 'block', fontWeight: 650 }}>Share {current.airlineName}</span>
+            <span style={sub}>
+              It gets its own friend code and friends. {shown} As a {modeLabel(mode)} airline, it can only be friends with {modeLabel(mode)} airlines.
+            </span>
+          </span>
+          <Button variant="primary" block disabled={props.busy} onClick={() => void props.act(`Sharing ${current.airlineName}…`, () => shareCareer(current))}>
+            Share this airline
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const review = logoReview(selected.id);
+  const career = current?.saveId === selected.saveId ? current : readSaveSlots().find((c) => c.saveId === selected.saveId);
   return (
     <div style={{ display: 'grid', gap: 6 }}>
-      <p style={{ fontSize: 12.5, color: C.muted, margin: '0 0 2px' }}>Nothing is shared with other players unless you turn it on here.</p>
-      {profiles && (
-        <div style={{ ...row, display: 'grid', gap: 8 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={shared !== null}
-              disabled={props.busy || (shared === null && careers.length === 0)}
-              onChange={(e) => {
-                if (e.target.checked) share(careers[0]);
-                else void props.act('Stopping sharing…', stopSharing);
-              }}
-              style={{ width: 18, height: 18, flex: 'none', accentColor: C.brand }}
-            />
-            <span style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ display: 'block', fontWeight: 650 }}>Share my airline</span>
-              <span style={{ display: 'block', fontSize: 12, color: C.muted }}>
-                {careers.length === 0 && shared === null
-                  ? 'Start a career first.'
-                  : `Friends can see its name, code, callsign, colours, liveries${featureOn('logos') ? ', logos (checked before other players see them)' : ''} and a summary such as fleet size. Never your money or your account. Turning this off deletes it.`}
-              </span>
+      <div style={{ ...row, display: 'grid', gap: 8 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ flex: '1 1 200px', minWidth: 0 }}>
+            <span style={{ display: 'block', fontWeight: 650 }}>{selected.airline} is shared</span>
+            <span style={sub}>
+              {modeLabel(selected.mode)} airline. {shown}
             </span>
-          </label>
-          {shared !== null && careers.length > 0 && (
-            <label style={{ display: 'grid', gap: 4, fontSize: 12, color: C.muted }}>
-              Which career
-              <select value={careers.some((c) => c.saveId === shared) ? shared : ''} disabled={props.busy} onChange={(e) => share(careers.find((c) => c.saveId === e.target.value))} style={inputStyle}>
-                {!careers.some((c) => c.saveId === shared) && <option value="">A career on another device</option>}
-                {careers.map((c) => (
-                  <option key={c.saveId} value={c.saveId}>
-                    {c.airlineName}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {shared !== null && review.waiting > 0 && (
-            <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>
-              {review.waiting === 1 ? '1 logo is' : `${review.waiting} logos are`} waiting for review. Other players see your liveries without {review.waiting === 1 ? 'it' : 'them'} until then.
-            </p>
-          )}
-          {shared !== null && review.refused > 0 && (
-            <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>
-              {review.refused === 1 ? '1 logo wasn’t' : `${review.refused} logos weren’t`} approved, so other players won’t see {review.refused === 1 ? 'it' : 'them'}. You still will.
-            </p>
-          )}
-        </div>
-      )}
-      {profiles && shared !== null && featureOn('friends') && featureOn('friends_map') && (
+          </span>
+          <ConfirmButton label="Stop sharing" ask="Stop and delete" disabled={props.busy} onConfirm={() => void props.act('Stopping sharing…', () => stopSharing(selected.saveId))} />
+        </span>
+        <span style={sub}>Stopping deletes it from the server, with its friend code and its friends.</span>
+        {review.waiting > 0 && (
+          <span style={sub}>
+            {review.waiting === 1 ? '1 logo is' : `${review.waiting} logos are`} waiting for review. Other players see your liveries without {review.waiting === 1 ? 'it' : 'them'} until then.
+          </span>
+        )}
+        {review.refused > 0 && (
+          <span style={sub}>
+            {review.refused === 1 ? '1 logo wasn’t' : `${review.refused} logos weren’t`} approved, so other players won’t see {review.refused === 1 ? 'it' : 'them'}. You still will.
+          </span>
+        )}
+      </div>
+      {featureOn('friends') && featureOn('friends_map') && (
         <label style={{ ...row, cursor: 'pointer' }}>
           <input
             type="checkbox"
-            checked={mapSharingOn()}
+            checked={selected.mapOn}
             disabled={props.busy}
             onChange={(e) => {
               const on = e.target.checked;
-              void props.act(on ? 'Showing your flights…' : 'Stopping…', () => setMapSharing(on, careers.find((c) => c.saveId === shared)));
+              void props.act(on ? 'Showing your flights…' : 'Stopping…', () => setMapSharing(selected.id, on, career));
             }}
             style={{ width: 18, height: 18, flex: 'none', accentColor: C.brand }}
           />
           <span style={{ flex: 1, minWidth: 0 }}>
-            <span style={{ display: 'block', fontWeight: 650 }}>Show my aircraft on friends’ maps</span>
-            <span style={{ display: 'block', fontSize: 12, color: C.muted }}>Your weekly schedule: routes, flight numbers, times, aircraft types and registrations. Turning this off removes it. Friends see your flights on their own game’s clock.</span>
+            <span style={{ display: 'block', fontWeight: 650 }}>Show its aircraft on friends’ maps</span>
+            <span style={sub}>Its weekly schedule: routes, flight numbers, times, aircraft types and registrations. Turning this off removes it. Friends see the flights on their own game’s clock.</span>
           </span>
         </label>
       )}

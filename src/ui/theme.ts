@@ -1,12 +1,12 @@
 // ============================================================================
 // THEMES
-//   The game's colours come from three choices: a background, a highlight
-//   (buttons, selection, your airline in the interface) and the colour of your
-//   aircraft on the map. Everything else (panels, borders, text, status
+//   The game's colours come from four choices: a background, a highlight
+//   (buttons, selection, your airline in the interface), the colour of your
+//   aircraft on the map, and the colour of friends' aircraft on the map. Everything else (panels, borders, text, status
 //   colours) is worked out from those, with enough contrast to read, for dark
 //   and light backgrounds alike.
 //
-//   Presets are ready-made sets of the three; any of them can be changed with
+//   Presets are ready-made sets of these; any of them can be changed with
 //   the colour picker, which turns it into a custom theme. The choice is kept
 //   on this device (all careers share it).
 // ============================================================================
@@ -40,6 +40,8 @@ export interface Palette {
   orange: string;
   /** Your aircraft on the map: icons, 3D shapes, labels, the flown trail. */
   fleet: string;
+  /** Friends' aircraft on the map. */
+  friends: string;
   /** 'dark' or 'light', for native controls (scrollbars, drop-down lists). */
   scheme: 'dark' | 'light';
 }
@@ -73,6 +75,7 @@ export const DEFAULT_PALETTE: Palette = {
   purple: '#a78bfa',
   orange: '#f59e0b',
   fleet: '#f97316',
+  friends: '#e879f9',
   scheme: 'dark',
 };
 
@@ -83,6 +86,8 @@ export interface ThemeSpec {
   accent: string;
   /** null: same as the highlight. */
   fleet: string | null;
+  /** Friends' aircraft. Missing or null: the theme's own (themes saved before there was a choice have none). */
+  friends?: string | null;
 }
 
 export interface ThemePreset extends ThemeSpec {
@@ -91,17 +96,21 @@ export interface ThemePreset extends ThemeSpec {
 }
 
 export const THEME_PRESETS: ThemePreset[] = [
-  { preset: 'night', name: 'Night shift', blurb: 'Deep navy with an amber highlight. The original.', base: '#0c1320', accent: '#f5a524', fleet: '#f97316' },
-  { preset: 'studio-black', name: 'Studio black', blurb: 'Black and white, with one colour of your choice.', base: '#000000', accent: '#ff4f1f', fleet: null },
-  { preset: 'studio-white', name: 'Studio white', blurb: 'White and black, with one colour of your choice.', base: '#ffffff', accent: '#2f54ff', fleet: null },
-  { preset: 'tarmac', name: 'Tarmac', blurb: 'Asphalt grey and taxiway yellow.', base: '#16171a', accent: '#ffd21f', fleet: null },
-  { preset: 'cockpit', name: 'Cockpit', blurb: 'Glass-cockpit graphite with avionics green.', base: '#0b1210', accent: '#3ee08f', fleet: '#5fd4ff' },
+  { preset: 'night', name: 'Night shift', blurb: 'Deep navy with an amber highlight. The original.', base: '#0c1320', accent: '#f5a524', fleet: '#f97316', friends: '#e879f9' },
+  { preset: 'studio-black', name: 'Studio black', blurb: 'Black and white, with one colour of your choice.', base: '#000000', accent: '#ff4f1f', fleet: null, friends: '#22d3ee' },
+  { preset: 'studio-white', name: 'Studio white', blurb: 'White and black, with one colour of your choice.', base: '#ffffff', accent: '#2f54ff', fleet: null, friends: '#c026d3' },
+  { preset: 'tarmac', name: 'Tarmac', blurb: 'Asphalt grey and taxiway yellow.', base: '#16171a', accent: '#ffd21f', fleet: null, friends: '#a78bfa' },
+  { preset: 'cockpit', name: 'Cockpit', blurb: 'Glass-cockpit graphite with avionics green.', base: '#0b1210', accent: '#3ee08f', fleet: '#5fd4ff', friends: '#f472b6' },
 ];
+
+/** Friends' aircraft: the theme's chosen colour, else its template's, else the original pink. */
+export const friendsColourOf = (spec: ThemeSpec): string =>
+  (spec.friends && normHex(spec.friends)) || THEME_PRESETS.find((p) => p.preset === spec.preset)?.friends || DEFAULT_PALETTE.friends;
 
 /** Quick picks next to the colour picker. */
 export const POP_COLOURS = ['#ff3b30', '#ff4f1f', '#ff9500', '#ffd21f', '#34c759', '#00c7be', '#0a84ff', '#2f54ff', '#5e5ce6', '#bf5af2', '#ff2d92', '#ffffff', '#000000'];
 
-export const DEFAULT_THEME: ThemeSpec = { preset: 'night', base: DEFAULT_PALETTE.bg, accent: DEFAULT_PALETTE.brand, fleet: DEFAULT_PALETTE.fleet };
+export const DEFAULT_THEME: ThemeSpec = { preset: 'night', base: DEFAULT_PALETTE.bg, accent: DEFAULT_PALETTE.brand, fleet: DEFAULT_PALETTE.fleet, friends: DEFAULT_PALETTE.friends };
 
 // ---------------------------------------------------------------------------
 // Colour maths (sRGB hex, HSL and HSV, WCAG contrast)
@@ -204,10 +213,11 @@ export function buildPalette(spec: ThemeSpec): Palette {
   const base = normHex(spec.base) ?? DEFAULT_PALETTE.bg;
   const accent = normHex(spec.accent) ?? DEFAULT_PALETTE.brand;
   const fleet = (spec.fleet && normHex(spec.fleet)) || accent;
+  const friends = friendsColourOf(spec);
   const brandInk = accent === DEFAULT_PALETTE.brand ? DEFAULT_PALETTE.brandInk : inkFor(accent);
 
   // The original background keeps its hand-tuned surfaces and text exactly
-  if (base === DEFAULT_PALETTE.bg) return { ...DEFAULT_PALETTE, brand: accent, yellow: accent, brandInk, fleet };
+  if (base === DEFAULT_PALETTE.bg) return { ...DEFAULT_PALETTE, brand: accent, yellow: accent, brandInk, fleet, friends };
 
   const light = isLightColour(base);
   const [h, s0, l0] = rgbToHsl(hexToRgb(base));
@@ -229,7 +239,7 @@ export function buildPalette(spec: ThemeSpec): Palette {
   const status = light
     ? { accent: '#2f6596', accentStrong: '#2c5a87', green: '#127a4b', greenStrong: '#0f7a4a', amber: '#9a6200', amberStrong: '#b06f00', red: '#c62f37', redSoft: '#b03038', redDeep: '#fbe2e3', purple: '#6545d0', orange: '#c25e00' }
     : { accent: DEFAULT_PALETTE.accent, accentStrong: DEFAULT_PALETTE.accentStrong, green: DEFAULT_PALETTE.green, greenStrong: DEFAULT_PALETTE.greenStrong, amber: DEFAULT_PALETTE.amber, amberStrong: DEFAULT_PALETTE.amberStrong, red: DEFAULT_PALETTE.red, redSoft: DEFAULT_PALETTE.redSoft, redDeep: mix(base, '#f0565b', 0.18), purple: DEFAULT_PALETTE.purple, orange: DEFAULT_PALETTE.orange };
-  return { ...surfaces, ...text, ...status, brand: accent, yellow: accent, brandInk, fleet, scheme: light ? 'light' : 'dark' };
+  return { ...surfaces, ...text, ...status, brand: accent, yellow: accent, brandInk, fleet, friends, scheme: light ? 'light' : 'dark' };
 }
 
 /** How readable the highlight is on the panels: shown as a hint in the picker. */
@@ -249,7 +259,8 @@ export function loadThemeSpec(): ThemeSpec {
   try {
     const v = JSON.parse(localStorage.getItem(THEME_KEY) ?? 'null');
     if (v && typeof v.base === 'string' && typeof v.accent === 'string' && normHex(v.base) && normHex(v.accent)) {
-      return { preset: typeof v.preset === 'string' ? v.preset : 'custom', base: normHex(v.base)!, accent: normHex(v.accent)!, fleet: v.fleet && normHex(v.fleet) ? normHex(v.fleet) : null };
+      const friends = typeof v.friends === 'string' ? normHex(v.friends) : null;
+      return { preset: typeof v.preset === 'string' ? v.preset : 'custom', base: normHex(v.base)!, accent: normHex(v.accent)!, fleet: v.fleet && normHex(v.fleet) ? normHex(v.fleet) : null, friends };
     }
   } catch {
     /* storage off: the default look */
@@ -274,7 +285,7 @@ export function themeFromUrl(search: string): ThemeSpec | null {
     const hl = q.get('hl') && normHex(q.get('hl')!);
     const ac = q.get('ac') && normHex(q.get('ac')!);
     if (bg && hl) return { preset: preset?.preset ?? 'custom', base: bg, accent: hl, fleet: ac || null };
-    if (preset) return { preset: preset.preset, base: preset.base, accent: preset.accent, fleet: preset.fleet };
+    if (preset) return { preset: preset.preset, base: preset.base, accent: preset.accent, fleet: preset.fleet, friends: preset.friends };
   } catch {
     /* ignore */
   }

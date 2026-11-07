@@ -1,6 +1,6 @@
 # Logos Worker
 
-Keeps players' livery logos (still PNG or WebP, 128×128, at most 16 KB) in the R2 bucket `bplogos`, so other players can see them once they're approved.
+Keeps players' livery logos (still PNG or WebP, square, up to 1024×1024 and 48 KB) in the R2 bucket `bplogos`, so other players can see them once they're approved.
 
 - **Names:** a logo is stored under the SHA-256 of its bytes, worked out by the Worker. The same picture is stored once, and is removed when its last player stops using it.
 - **Review:** new pictures are `pending` and can't be fetched. A `rejected` picture's file is removed overnight and its record stays, so it can't be uploaded again. Browsers keep an approved logo for up to a day, so a later refusal takes up to a day to reach everyone.
