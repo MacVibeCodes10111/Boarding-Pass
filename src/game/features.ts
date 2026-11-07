@@ -6,9 +6,7 @@
 //   unreachable counts as off. The server functions behind each feature check
 //   the same table, so these flags only decide what the game shows.
 //
-//   Sharing choices kept on this device: all off until they're turned on, and
-//   forgotten on sign-out. Whether the airline itself is shared is kept on the
-//   server, so every device agrees (see cloud.ts).
+//   What a player shares is kept on the server, so every device agrees (see cloud.ts).
 //
 //   How the online parts fit together: cloud/README.md.
 // ============================================================================
@@ -37,41 +35,15 @@ export function setFeatures(rows: unknown) {
   if (!same) listeners.forEach((fn) => fn());
 }
 
-// ---------------------------------------------------------------------------
-// Sharing choices
-// ---------------------------------------------------------------------------
-export const SHARING_KEY = 'bp_online_sharing_v1';
-export const SHARING = [
-  { id: 'map', feature: 'friends_map', label: 'Show my aircraft on friends’ maps', hint: 'Your schedule, so friends and alliance members can watch your flights.' },
-] as const satisfies readonly { id: string; feature: Feature; label: string; hint: string }[];
-export type SharingId = (typeof SHARING)[number]['id'];
-
-/** Any saved value that isn't exactly `true` counts as off. */
-export function readSharing(): Record<SharingId, boolean> {
-  let saved: Record<string, unknown> = {};
-  try {
-    const v: unknown = JSON.parse(localStorage.getItem(SHARING_KEY) ?? '{}');
-    if (v && typeof v === 'object') saved = v as Record<string, unknown>;
-  } catch {
-    /* storage unavailable or damaged: everything stays off */
-  }
-  return Object.fromEntries(SHARING.map((s) => [s.id, saved[s.id] === true])) as Record<SharingId, boolean>;
-}
-
-export function setSharing(id: SharingId, value: boolean) {
-  try {
-    localStorage.setItem(SHARING_KEY, JSON.stringify({ ...readSharing(), [id]: value }));
-  } catch {
-    /* storage unavailable */
-  }
-}
+/** Sharing choices used to be kept on this device. Removed on sign-out so nothing is left behind. */
+const OLD_SHARING_KEY = 'bp_online_sharing_v1';
 
 // ---------------------------------------------------------------------------
 // The legal documents, opened and agreed to before the Online area opens.
 // Change LEGAL_VERSION when they change in a way players should see again.
 // ---------------------------------------------------------------------------
 export const LEGAL_KEY = 'bp_online_legal_v1';
-export const LEGAL_VERSION = '2026-11-06';
+export const LEGAL_VERSION = '2026-11-06b';
 export const LEGAL_DOCS = [
   { label: 'Terms of use', url: 'https://boardingpass.my/terms.html' },
   { label: 'Privacy policy', url: 'https://boardingpass.my/privacy.html' },
@@ -97,7 +69,7 @@ export function acceptLegal() {
 /** Signing out: nothing carries over to whoever signs in next. */
 export function clearOnlineState() {
   try {
-    localStorage.removeItem(SHARING_KEY);
+    localStorage.removeItem(OLD_SHARING_KEY);
     localStorage.removeItem(LEGAL_KEY);
   } catch {
     /* storage unavailable */

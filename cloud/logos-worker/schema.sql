@@ -23,3 +23,14 @@ CREATE TABLE IF NOT EXISTS logo_owners (
 CREATE INDEX IF NOT EXISTS logo_owners_hash ON logo_owners (hash);
 CREATE TABLE IF NOT EXISTS uploads_log (user_id TEXT NOT NULL, at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS uploads_log_user ON uploads_log (user_id, at);
+-- Friends' schedules (A4): one file per player and channel, counted in usage. The newest version is what viewers ask for.
+CREATE TABLE IF NOT EXISTS schedules (
+  user_id TEXT NOT NULL,
+  channel TEXT NOT NULL CHECK (channel IN ('main', 'dev')),
+  public_id TEXT NOT NULL,
+  bytes INTEGER NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, channel)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS schedules_public ON schedules (channel, public_id);

@@ -4,16 +4,17 @@
 //   player has to be 13 or over, open the legal documents, agree to them, and be
 //   signed in. Nothing is sent anywhere until they sign in. New documents
 //   (LEGAL_VERSION in features.ts) bring the legal step back.
-//   Friends and alliances show what's coming until their servers exist.
+//   Alliances show what's coming until their servers exist.
 // ============================================================================
 import { useEffect, useState } from 'react';
-import { ageStatus, currentUser, inDesktopApp, logoReview, onCloudChange, openExternal, refreshFeatures, shareCareer, sharedCareerId, stopSharing, type AgeStatus, type CloudUser } from '../game/cloud';
-import { LEGAL_DOCS, SHARING, acceptLegal, featureOn, legalAccepted, onFeaturesChange, readSharing, setSharing } from '../game/features';
+import { ageStatus, currentUser, inDesktopApp, logoReview, mapSharingOn, onCloudChange, openExternal, refreshFeatures, setMapSharing, shareCareer, sharedCareerId, stopSharing, type AgeStatus, type CloudUser } from '../game/cloud';
+import { LEGAL_DOCS, acceptLegal, featureOn, legalAccepted, onFeaturesChange } from '../game/features';
 import { readSaveSlots } from '../game/saves';
 import type { SaveGameState } from '../game/types';
 import { Icon } from '../ui/icons';
 import { Button, C, DISPLAY, ModalShell, Segmented, inputStyle } from '../ui/kit';
 import { AgeCheck, CHANGED_EVENT, SignInForm, openCloud } from './CloudPanel';
+import { FriendsTab } from './FriendsTab';
 
 const OPEN_EVENT = 'bp-open-online';
 type Act = (label: string, fn: () => Promise<unknown>) => Promise<void>;
@@ -181,9 +182,12 @@ function OnlineArea(props: { user: CloudUser; busy: boolean; act: Act; onClose: 
       />
       <div style={{ marginTop: 12 }}>
         {tab === 'airline' && <AirlineTab busy={props.busy} act={props.act} />}
-        {tab === 'friends' && (
-          <ComingSoon icon="flag" title="Friends are on the way" lines={['Add friends with a private friend code.', 'Choose who can see your airline.', 'Block anyone you don’t want to hear from.']} />
-        )}
+        {tab === 'friends' &&
+          (featureOn('friends') ? (
+            <FriendsTab busy={props.busy} act={props.act} onShareFirst={() => setTab('airline')} />
+          ) : (
+            <ComingSoon icon="flag" title="Friends are on the way" lines={['Add friends with a private friend code.', 'Choose who can see your airline.', 'Block anyone you don’t want to hear from.']} />
+          ))}
         {tab === 'alliances' && (
           <ComingSoon icon="globe" title="Alliances are on the way" lines={['Start an alliance or join one, one at a time.', 'Up to 20 airlines in each.', 'See your alliance’s airlines together.']} />
         )}
@@ -221,15 +225,13 @@ function ComingSoon(props: { icon: 'flag' | 'globe'; title: string; lines: strin
 }
 
 function AirlineTab(props: { busy: boolean; act: Act }) {
-  const [sharing, setShared] = useState(readSharing);
   const row: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, background: C.raised };
-  const ready = SHARING.filter((s) => featureOn(s.feature));
   const profiles = featureOn('profiles');
   const careers = profiles ? readSaveSlots() : [];
   const shared = sharedCareerId();
   const share = (s: SaveGameState | undefined) => s && void props.act(`Sharing ${s.airlineName}…`, () => shareCareer(s));
   const review = logoReview();
-  if (!profiles && !ready.length) return <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>Nothing is shared with other players. Sharing options will appear here when they’re ready, all off until you turn them on.</p>;
+  if (!profiles) return <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>Nothing is shared with other players. Sharing options will appear here when they’re ready, all off until you turn them on.</p>;
   return (
     <div style={{ display: 'grid', gap: 6 }}>
       <p style={{ fontSize: 12.5, color: C.muted, margin: '0 0 2px' }}>Nothing is shared with other players unless you turn it on here.</p>
@@ -251,7 +253,7 @@ function AirlineTab(props: { busy: boolean; act: Act }) {
               <span style={{ display: 'block', fontSize: 12, color: C.muted }}>
                 {careers.length === 0 && shared === null
                   ? 'Start a career first.'
-                  : `Its name, code, callsign, colours, liveries${featureOn('logos') ? ', logos (checked before other players see them)' : ''} and a summary such as fleet size. Never your money, your flights or your account. Turning this off deletes it.`}
+                  : `Friends can see its name, code, callsign, colours, liveries${featureOn('logos') ? ', logos (checked before other players see them)' : ''} and a summary such as fleet size. Never your money or your account. Turning this off deletes it.`}
               </span>
             </span>
           </label>
@@ -280,23 +282,24 @@ function AirlineTab(props: { busy: boolean; act: Act }) {
           )}
         </div>
       )}
-      {ready.map((s) => (
-        <label key={s.id} style={{ ...row, cursor: 'pointer' }}>
+      {profiles && shared !== null && featureOn('friends') && featureOn('friends_map') && (
+        <label style={{ ...row, cursor: 'pointer' }}>
           <input
             type="checkbox"
-            checked={sharing[s.id]}
+            checked={mapSharingOn()}
+            disabled={props.busy}
             onChange={(e) => {
-              setSharing(s.id, e.target.checked);
-              setShared(readSharing());
+              const on = e.target.checked;
+              void props.act(on ? 'Showing your flights…' : 'Stopping…', () => setMapSharing(on, careers.find((c) => c.saveId === shared)));
             }}
             style={{ width: 18, height: 18, flex: 'none', accentColor: C.brand }}
           />
           <span style={{ flex: 1, minWidth: 0 }}>
-            <span style={{ display: 'block', fontWeight: 650 }}>{s.label}</span>
-            <span style={{ display: 'block', fontSize: 12, color: C.muted }}>{s.hint}</span>
+            <span style={{ display: 'block', fontWeight: 650 }}>Show my aircraft on friends’ maps</span>
+            <span style={{ display: 'block', fontSize: 12, color: C.muted }}>Your weekly schedule: routes, flight numbers, times, aircraft types and registrations. Turning this off removes it. Friends see your flights on their own game’s clock.</span>
           </span>
         </label>
-      ))}
+      )}
     </div>
   );
 }

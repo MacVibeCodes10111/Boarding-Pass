@@ -7,7 +7,7 @@ vi.stubGlobal('localStorage', {
   removeItem: (k: string) => void mem.delete(k),
 });
 
-const { LEGAL_KEY, SHARING_KEY, acceptLegal, clearOnlineState, featureOn, legalAccepted, onFeaturesChange, readSharing, setFeatures, setSharing } = await import('./features');
+const { LEGAL_KEY, acceptLegal, clearOnlineState, featureOn, legalAccepted, onFeaturesChange, setFeatures } = await import('./features');
 
 beforeEach(() => {
   mem.clear();
@@ -55,28 +55,12 @@ describe('feature flags', () => {
   });
 });
 
-describe('sharing choices', () => {
-  it('are off by default', () => {
-    expect(readSharing()).toEqual({ map: false });
-  });
-
-  it('remember what the player turned on', () => {
-    setSharing('map', true);
-    expect(readSharing()).toEqual({ map: true });
-    setSharing('map', false);
-    expect(readSharing().map).toBe(false);
-  });
-
-  it.each(['not json', '[]', 'null', '{"map":"true"}', '{"map":1}'])('stay off with damaged storage: %s', (saved) => {
-    mem.set(SHARING_KEY, saved);
-    expect(readSharing().map).toBe(false);
-  });
-
-  it('are forgotten on sign-out, along with the flags', () => {
-    setSharing('map', true);
+describe('signing out', () => {
+  it('forgets the flags and the old sharing choices', () => {
+    mem.set('bp_online_sharing_v1', '{"map":true}');
     setFeatures([{ feature: 'online', enabled: true }]);
     clearOnlineState();
-    expect(readSharing().map).toBe(false);
+    expect(mem.has('bp_online_sharing_v1')).toBe(false);
     expect(featureOn('online')).toBe(false);
   });
 });

@@ -18,8 +18,11 @@
 //
 //   Each night it takes the removal list from Supabase (stopped sharing, deleted
 //   accounts) and clears out refused files. CLEANUP_KEY opens only that list.
+//
+//   Friends' schedules (A4) share this Worker and its cap: see schedules.ts.
 // ============================================================================
 import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { dropSchedule, putSchedule, readSchedules } from './schedules';
 
 export interface Env {
   LOGOS: R2Bucket;
@@ -215,9 +218,11 @@ async function nightly(env: Env) {
   }
   if (!env.CLEANUP_KEY) return;
   const taken = await rpc(env, 'logo_removals_take', { p_key: env.CLEANUP_KEY });
-  const rows = (Array.isArray(taken?.data) ? taken.data : []) as { id: number; user_id: string; channel: string | null; at: number }[];
+  const rows = (Array.isArray(taken?.data) ? taken.data : []) as { id: number; user_id: string; channel: string | null; kind?: string; at: number }[];
   if (!rows.length) return;
   for (const r of rows) {
+    await dropSchedule(env, r.user_id, r.channel, r.at);
+    if (r.kind === 'schedule') continue;
     // Only what was there when they asked: a player who shares again keeps their new logos
     const { results } = await env.DB.prepare('DELETE FROM logo_owners WHERE user_id = ?1 AND (?2 IS NULL OR channel = ?2) AND seen_at < ?3 RETURNING hash')
       .bind(r.user_id, r.channel, r.at)
@@ -233,6 +238,20 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     const url = new URL(req.url);
     const parts = url.pathname.split('/').filter(Boolean);
+    if (parts[0] === 'schedule' || parts[0] === 'schedules') {
+      if (parts.length > 1) return json(404, { error: 'not found' }, cors);
+      const ch = url.searchParams.get('channel');
+      if (ch !== 'main' && ch !== 'dev') return json(400, { error: 'which channel?' }, cors);
+      const who = await userOf(req, env);
+      if (!who) return json(401, { error: 'sign in first' }, cors);
+      if (parts[0] === 'schedules') return req.method === 'POST' ? readSchedules(req, env, ch, tokenOf(req), rpc, cors) : json(405, { error: 'method not allowed' }, cors);
+      if (req.method === 'PUT') return putSchedule(req, env, who, ch, tokenOf(req), CAP_BYTES, rpc, cors);
+      if (req.method === 'DELETE') {
+        await dropSchedule(env, who, ch);
+        return json(200, { ok: true }, cors);
+      }
+      return json(405, { error: 'method not allowed' }, cors);
+    }
     if (parts[0] !== 'logo' || parts.length > 2) return json(404, { error: 'not found' }, cors);
     const sub = parts[1];
 

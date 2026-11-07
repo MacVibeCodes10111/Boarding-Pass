@@ -813,6 +813,9 @@ function MenuSection({ title, aside, children, first }: { title: string; aside?:
   );
 }
 
+/** The most of friends' aircraft to draw on the map. */
+export type FriendsCap = '100' | '300' | '1000' | 'all';
+
 export function LayersMenu(props: {
   mapStyle: MapStyleChoice;
   onMapStyle: (v: MapStyleChoice) => void;
@@ -843,6 +846,13 @@ export function LayersMenu(props: {
   /** Shown under Other airlines, e.g. which real airline your airline replaces. */
   aiNote?: string;
   aiStatus: string;
+  /** Friends' aircraft: shown once the server has them switched on. */
+  friendsAvailable: boolean;
+  friendsOn: boolean;
+  onFriendsOn: (v: boolean) => void;
+  friendsCap: FriendsCap;
+  onFriendsCap: (c: FriendsCap) => void;
+  friendAirlines: number;
   planeIconScale: number;
   onPlaneIconScale: (v: number) => void;
 }) {
@@ -996,6 +1006,38 @@ export function LayersMenu(props: {
             <Switch on={props.showApproaches} onChange={props.onShowApproaches} label="Approaches" hint="ILS cones on the runways in use, coloured by flight conditions" />
             <Switch on={props.showNavaids} onChange={props.onShowNavaids} label="Navaids" hint="VOR and DME beacons with their frequencies" />
           </MenuSection>
+
+          {props.friendsAvailable && (
+            <MenuSection
+              title="Friends"
+              aside={
+                props.friendsOn && props.friendAirlines > 0 ? (
+                  <span className="num" style={{ fontSize: 11.5, color: C.muted }}>
+                    {props.friendAirlines} {props.friendAirlines === 1 ? 'airline' : 'airlines'}
+                  </span>
+                ) : undefined
+              }
+            >
+              <Switch on={props.friendsOn} onChange={props.onFriendsOn} label="Friends’ aircraft" hint="Airlines you’re friends with, in pink, if they’ve chosen to show their flights. They fly on your game’s clock." />
+              {props.friendsOn && (
+                <>
+                  <div style={{ fontSize: 13, color: C.text, margin: '6px 0 6px' }}>Most shown</div>
+                  <Segmented<FriendsCap>
+                    size="sm"
+                    block
+                    value={props.friendsCap}
+                    onChange={props.onFriendsCap}
+                    options={[
+                      { value: '100', label: '100' },
+                      { value: '300', label: '300' },
+                      { value: '1000', label: '1,000' },
+                      { value: 'all', label: 'All' },
+                    ]}
+                  />
+                </>
+              )}
+            </MenuSection>
+          )}
 
           <MenuSection
             title="Other airlines"

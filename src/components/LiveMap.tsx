@@ -56,6 +56,7 @@ import { loadCargoAprons } from '../game/cargoAprons';
 import { airportGateCode, gateRank } from '../game/gateCode';
 import { AIRCRAFT_PHOTOS, aircraftArt } from '../game/aircraftPhotos';
 import { cloudSkyCss } from '../game/cloudSky';
+import { friendLivery } from '../game/friendsMap';
 import { paintedPhoto } from '../game/liveryPaint';
 import { liveryIndexOf, specialLabel } from '../game/livery';
 import { LiveryContext } from './AircraftPhoto';
@@ -102,6 +103,16 @@ export type AiDensity = 'off' | 'low' | 'medium' | 'high';
 /** Share of AI flights drawn: buckets 0..3 per flight, so each level is a stable subset. */
 const DENSITY_BUCKETS: Record<AiDensity, number> = { off: 0, low: 1, medium: 2, high: 4 };
 const AI_TINT = '#cbd5e1';
+/** Friends' aircraft stand out from the other airlines, and from your own. */
+const FRIEND_TINT = '#e879f9';
+const FRIEND_TINT_LIGHT = '#a21caf';
+const friendTintFor = (id: MapStyleId) => (id === 'light' ? FRIEND_TINT_LIGHT : FRIEND_TINT);
+const aiIconName = (f: AiFlight) => `${f.friend ? 'friend' : 'ai'}-${f.group}`;
+/** Friends' aircraft are drawn a little bigger than the other airlines'. */
+const aiIconScale = (f: AiFlight) => (AI_ICON_SCALE[f.group] ?? 0.56) * (f.friend ? 1.2 : 1);
+/** The picture at the top of a friend's aircraft's pop-up, and which livery to paint on it. */
+const friendPlane = (t: AiTraffic, f: AiFlight) =>
+  f.friend ? { modelId: f.friend.modelId, tailNumber: f.friend.reg, friendOf: f.friend.owner, friendLivery: f.friend.livery, airlineName: t.airlines[f.airline]?.name ?? '' } : undefined;
 
 // ---------------------------------------------------------------------------
 // Level of detail for other airlines' aircraft
@@ -250,7 +261,7 @@ function applyMapTheme(map: any, id: MapStyleId) {
   for (const l of ['airports-labels', 'ai-planes-symbol', 'live-planes-symbol', 'ground-planes-symbol', 'navaids-labels']) set(l, 'text-halo-color', '#ffffff');
   set('airports-labels', 'text-color', ['case', ['==', ['get', 'is_selected'], 1], '#b45309', ['==', ['get', 'is_hub'], 1], '#047857', '#334155']);
   set('ai-planes-symbol', 'text-color', '#475569');
-  set('ai-planes-dot', 'circle-color', '#475569');
+  set('ai-planes-dot', 'circle-color', ['case', ['has', 'friend'], FRIEND_TINT_LIGHT, '#475569']);
   set('navaids-labels', 'text-color', '#6d28d9');
   set('navaids-points', 'circle-color', '#ffffff');
   set('routes-arc', 'line-color', MAP_C.accentStrong);
@@ -301,13 +312,13 @@ function buildAiPopupHtml(t: AiTraffic, f: AiFlight, pos: AiPosition): string {
     <div class="bp-pop-head" style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
       <b style="font-size:15px">${e(f.flightNumber)}</b>${muted(e(al.name))}
     </div>
-    <div style="margin:2px 0 8px">${muted(`${e(al.callsign)} ${e(f.flightNumber.replace(/^\D+/, ''))}, ${e(type)}`)}</div>
+    <div style="margin:2px 0 8px">${muted(f.friend ? `${e(f.friend.reg)}, ${e(type)}` : `${e(al.callsign)} ${e(f.flightNumber.replace(/^\D+/, ''))}, ${e(type)}`)}</div>
     <div style="display:flex;justify-content:space-between;font-weight:600"><span>${e(O.iata)} ${muted(e(O.city))}</span><span>${e(D.iata)} ${muted(e(D.city))}</span></div>
     ${progressBar(pct, C.textDim)}
     <div style="display:flex;justify-content:space-between;font-size:11.5px;color:${C.muted};font-variant-numeric:tabular-nums"><span>${hhmm(f.depUtcMin)} UTC</span><span>${formatDurationHm(pos.remainingMin)} to go</span><span>${hhmm(f.depUtcMin + f.blockMin)} UTC</span></div>
     <div style="margin:8px 0 2px;color:${C.textDim}">${e(phase)}</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px">${kv('Altitude', altLabel(pos.altitudeFt))}${kv('Speed', `${pos.groundSpeedKts} kt`)}${kv('Distance', `${f.distanceNm.toLocaleString()} nm`)}</div>
-    <div style="margin-top:8px;font-size:11px;color:${C.faint}">Other airline, shown for atmosphere</div>
+    <div style="margin-top:8px;font-size:11px;color:${C.faint}">${f.friend ? 'A friend’s airline, flying on your game’s clock' : 'Other airline, shown for atmosphere'}</div>
   </div>`;
 }
 
@@ -368,6 +379,8 @@ export interface LiveMapProps {
   aiDetail: AiDetail;
   /** IATA codes of real airlines left off the map (the player's airline replaces them). */
   hiddenAiAirlines: string[];
+  /** The most of friends' aircraft to draw. */
+  friendsCap?: number;
   /** Reports AI flights airborne / drawn and the current draw budget. */
   onAiStats?: (stats: AiDrawStats) => void;
   /** Current map time (real UTC or the 7× economy clock). Called every frame. */
@@ -656,7 +669,7 @@ function addLayers(map: any) {
     type: 'circle',
     source: 'ai-planes',
     maxzoom: AI_DETAIL_LEVELS.auto.dotsBelow,
-    paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 1, 1.3, 4, 2.2], 'circle-color': AI_TINT, 'circle-opacity': 0.75 },
+    paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 1, ['case', ['has', 'friend'], 2.6, 1.3], 4, ['case', ['has', 'friend'], 4, 2.2]], 'circle-color': ['case', ['has', 'friend'], FRIEND_TINT, AI_TINT], 'circle-opacity': ['case', ['has', 'friend'], 1, 0.75] },
   });
   // Aircraft on the ground, at true scale so parked aircraft fit their stands
   map.addLayer({
@@ -813,9 +826,11 @@ const AI_LABELS_3D_MAX = 700;
  * projection takes an optional terrain to read heights from; a stand-in that
  * returns our height gives the exact spot (flat map and globe).
  */
+/** The map's camera maths. MapLibre 6 moved it off the map: without it, aircraft can't be clicked in 3D. */
+const transformOf = (map: any) => map.transform ?? map._camera?.transform;
 const fakeTerrain = { h: 0, getElevationForLngLat() { return this.h; }, getElevationForLngLatZoom() { return this.h; } };
 function screenAt(map: any, at: LonLat, heightM: number): { x: number; y: number } | null {
-  const tr = map.transform;
+  const tr = transformOf(map);
   const fn = tr?.locationToScreenPoint ?? tr?.locationPoint;
   if (!fn) return null;
   fakeTerrain.h = heightM;
@@ -831,7 +846,8 @@ function groundUnder(map: any, at: LonLat, heightM: number, w: number, h: number
   const p = screenAt(map, at, heightM);
   if (!p || p.x < -40 || p.y < -40 || p.x > w + 40 || p.y > h + 40) return null;
   try {
-    if (map.transform?.isPointOnMapSurface && !map.transform.isPointOnMapSurface(p)) return null;
+    const tr = transformOf(map);
+    if (tr?.isPointOnMapSurface && !tr.isPointOnMapSurface(p)) return null;
     const ll = map.unproject([p.x, p.y]);
     return ll && Number.isFinite(ll.lng) && Number.isFinite(ll.lat) ? [ll.lng, ll.lat] : null;
   } catch {
@@ -917,7 +933,7 @@ type CameraStart = { lng: number; lat: number; zoom: number; pitch: number; bear
 
 /** Camera height above sea level, metres. */
 function cameraAltitudeM(map: any): number {
-  const v = map.transform?.getCameraAltitude?.();
+  const v = transformOf(map)?.getCameraAltitude?.();
   if (Number.isFinite(v)) return v;
   const c = map.getCenter?.() ?? { lat: 0 };
   const h = map.getContainer?.()?.clientHeight || 800;
@@ -1158,6 +1174,7 @@ function installMapContent(map: any, styleId: MapStyleId, threeD: boolean) {
   });
   RADAR_GROUPS.forEach((g) => putImage(map, mapImageName(iconKey.group(g)), createRadarGroupImageData(g, C.fleet), MAP_ICON_PIXEL_RATIO));
   RADAR_GROUPS.forEach((g) => putImage(map, `ai-${g}`, createRadarGroupImageData(g, aiTintFor(styleId)), MAP_ICON_PIXEL_RATIO));
+  RADAR_GROUPS.forEach((g) => putImage(map, `friend-${g}`, createRadarGroupImageData(g, friendTintFor(styleId)), MAP_ICON_PIXEL_RATIO));
   (Object.keys(WX_TAG_COLORS) as (keyof typeof WX_TAG_COLORS)[]).forEach((c) => putImage(map, `wx-${c}`, createWxTagImageData(c), 2));
   addBuildings(map, styleId); // first, so the game's layers draw over them
   addLayers(map);
@@ -1380,21 +1397,38 @@ export function LiveMap(props: LiveMapProps) {
             // paint the picture in the airline's livery once it's ready
             const heroImg = popup.getElement?.()?.querySelector('.bp-pop-hero img[data-model]') as HTMLImageElement | null;
             const badgeImg = popup.getElement?.()?.querySelector('.bp-pop-badge') as HTMLImageElement | null;
-            const badge = liveryRef.current?.logo;
-            if (badgeImg && badge) {
-              badgeImg.src = badge;
-              badgeImg.style.display = 'block';
-            }
-            const lv = liveryRef.current;
-            const ac = plane && latest.current.fleet.find((a) => a.tailNumber === plane.tailNumber);
-            const li = lv && ac ? liveryIndexOf(ac, lv.liveries) : 0;
-            const lvy = lv ? lv.liveries[li] : undefined;
             const tag = popup.getElement?.()?.querySelector('.bp-pop-special') as HTMLElement | null;
-            if (tag && li === 1 && lvy) {
-              tag.textContent = `★ ${specialLabel(lvy)}`;
-              tag.style.display = 'block';
+            if (plane?.friendOf) {
+              // A friend's aircraft: their own livery, fetched the first time one of theirs is opened
+              void friendLivery(String(plane.friendOf), Number(plane.friendLivery)).then((lvy) => {
+                if (!lvy) return;
+                const logo = lvy.badge ? lvy.logos?.[lvy.badge] : undefined;
+                if (badgeImg && logo) {
+                  badgeImg.src = logo;
+                  badgeImg.style.display = 'block';
+                }
+                if (tag && Number(plane.friendLivery) === 1) {
+                  tag.textContent = `★ ${specialLabel(lvy)}`;
+                  tag.style.display = 'block';
+                }
+                if (heroImg) void paintedPhoto(String(plane.modelId), lvy, String(plane.airlineName ?? ''), String(plane.tailNumber ?? '')).then((u) => u && (heroImg.src = u));
+              });
+            } else {
+              const badge = liveryRef.current?.logo;
+              if (badgeImg && badge) {
+                badgeImg.src = badge;
+                badgeImg.style.display = 'block';
+              }
+              const lv = liveryRef.current;
+              const ac = plane && latest.current.fleet.find((a) => a.tailNumber === plane.tailNumber);
+              const li = lv && ac ? liveryIndexOf(ac, lv.liveries) : 0;
+              const lvy = lv ? lv.liveries[li] : undefined;
+              if (tag && li === 1 && lvy) {
+                tag.textContent = `★ ${specialLabel(lvy)}`;
+                tag.style.display = 'block';
+              }
+              if (heroImg && lvy) paintedPhoto(String(plane?.modelId), lvy, lv!.name, String(plane?.tailNumber ?? '')).then((u) => u && (heroImg.src = u));
             }
-            if (heroImg && lvy) paintedPhoto(String(plane?.modelId), lvy, lv!.name, String(plane?.tailNumber ?? '')).then((u) => u && (heroImg.src = u));
             attachOrbit(map, popup);
             popup.on('close', () => {
               if (popupRef.current === popup) {
@@ -1427,7 +1461,7 @@ export function LiveMap(props: LiveMapProps) {
             const f = traffic?.flights[id];
             const clock = latest.current.getClock();
             const pos = f && traffic && aiModel(traffic).position(f, clock.day, clock.min, { left: 1 });
-            if (f && pos && traffic) openTrackedPopup(pos.coordinates, buildAiPopupHtml(traffic, f, pos), `ai:${f.id}`);
+            if (f && pos && traffic) openTrackedPopup(pos.coordinates, buildAiPopupHtml(traffic, f, pos), `ai:${f.id}`, friendPlane(traffic, f));
           };
           const onAiClick = (e: any) => {
             if (!e.fromHit3d && (e.picked3d || e.originalEvent?.picked3d)) return;
@@ -1441,7 +1475,7 @@ export function LiveMap(props: LiveMapProps) {
             const f = traffic.flights[Number(feat.properties.aiId)];
             const clock = latest.current.getClock();
             const pos = f && aiModel(traffic).position(f, clock.day, clock.min, { left: 1 });
-            if (f && pos) openTrackedPopup(pos.coordinates, buildAiPopupHtml(traffic, f, pos), `ai:${f.id}`);
+            if (f && pos) openTrackedPopup(pos.coordinates, buildAiPopupHtml(traffic, f, pos), `ai:${f.id}`, friendPlane(traffic, f));
           };
           map.on('click', 'ai-planes-symbol', onAiClick);
           map.on('click', 'ai-planes-dot', onAiClick);
@@ -1480,7 +1514,7 @@ export function LiveMap(props: LiveMapProps) {
             }
             const entry = groundRef.current.ai.get(p.groundKey);
             const traffic = latest.current.aiTraffic;
-            if (entry && traffic) openTrackedPopup(entry.pose.coordinates, aiGroundPopupHtml(traffic, entry, latest.current.getClock()), `aig:${p.groundKey}`);
+            if (entry && traffic) openTrackedPopup(entry.pose.coordinates, aiGroundPopupHtml(traffic, entry, latest.current.getClock()), `aig:${p.groundKey}`, friendPlane(traffic, entry.info.flight));
           });
 
           map.on('click', (e: any) => {
@@ -2098,6 +2132,7 @@ export function LiveMap(props: LiveMapProps) {
     };
     map.on?.('sourcedata', onSourceData);
     let aiIndex: { traffic: AiTraffic; index: AiAirportIndex; byIata: Map<string, number> } | null = null;
+    let trackedFriendKey: { id: number; key: string } | null = null;
     let aiKeep: (f: AiFlight) => boolean = () => true;
     // Your flights' turns on the runways, fitted around the other airlines shown
     // (rebuilt when your schedule or the other airlines on the map change)
@@ -2113,7 +2148,8 @@ export function LiveMap(props: LiveMapProps) {
           aiIndex = { traffic, index: buildAiAirportIndex(traffic), byIata: new Map(traffic.airports.map((a, i) => [a.iata, i])) };
         const hiddenIdx = new Set(hidden.map((code) => traffic.airlines.findIndex((a) => a.code === code)).filter((i) => i >= 0));
         const maxBucket = DENSITY_BUCKETS[st.aiDensity];
-        ai = { traffic, index: aiIndex.index, byIata: aiIndex.byIata, keep: (f: AiFlight) => densityBucket(f) < maxBucket && !hiddenIdx.has(f.airline) };
+        // Friends' flights fly on each player's own clock, so they never hold your flights up
+        ai = { traffic, index: aiIndex.index, byIata: aiIndex.byIata, keep: (f: AiFlight) => !f.friend && densityBucket(f) < maxBucket && !hiddenIdx.has(f.airline) };
       }
       const seq = new RunwaySequencer(
         st.flightInfo.map((i) => i.flight),
@@ -2318,7 +2354,7 @@ export function LiveMap(props: LiveMapProps) {
             if (apIdx !== undefined) {
               const airport = aiModel(traffic!).airports[apIdx];
               const seq = runwaySeq(st);
-              moves = moves.concat(aiGroundMoves(traffic!, aiIndex.index, apIdx, airport, clock.day, clock.min, aiKeep, ainfo, (f, dd) => seq.aiSuppressed(f, dd)));
+              moves = moves.concat(aiGroundMoves(traffic!, aiIndex.index, apIdx, airport, clock.day, clock.min, aiKeep, ainfo, (f, dd) => !f.friend && seq.aiSuppressed(f, dd)));
             }
           }
           if (!moves.length) continue;
@@ -2338,7 +2374,7 @@ export function LiveMap(props: LiveMapProps) {
                   kind: 'ai',
                   groundKey: key,
                   flightNumber: f.flightNumber,
-                  icon_name: `ai-${f.group}`,
+                  icon_name: aiIconName(f),
                   gs: groundIconScale(GROUP_LENGTH_M[f.group], pose.coordinates[1]),
                   bearing: pose.bearing,
                 },
@@ -2621,7 +2657,8 @@ export function LiveMap(props: LiveMapProps) {
       // --- AI traffic -------------------------------------------------------
       let trackedAi: { coords: [number, number]; agl?: number; sizePx?: number; flown: [number, number][]; remaining: [number, number][]; html: string } | null = null;
       const traffic = st.aiTraffic;
-      const aiOn = traffic && st.aiDensity !== 'off';
+      // Friends' aircraft show even with the other airlines switched off
+      const aiOn = traffic && (st.aiDensity !== 'off' || traffic.friendsFrom !== undefined);
       if (aiOn) {
         const rate = latest.current.mapRate;
         // Refresh sooner when map time runs fast, and always cover the time until the next refresh
@@ -2632,19 +2669,21 @@ export function LiveMap(props: LiveMapProps) {
             latest.current.hiddenAiAirlines.map((code) => traffic.airlines.findIndex((a) => a.code === code)).filter((i) => i >= 0)
           );
           const maxBucket = DENSITY_BUCKETS[st.aiDensity];
-          aiKeep = (f: AiFlight) => densityBucket(f) < maxBucket && !hiddenIdx.has(f.airline);
+          aiKeep = (f: AiFlight) => Boolean(f.friend) || (densityBucket(f) < maxBucket && !hiddenIdx.has(f.airline));
           const windowMin = (refreshMs / 60_000) * Math.max(1, rate) + 0.5;
           // Sorted by sampling rank: drawing stops at the budget, so the same
           // evenly spread subset stays on screen instead of flickering
-          aiCandidates = findAirborneAi(traffic, clock.day, clock.min, windowMin)
-            .filter((f) => densityBucket(f) < maxBucket && !hiddenIdx.has(f.airline))
-            .map((f) => [aiRank(f), f] as const)
+          // (friends' aircraft rank first: they're the ones a player came to see)
+          const pool = maxBucket === 0 && traffic.friendsFrom !== undefined ? { ...traffic, flights: traffic.flights.slice(traffic.friendsFrom) } : traffic;
+          aiCandidates = findAirborneAi(pool, clock.day, clock.min, windowMin)
+            .filter(aiKeep)
+            .map((f) => [aiRank(f) - (f.friend ? 1 : 0), f] as const)
             .sort((a, b) => a[0] - b[0])
             .map(([, f]) => f);
           aiKey = { traffic, density: st.aiDensity, rate, hidden: hiddenKey };
           aiLastRefresh = t;
           aiLastDraw = 0;
-          aiAirborne = aiCandidates.filter((f) => aiDepartureDay(f, clock.day, clock.min) !== null).length;
+          aiAirborne = aiCandidates.filter((f) => !f.friend && aiDepartureDay(f, clock.day, clock.min) !== null).length;
           reportedDrawn = -1; // airborne count changed: report after the next draw
           lastStatsReport = -Infinity;
         }
@@ -2667,6 +2706,10 @@ export function LiveMap(props: LiveMapProps) {
           aiDetailedOn = detailed;
           aiLabels3d = [];
           const aiColor = aiTintFor(latest.current.mapStyle);
+          const friendColor = friendTintFor(latest.current.mapStyle);
+          const friendRgb = detailed ? hexToRgb(friendColor) : null;
+          const friendCap = latest.current.friendsCap ?? Infinity;
+          let friendsDrawn = 0;
           // Each 3D aircraft is a few hundred vertices: fewer of them in 3D
           // Your aircraft come first: other airlines get the budget that is left
           const aiBudget = Math.max(AI_MIN_WITH_FLEET, (k3 ? Math.min(budget, AI_3D_MAX) : budget) - playerShown);
@@ -2682,26 +2725,29 @@ export function LiveMap(props: LiveMapProps) {
             }
             // Other airlines' flights that give way to yours on a full runway don't operate
             const dd = aiDepartureDay(f, clock.day, clock.min);
-            if (dd !== null && seqNow.aiSuppressed(f, dd)) continue;
+            if (dd !== null && !f.friend && seqNow.aiSuppressed(f, dd)) continue;
             const pos = model.position(f, clock.day, clock.min, buildBudget);
             if (!pos || !inView(pos.coordinates[0], pos.coordinates[1], b)) continue;
+            // The most of a friend's aircraft to show: the same ones each time, and only those in view count
+            if (f.friend && ++friendsDrawn > friendCap && f.id !== trackedAiId) continue;
             aiFeatures.push({
               type: 'Feature',
               geometry: { type: 'Point', coordinates: pos.coordinates },
               properties: {
                 aiId: f.id,
                 flightNumber: f.flightNumber,
-                icon_name: `ai-${f.group}`,
-                icon_scale: Number(((AI_ICON_SCALE[f.group] ?? 0.56) * st.planeIconScale).toFixed(3)),
+                icon_name: aiIconName(f),
+                icon_scale: Number((aiIconScale(f) * st.planeIconScale).toFixed(3)),
                 bearing: pos.bearing,
                 agl: pos.altitudeFt,
+                ...(f.friend ? { friend: 1 } : {}),
               },
             });
             if (k3 && pos.altitudeFt > 0) {
-              const sizePx = PLANE_3D_PX * (AI_ICON_SCALE[f.group] ?? 0.56) * st.planeIconScale;
-              const plane = { at: pos.coordinates, bearing: pos.bearing, aglFt: pos.altitudeFt, sizePx, color: aiColor, props: { kind: 'ai', aiId: f.id } };
+              const sizePx = PLANE_3D_PX * aiIconScale(f) * st.planeIconScale;
+              const plane = { at: pos.coordinates, bearing: pos.bearing, aglFt: pos.altitudeFt, sizePx, color: f.friend ? friendColor : aiColor, props: { kind: 'ai', aiId: f.id } };
               if (detailed) {
-                addInstance(aiDetailed, f.group, plane3dInstance(plane, k3, f.group, aiPitch.pitch(f.id, pos.altitudeFt, t), aiRgb!));
+                addInstance(aiDetailed, f.group, plane3dInstance(plane, k3, f.group, aiPitch.pitch(f.id, pos.altitudeFt, t), f.friend ? friendRgb! : aiRgb!));
               } else pushPlane3d(plane, k3, ai3d);
               aiLabels3d.push({ at: pos.coordinates, aglFt: pos.altitudeFt, sizePx, props: { kind: 'ai', aiId: f.id, label: f.flightNumber, color: latest.current.mapStyle === 'light' ? '#475569' : MAP_C.muted } });
             }
@@ -2716,8 +2762,9 @@ export function LiveMap(props: LiveMapProps) {
                 properties: {
                   aiId: entry.info.flight.id,
                   flightNumber: entry.info.flight.flightNumber,
-                  icon_name: `ai-${entry.info.flight.group}`,
-                  icon_scale: Number(((AI_ICON_SCALE[entry.info.flight.group] ?? 0.56) * st.planeIconScale).toFixed(3)),
+                  icon_name: aiIconName(entry.info.flight),
+                  icon_scale: Number((aiIconScale(entry.info.flight) * st.planeIconScale).toFixed(3)),
+                  ...(entry.info.flight.friend ? { friend: 1 } : {}),
                   bearing: entry.pose.bearing,
                 },
               });
@@ -2799,6 +2846,10 @@ export function LiveMap(props: LiveMapProps) {
       if (traffic && st.trackedFlightId?.startsWith('ai:')) {
         const id = Number(st.trackedFlightId.slice(3));
         const f = traffic.flights[id];
+        // A friend's list changed under the open pop-up (their schedule, or they left the map): close it, not show someone else's flight
+        const fKey = f?.friend ? `${f.friend.owner}|${f.flightNumber}|${f.depUtcMin}` : '';
+        if (trackedFriendKey?.id === id && trackedFriendKey.key !== fKey) popupRef.current?.remove();
+        trackedFriendKey = { id, key: fKey };
         const model = aiModel(traffic);
         const pos = f && model.position(f, clock.day, clock.min, { left: 1 });
         const trail = f && pos ? model.trail(f, clock.day, clock.min) : null;

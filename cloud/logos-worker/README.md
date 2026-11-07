@@ -8,10 +8,11 @@ Keeps players' livery logos (still PNG or WebP, 128×128, at most 16 KB) in the 
 - **Limits per player:** 10 logos per channel, 40 uploads a day.
 - **Flag:** uploading asks Supabase whether `logos` is on. Removing always works.
 - **Nightly job:** takes the removal list from Supabase (players who stopped sharing or deleted their account). Its key, `CLEANUP_KEY`, can only read and clear that list, so the Worker doesn't need the service-role key.
+- **Friends' schedules (A4, `src/schedules.ts`):** a player who shows their flights to friends has one small file in the same bucket and under the same cap, at `sched/<channel>/<public id>`, 200 KB at most, once a minute at most. Nothing serves one without a signed-in viewer, and Supabase says who that viewer may see on every request. Deploy this version before turning the `friends_map` flag on.
 
 ## Deploying
 
-Needs `../supabase/2026-11-05-logos.sql` in Supabase first. From this folder:
+Needs `../supabase/2026-11-05-logos.sql` (and for schedules `2026-11-06-friends.sql` and `2026-11-06-friends-map.sql`) in Supabase first. From this folder:
 
 1. `npm install`
 2. `npx wrangler login`

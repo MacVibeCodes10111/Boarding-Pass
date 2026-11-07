@@ -54,6 +54,8 @@ export interface AiFlight {
   /** Which of the runways in use it takes off from / lands on, at busy airports (0 = the first). */
   depLane?: number;
   arrLane?: number;
+  /** A friend's aircraft (friendsMap.ts), not one of the other airlines. */
+  friend?: { owner: string; reg: string; modelId: string; livery: number };
 }
 
 export interface AiTraffic {
@@ -62,6 +64,8 @@ export interface AiTraffic {
   flights: AiFlight[];
   typeNames: Map<string, string>;
   stats: { routes: number; flightsPerWeek: number; avgPerDay: number; skippedRoutes: number; buildMs: number };
+  /** Where friends' flights start in `flights`, when there are any (friendsMap.ts). */
+  friendsFrom?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -206,13 +210,13 @@ export function parseOpenFlightsPlanes(text: string): Map<string, string> {
 // ---------------------------------------------------------------------------
 // Schedule generation
 // ---------------------------------------------------------------------------
-const EARTH_NM = 3440.065;
-const toVec = (lat: number, lon: number): [number, number, number] => {
+export const EARTH_NM = 3440.065;
+export const toVec = (lat: number, lon: number): [number, number, number] => {
   const la = (lat * Math.PI) / 180;
   const lo = (lon * Math.PI) / 180;
   return [Math.cos(la) * Math.cos(lo), Math.cos(la) * Math.sin(lo), Math.sin(la)];
 };
-const angleBetween = (a: [number, number, number], b: [number, number, number]) =>
+export const angleBetween = (a: [number, number, number], b: [number, number, number]) =>
   Math.acos(Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2])));
 
 /** Departures per week for one airline on one route. */

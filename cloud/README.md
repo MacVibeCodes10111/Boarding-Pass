@@ -7,7 +7,7 @@ Cloud saves are live with real players. The database they use is the one everyth
 ## Rules
 
 - **The Online window** (`src/components/OnlinePanel.tsx`) is separate from Cloud saves, and asks a player to open the legal documents and agree before signing in or going further. Change `LEGAL_VERSION` in `src/game/features.ts` when they change in a way players should see again.
-- **Nothing shared without asking.** Every sharing choice is off until the player turns it on (`src/game/features.ts`). A player who never signs in sends nothing anywhere, which the privacy policy promises, so flags are only read after sign-in.
+- **Nothing shared without asking.** Every sharing choice is off until the player turns it on, and kept on the server so every device agrees. A player who never signs in sends nothing anywhere, which the privacy policy promises, so flags are only read after sign-in.
 - **The server decides.** The game is on the player's device and can be changed, so every limit and check is repeated on the server, and everything read from another player is checked again before it's used or drawn.
 - **Players can't touch tables directly.** Row Level Security is on everywhere. Anything that changes data goes through `security definer` functions with `search_path = ''`, which check the signed-in player (`auth.uid()`) and that the feature is on (`private.feature_on`).
 - **Dev stays separate.** Dev builds and the test site use channel `dev` and never exchange data with the real game.
@@ -31,6 +31,16 @@ The word filter on the server is made from `src/game/moderation.ts`. After chang
 The pictures live in R2, through the Worker in `logos-worker/` (its README covers deploying and reviewing). A profile names each logo by the hash of its picture, so no picture data goes in the database, and a player's own copy stays in their save, so playing never depends on the Worker. New logos are hidden until approved. Stopping sharing removes logos straight away; if the Worker can't be reached, and for deleted accounts, Supabase keeps a removal list that the Worker's nightly job clears.
 
 To try it locally, run the Worker with `npx wrangler dev` and add `VITE_BP_LOGOS_URL=http://localhost:8787` to `.env.development.local`.
+
+## Friends
+
+`supabase/2026-11-06-friends.sql`. Players are known by a `public_id` in `online_players`, never their account number, and find each other by friend code only. One row per pair in `friendships`, and everything goes through functions. Limits, all on the server: 100 friends, 50 requests waiting either way, 20 tries a day including failed ones, 5 new codes a day, and a week's wait after a refusal. A blocked player gets the same answer as a code that doesn't exist. `private.friends_cleanup` clears old requests each night (`pg_cron`).
+
+## Friends' aircraft
+
+`supabase/2026-11-06-friends-map.sql` and `logos-worker/src/schedules.ts`. Off until the player turns it on (`online_players.map_on`), and it goes off when they stop sharing their airline. The weekly schedule is one small file in R2, and the viewer's game flies it on the viewer's own clock (`src/game/friendsMap.ts`, `scheduleSnapshot.ts`). On every read, `friends_on_map` says who that viewer may see, so a block, a removal or turning it off works on the next refresh, every 10 minutes at most while a map is open. Nothing of a friend's is saved on the viewer's device.
+
+To go live: run both scripts, run `schema.sql` on D1, deploy the Worker, then turn on `friends` and `friends_map`, in that order. The Worker has to be deployed before `friends_map` goes on, because an older one reads a schedule removal as "remove the logos too".
 
 ## Decided for the updates ahead
 

@@ -15,7 +15,7 @@ import { AirportsPanel } from './components/AirportsPanel';
 import { BankPanel, MilestoneCard } from './components/BankPanel';
 import { BankruptcyModal } from './components/BankruptcyModal';
 import { BuyAircraftPanel } from './components/BuyAircraftPanel';
-import { LayersMenu, NavRail, PANEL_GROUPS, TopBar, groupOfPanel, type MapStyleChoice, type PanelId } from './components/DashboardChrome';
+import { LayersMenu, NavRail, PANEL_GROUPS, TopBar, groupOfPanel, type MapStyleChoice, type PanelId, type FriendsCap } from './components/DashboardChrome';
 import { AppearanceHost } from './components/Appearance';
 import { FleetPanel } from './components/FleetPanel';
 import { HomeScreen } from './components/HomeScreen';
@@ -119,6 +119,8 @@ import { CloudHost, openCloud } from './components/CloudPanel';
 import { OnlineHost, openOnline } from './components/OnlinePanel';
 import { IS_DEV } from './game/channel';
 import { cloudDeleteSave, downloadCareer, newerCloudCopy, nextRev, publishIfDue } from './game/cloud';
+import { featureOn, onFeaturesChange } from './game/features';
+import { friendsOnMap, onFriendsMapChange, refreshFriendsMap, wantFriendsMap, withFriends, type FriendOnMap } from './game/friendsMap';
 import { RouteFromBar } from './components/RouteFromBar';
 import { WelcomeTour, tourWantedForNewCareer } from './components/WelcomeTour';
 import { C, PanelTabsContext, applyThemeToDocument, useThemeVersion } from './ui/kit';
@@ -147,6 +149,8 @@ const MAX_BULK_BUY = 50;
 
 function readPrefs(): {
   aiDensity?: AiDensity;
+  friendsLayer?: boolean;
+  friendsCap?: string;
   mapSpeed?: MapSpeed;
   aiDetail?: AiDetail;
   hideMilestoneCard?: boolean;
@@ -416,6 +420,46 @@ export default function App() {
     return () => window.clearTimeout(id);
   }, [aiDetail, aiTraffic, aiTrafficExtreme]);
   const shownAiTraffic = aiDetail === 'extreme' && aiTrafficExtreme ? aiTrafficExtreme : aiTraffic;
+  // Friends' aircraft (Update A): read every 10 minutes while the map is up, the layer is on and the server has them switched on
+  const [friendsLayer, setFriendsLayerState] = useState(() => readPrefs().friendsLayer !== false);
+  const setFriendsLayer = (v: boolean) => {
+    setFriendsLayerState(v);
+    writePrefs({ friendsLayer: v });
+  };
+  const [friendsCap, setFriendsCapState] = useState<FriendsCap>(() => {
+    const c = readPrefs().friendsCap;
+    return c === '100' || c === '300' || c === '1000' || c === 'all' ? c : '300';
+  });
+  const setFriendsCap = (c: FriendsCap) => {
+    setFriendsCapState(c);
+    writePrefs({ friendsCap: c });
+  };
+  const [friendsFlag, setFriendsFlag] = useState(() => featureOn('friends') && featureOn('friends_map'));
+  const [friendAirlines, setFriendAirlines] = useState<FriendOnMap[]>(friendsOnMap);
+  useEffect(() => onFeaturesChange(() => setFriendsFlag(featureOn('friends') && featureOn('friends_map'))), []);
+  useEffect(() => onFriendsMapChange(() => setFriendAirlines(friendsOnMap())), []);
+  useEffect(() => {
+    const on = screen === 'dashboard' && friendsFlag && friendsLayer;
+    wantFriendsMap(on);
+    if (!on) return;
+    let last = -Infinity;
+    const run = () => {
+      if (document.hidden || Date.now() - last < 60_000) return;
+      last = Date.now();
+      void refreshFriendsMap();
+    };
+    run();
+    const timer = window.setInterval(() => {
+      last = -Infinity;
+      run();
+    }, 10 * 60_000);
+    // Back on the tab after a while
+    document.addEventListener('visibilitychange', run);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', run);
+    };
+  }, [screen, friendsFlag, friendsLayer]);
   const mapRef = useRef<any>(null);
 
   // Saves
@@ -485,6 +529,7 @@ export default function App() {
   // Derived data
   // ---------------------------------------------------------------------------
   const airportByIata = useMemo(() => new Map(airports.map((a) => [a.iata_code, a])), [airports]);
+  const mapTraffic = useMemo(() => (shownAiTraffic && friendsFlag && friendsLayer ? withFriends(shownAiTraffic, friendAirlines, airportByIata) : shownAiTraffic), [shownAiTraffic, friendsFlag, friendsLayer, friendAirlines, airportByIata]);
   const econById = useMemo(() => computeNetworkEconomics({ hubs, schedule, fleet }), [hubs, schedule, fleet]);
   const canAfford = (cost: number) => gameMode === 'sandbox' || cash >= cost;
   /**
@@ -1714,7 +1759,8 @@ export default function App() {
         detailed3d={detailed3d}
         showAllRoutes={showAllRoutes}
         planeIconScale={planeIconScale}
-        aiTraffic={shownAiTraffic}
+        aiTraffic={mapTraffic}
+        friendsCap={friendsCap === 'all' ? Infinity : Number(friendsCap)}
         aiDensity={aiDensity}
         aiDetail={aiDetail}
         hiddenAiAirlines={replacedAi ? [replacedAi] : []}
@@ -1780,6 +1826,12 @@ export default function App() {
         onAiDetail={setAiDetail}
         aiNote={replacedAi ? `${(aiTraffic?.airlines ?? AI_AIRLINES).find((a) => a.code === replacedAi)?.name ?? replacedAi} is off the map: your airline takes its place.` : undefined}
         aiStatus={aiStatus}
+        friendsAvailable={friendsFlag}
+        friendsOn={friendsLayer}
+        onFriendsOn={setFriendsLayer}
+        friendsCap={friendsCap}
+        onFriendsCap={setFriendsCap}
+        friendAirlines={friendAirlines.length}
         planeIconScale={planeIconScale}
         onPlaneIconScale={setPlaneIconScale}
       />
