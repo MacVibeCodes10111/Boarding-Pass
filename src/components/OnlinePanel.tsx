@@ -280,7 +280,7 @@ function OnlineArea(props: Where & { user: CloudUser; busy: boolean; act: Act; o
           (!featureOn('marketplace') ? (
             <ComingSoon icon="buy" title="The marketplace is on the way" lines={['Sell aircraft you own to other airlines.', 'Buy used aircraft for less than new.', 'Game money only.']} />
           ) : selected ? (
-            <MarketTab me={selected} busy={props.busy} act={props.act} market={inGame ? props.market : undefined} />
+            <MarketTab me={selected} busy={props.busy} act={props.act} market={inGame ? props.market : undefined} onAlliances={featureOn('alliances') ? () => setTab('alliances') : undefined} />
           ) : (
             <NotShared inGame={inGame} onShare={() => setTab('airline')} what="The marketplace is for shared airlines" />
           ))}
@@ -348,7 +348,7 @@ function AirlineTab(props: { busy: boolean; act: Act; current: SaveGameState | n
     featureOn('friends') && 'Add friends with a private friend code, and see their airlines.',
     featureOn('friends') && featureOn('friends_map') && 'Show your flights on friends’ maps, if you choose to.',
     featureOn('alliances') && 'Start or join an alliance of up to 20 airlines.',
-    featureOn('marketplace') && 'Buy and sell used aircraft with other airlines, for game money only.',
+    featureOn('marketplace') && 'Buy and sell used aircraft with the airlines in your alliance, for game money only.',
     featureOn('reports') && 'Report anything that breaks the rules; a moderator checks it.',
   ].filter((x): x is string => !!x);
   const shown = `Friends can see its name, code, callsign, colours, liveries${featureOn('logos') ? ', logos (checked before other players see them)' : ''} and a summary such as fleet size. Never your money or your account.`;

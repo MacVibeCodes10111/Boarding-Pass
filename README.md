@@ -26,7 +26,7 @@ Version 3.0, the online update:
 - **Online, if you want it.** Sign in, open a career and choose Online to share that airline with other players. Nothing is shared until you turn it on, and the game works fully without it. Each shared airline (up to 10) gets its own friend code and friends.
 - **Friends:** add friends with a private friend code, see their airlines (liveries, stats, route map and fleet), and choose whether their aircraft fly on your map, on your own game's clock. Remove or block anyone at any time.
 - **Alliances:** start one or join one, with up to 20 airlines. Choose your name, tag, colours and logo, and whether airlines can join at once or must ask. See the alliance's network on a map, its busiest hubs and its biggest airlines. Search every alliance, and three are featured each week.
-- **The marketplace:** buy used aircraft from other airlines for less than new, or sell yours. Only aircraft you own with no flights can be sold. Game money only.
+- **The marketplace:** buy used aircraft from the other airlines in your alliance for less than new, or sell yours to them. Only aircraft you own with no flights can be sold. Game money only.
 - **Logos** in your liveries are checked before other players see them, and anything that breaks the rules can be reported.
 - **Career and Sandbox airlines are kept apart** online. Save files can no longer be exported, and an old save file always opens as a new Sandbox career.
 - **Safer saves:** saving can no longer lose a career, and if the cloud and this device disagree, both versions are kept. A clear message for a broken save file, instead of a blank screen.

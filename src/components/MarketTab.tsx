@@ -57,9 +57,22 @@ const day = (x: string) => (x ? new Date(x).toLocaleDateString(undefined, { day:
 const seatsText = (c: { econSeats: number; premSeats: number; busSeats: number; firstSeats: number }) =>
   [c.firstSeats && `${c.firstSeats}F`, c.busSeats && `${c.busSeats}J`, c.premSeats && `${c.premSeats}W`, c.econSeats && `${c.econSeats}Y`].filter(Boolean).join(' ') || 'No seats';
 
-export function MarketTab(props: { me: MyAirline; busy: boolean; act: Act; market?: MarketHooks }) {
+export function MarketTab(props: { me: MyAirline; busy: boolean; act: Act; market?: MarketHooks; onAlliances?: () => void }) {
   const { market } = props;
   const [part, setPart] = useState<Part>(market?.sellTail ? 'sell' : 'buy');
+  // The marketplace works inside an alliance: undefined while looking, null when not in one
+  const [alliance, setAlliance] = useState<{ id: string; tag: string } | null | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    setAlliance(undefined);
+    loadAlliance(props.me.id)
+      .then((d) => live && setAlliance(d?.alliance ? { id: d.alliance.id, tag: d.alliance.tag } : null))
+      .catch(() => live && setAlliance(null));
+    return () => {
+      live = false;
+    };
+  }, [props.me.id]);
+  const needsAlliance = (part === 'buy' || part === 'sell') && alliance !== undefined && alliance === null;
   useEffect(() => {
     if (market?.sellTail) setPart('sell');
   }, [market?.sellTail]);
@@ -89,11 +102,27 @@ export function MarketTab(props: { me: MyAirline; busy: boolean; act: Act; marke
           { value: 'history', label: 'History' },
         ]}
       />
-      {part === 'buy' && <Buy me={props.me} busy={props.busy} act={props.act} market={market} />}
-      {part === 'sell' && (market ? <Sell market={market} busy={props.busy} act={props.act} onListed={() => setPart('listings')} /> : <InCareer what="sell an aircraft" />)}
+      {needsAlliance && <NoAlliance onAlliances={props.onAlliances} />}
+      {!needsAlliance && part === 'buy' && <Buy me={props.me} busy={props.busy} act={props.act} market={market} tag={alliance?.tag ?? null} />}
+      {!needsAlliance && part === 'sell' && (market ? <Sell market={market} busy={props.busy} act={props.act} onListed={() => setPart('listings')} tag={alliance?.tag ?? null} /> : <InCareer what="sell an aircraft" />)}
       {part === 'listings' && (market ? <Listings market={market} busy={props.busy} act={props.act} /> : <InCareer what="see its listings" />)}
       {part === 'history' && (market ? <History market={market} /> : <InCareer what="see its trades" />)}
       <p style={note}>Game money only: nothing here costs or pays real money. {props.me.mode === 'sandbox' ? 'Sandbox airlines trade only with Sandbox airlines.' : 'Career airlines trade only with Career airlines.'}</p>
+    </div>
+  );
+}
+
+function NoAlliance(props: { onAlliances?: () => void }) {
+  return (
+    <div style={{ padding: '24px 16px', borderRadius: 12, background: C.raised, textAlign: 'center', display: 'grid', gap: 8, justifyItems: 'center' }}>
+      <Icon name="globe" size={26} color={C.muted} />
+      <p style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 17, margin: 0 }}>The marketplace is for alliances</p>
+      <p style={{ ...note, maxWidth: 360 }}>Airlines buy and sell aircraft with the other airlines in their alliance. Join or start one to trade.</p>
+      {props.onAlliances && (
+        <Button size="sm" variant="primary" onClick={props.onAlliances}>
+          Go to Alliances
+        </Button>
+      )}
     </div>
   );
 }
@@ -105,34 +134,23 @@ function InCareer(props: { what: string }) {
 // ---------------------------------------------------------------------------
 // Buy
 // ---------------------------------------------------------------------------
-function Buy(props: { me: MyAirline; busy: boolean; act: Act; market?: MarketHooks }) {
+function Buy(props: { me: MyAirline; busy: boolean; act: Act; market?: MarketHooks; tag: string | null }) {
   const { me, market } = props;
   const [sort, setSort] = useState<MarketSort>('new');
   const [cat, setCat] = useState<AircraftCategory | ''>('');
   const [type, setType] = useState('');
   const [max, setMax] = useState('');
-  const [ours, setOurs] = useState(false);
-  const [alliance, setAlliance] = useState<{ id: string; tag: string } | null>(null);
   const [offers, setOffers] = useState<MarketOffer[] | null>(null);
   const [asking, setAsking] = useState<string | null>(null);
   const [said, setSaid] = useState('');
   const [v, setV] = useState(0);
-  useEffect(() => {
-    let live = true;
-    loadAlliance(me.id)
-      .then((d) => live && setAlliance(d?.alliance ? { id: d.alliance.id, tag: d.alliance.tag } : null))
-      .catch(() => undefined);
-    return () => {
-      live = false;
-    };
-  }, [me.id]);
   const models = useMemo(() => (type ? [type] : cat ? [...AIRCRAFT_BY_ID.values()].filter((m) => m.category === cat).map((m) => m.id) : []), [type, cat]);
   const maxUsd = Number(max) > 0 ? Math.round(Number(max) * 1e6) : null;
   useEffect(() => {
     let live = true;
     setOffers(null);
     const t = window.setTimeout(() => {
-      browseMarket(me.id, { models, max: maxUsd, alliance: ours && alliance ? alliance.id : null, sort })
+      browseMarket(me.id, { models, max: maxUsd, sort })
         .then((o) => live && setOffers(o))
         .catch(() => live && setOffers([]));
     }, 250);
@@ -140,7 +158,7 @@ function Buy(props: { me: MyAirline; busy: boolean; act: Act; market?: MarketHoo
       live = false;
       window.clearTimeout(t);
     };
-  }, [me.id, models, maxUsd, ours, alliance, sort, v]);
+  }, [me.id, models, maxUsd, sort, v]);
   // One menu: every aircraft, a whole size, or one type
   const groups = useMemo(
     () => CATEGORIES.filter((c) => c.value).map((c) => ({ ...c, types: [...AIRCRAFT_BY_ID.values()].filter((m) => m.category === c.value).sort((a, b) => a.name.localeCompare(b.name)) })),
@@ -200,12 +218,7 @@ function Buy(props: { me: MyAirline; busy: boolean; act: Act; market?: MarketHoo
             { value: 'dear', label: 'Dearest' },
           ]}
         />
-        {alliance && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, cursor: 'pointer' }}>
-            <input type="checkbox" checked={ours} onChange={(e) => setOurs(e.target.checked)} style={{ accentColor: C.brand }} />
-            Only from {alliance.tag}
-          </label>
-        )}
+        {props.tag && <span style={{ fontSize: 12, color: C.muted }}>From airlines in {props.tag}</span>}
       </div>
       {said && (
         <p role="status" style={{ fontSize: 12.5, margin: 0 }}>
@@ -217,8 +230,8 @@ function Buy(props: { me: MyAirline; busy: boolean; act: Act; market?: MarketHoo
       ) : offers.length === 0 ? (
         <div style={{ padding: '24px 16px', borderRadius: 12, background: C.raised, textAlign: 'center' }}>
           <Icon name="buy" size={26} color={C.muted} style={{ display: 'block', margin: '0 auto' }} />
-          <p style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 17, margin: '8px 0 4px' }}>Nothing for sale{models.length || maxUsd || ours ? ' that matches' : ' yet'}</p>
-          <p style={note}>Other airlines’ aircraft appear here when they list them. You can sell yours in Sell.</p>
+          <p style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 17, margin: '8px 0 4px' }}>Nothing for sale{models.length || maxUsd ? ' that matches' : ' yet'}</p>
+          <p style={note}>Aircraft the other airlines in {props.tag ?? 'your alliance'} list appear here. You can sell yours in Sell.</p>
         </div>
       ) : (
         <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(240px, 100%), 1fr))', gap: 10 }}>
@@ -280,7 +293,7 @@ function Buy(props: { me: MyAirline; busy: boolean; act: Act; market?: MarketHoo
 // ---------------------------------------------------------------------------
 // Sell
 // ---------------------------------------------------------------------------
-function Sell(props: { market: MarketHooks; busy: boolean; act: Act; onListed: () => void }) {
+function Sell(props: { market: MarketHooks; busy: boolean; act: Act; onListed: () => void; tag: string | null }) {
   const { market } = props;
   const owned = market.fleet.filter((a) => a.acquisition === 'owned' && AIRCRAFT_BY_ID.has(a.model.id));
   const free = (a: PlayerAircraft) => !market.flying.has(a.tailNumber);
@@ -383,7 +396,7 @@ function Sell(props: { market: MarketHooks; busy: boolean; act: Act; onListed: (
             </span>
           </label>
           <p style={note}>
-            It leaves your fleet when listed. You’re paid when another airline buys it; if nobody does in {LISTING_DAYS} days, or you take it down, it comes back.
+            Only the other airlines in {props.tag ?? "your alliance"} see it. It leaves your fleet when listed, and you’re paid when one of them buys it; if nobody does in {LISTING_DAYS} days, or you take it down, it comes back.
           </p>
           {said && <p style={{ fontSize: 12.5, margin: 0, color: C.red }}>{said}</p>}
           <Button

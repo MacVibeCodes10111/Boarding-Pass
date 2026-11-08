@@ -340,6 +340,8 @@ const ANSWERS: Record<string, string> = {
   gone: 'That aircraft isn’t for sale any more.',
   own: 'That’s one of your own airlines’ aircraft.',
   other_mode: 'That aircraft is in the other market (Career and Sandbox are kept apart).',
+  no_alliance: 'The marketplace is for alliances. Join or start one in Alliances first.',
+  not_ally: 'That aircraft is for sale only inside its seller’s alliance.',
 };
 export const marketAnswer = (r: unknown) => ANSWERS[String(r)] ?? 'That didn’t work. Try again later.';
 
