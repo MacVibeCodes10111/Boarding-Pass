@@ -329,34 +329,38 @@ function Sell(props: { market: MarketHooks; busy: boolean; act: Act; onListed: (
       {picking && (
         <ModalShell onClose={() => setPicking(false)} maxWidth={520} zIndex={260}>
           <h2 style={{ fontFamily: DISPLAY, fontSize: 22, margin: '0 0 4px' }}>Sell which aircraft?</h2>
-          <p style={{ ...note, marginBottom: 12 }}>Only aircraft with no flights can be sold.</p>
-          <div style={{ display: 'grid', gap: 8 }}>
-            {[...owned].sort((a, b) => Number(!free(a)) - Number(!free(b))).map((a) => {
-              const ok = free(a);
-              return (
-                <button
-                  key={a.tailNumber}
-                  type="button"
-                  disabled={!ok}
-                  onClick={() => {
-                    setSaid('');
-                    setTail(a.tailNumber);
-                    setPicking(false);
-                  }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 8, borderRadius: 12, textAlign: 'left', font: 'inherit', color: C.text, cursor: ok ? 'pointer' : 'default', opacity: ok ? 1 : 0.55, background: C.raised, border: `1px solid ${a.tailNumber === tail ? C.brand : C.lineSoft}` }}
-                >
-                  <span style={{ flex: '0 0 50%', maxWidth: 240 }}>
-                    <AircraftPhoto model={a.model} width="100%" paintWidth={240} tailNumber={a.tailNumber} liveryIndex={a.livery} noTag />
-                  </span>
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontWeight: 700, fontSize: 14.5 }}>{a.tailNumber}</span>
-                    <span style={{ display: 'block', fontSize: 12.5, color: C.muted }}>{a.model.name}</span>
-                    <span style={{ display: 'block', fontSize: 12, marginTop: 2, color: ok ? C.green : C.muted }}>{ok ? `Up to ${usdShort(priceBand(a.model).max)}` : 'Has flights'}</span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          {ready === 0 ? (
+            <p style={{ ...note, margin: '8px 0 4px', fontSize: 14 }}>No aircraft are available to sell. An aircraft you own can be sold once it has no flights: remove them in its schedule first.</p>
+          ) : (
+            <>
+              <p style={{ ...note, marginBottom: 12 }}>
+                {ready === 1 ? '1 aircraft' : `${ready} aircraft`} with no flights.
+              </p>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {owned.filter(free).map((a) => (
+                  <button
+                    key={a.tailNumber}
+                    type="button"
+                    onClick={() => {
+                      setSaid('');
+                      setTail(a.tailNumber);
+                      setPicking(false);
+                    }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 8, borderRadius: 12, textAlign: 'left', font: 'inherit', color: C.text, cursor: 'pointer', background: C.raised, border: `1px solid ${a.tailNumber === tail ? C.brand : C.lineSoft}` }}
+                  >
+                    <span style={{ flex: '0 0 50%', maxWidth: 240 }}>
+                      <AircraftPhoto model={a.model} width="100%" paintWidth={240} tailNumber={a.tailNumber} liveryIndex={a.livery} noTag />
+                    </span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'block', fontWeight: 700, fontSize: 14.5 }}>{a.tailNumber}</span>
+                      <span style={{ display: 'block', fontSize: 12.5, color: C.muted }}>{a.model.name}</span>
+                      <span style={{ display: 'block', fontSize: 12, marginTop: 2, color: C.green }}>Up to {usdShort(priceBand(a.model).max)}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </ModalShell>
       )}
       {ac && band && (
