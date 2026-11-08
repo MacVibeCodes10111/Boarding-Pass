@@ -163,6 +163,13 @@ export function tidyFleetLiveries<T extends { livery?: number }>(fleet: T[], liv
 /** The ready-made logos' drawing size (they're drawn at 4× this). */
 export const LOGO_PX = 128;
 /**
+ * How small and how big a logo layer can be drawn, as a share of its frame (1 = the frame's height).
+ * Wide on purpose, for creative freedom: a logo is drawn straight onto the picture, so any size costs
+ * the same, and a file's own size is limited by bytes (MAX_LOGO_BYTES), not by this.
+ */
+export const LOGO_SIZE_MIN = 0.002;
+export const LOGO_SIZE_MAX = 40;
+/**
  * Uploaded logos keep their own size, up to this many pixels square. Above it nobody could see the
  * difference on an aircraft, and friends' games decode every one they're shown.
  */
@@ -432,7 +439,7 @@ function adjFrom(x: unknown): Record<string, ModelAdjust> | undefined {
     const n = (k: 'x' | 'y' | 'size' | 'w' | 'h' | 'rot' | 'v0' | 'v1' | 'dx' | 'dy', lo: number, hi: number) => {
       if (typeof o[k] === 'number' && Number.isFinite(o[k])) a[k] = Math.min(hi, Math.max(lo, o[k] as number));
     };
-    n('x', -2, 3); n('y', -2, 3); n('size', 0.01, 5); n('w', 0.005, 20); n('h', 0.005, 20); n('rot', -360, 360); n('v0', -2, 4); n('v1', -2, 4); n('dx', -3, 3); n('dy', -3, 3);
+    n('x', -2, 3); n('y', -2, 3); n('size', LOGO_SIZE_MIN, LOGO_SIZE_MAX); n('w', 0.005, 20); n('h', 0.005, 20); n('rot', -360, 360); n('v0', -2, 4); n('v1', -2, 4); n('dx', -3, 3); n('dy', -3, 3);
     if (typeof o.colour === 'string' && /^#[0-9a-f]{6}$/i.test(o.colour)) a.colour = o.colour.toLowerCase();
     if (Object.keys(a).length) out[m] = a;
   }
@@ -501,7 +508,7 @@ function layerFrom(x: unknown): Layer | null {
       return { ...b, kind: 'paint', frame, strokes };
     }
     case 'logo':
-      return typeof o.logo === 'string' ? { ...b, kind: 'logo', frame, logo: o.logo.slice(0, 40), x: num(o.x, 0.5, -2, 3), y: num(o.y, 0.5, -2, 3), size: num(o.size, 0.4, 0.01, 5), rot: num(o.rot, 0, -360, 360) } : null;
+      return typeof o.logo === 'string' ? { ...b, kind: 'logo', frame, logo: o.logo.slice(0, 40), x: num(o.x, 0.5, -2, 3), y: num(o.y, 0.5, -2, 3), size: num(o.size, 0.4, LOGO_SIZE_MIN, LOGO_SIZE_MAX), rot: num(o.rot, 0, -360, 360) } : null;
   }
   return null;
 }

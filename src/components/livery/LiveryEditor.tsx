@@ -36,6 +36,8 @@ import {
   type Region,
   type ShapeKind,
   DEFAULT_LIVERY,
+  LOGO_SIZE_MAX,
+  LOGO_SIZE_MIN,
 } from '../../game/livery';
 import { aircraftGeometry, freeCanvas, fromPx, layerOutline, loadLogos, renderLivery, titlesPosition, unitPx, type Geometry } from '../../game/liveryPaint';
 import { Button, C, DISPLAY, Segmented } from '../../ui/kit';
@@ -100,6 +102,64 @@ function Slider(props: { label: string; value: number; min: number; max: number;
         step={props.step ?? 0.01}
         value={props.value}
         onChange={(e) => props.onChange(Number(e.target.value))}
+        onPointerUp={props.onDone}
+        onKeyUp={props.onDone}
+        style={{ width: '100%' }}
+      />
+    </label>
+  );
+}
+
+/**
+ * A logo's size, from tiny to many times the frame. The slider is logarithmic, so small sizes get as
+ * much room as big ones, and the box takes an exact percentage.
+ */
+function LogSizeSlider(props: { value: number; onChange: (v: number) => void; onDone?: () => void }) {
+  const lo = Math.log(LOGO_SIZE_MIN), hi = Math.log(LOGO_SIZE_MAX);
+  const clamp = (v: number) => Math.min(LOGO_SIZE_MAX, Math.max(LOGO_SIZE_MIN, v));
+  const toT = (v: number) => Math.round(((Math.log(clamp(v)) - lo) / (hi - lo)) * 1000);
+  const fromT = (t: number) => clamp(Math.exp(lo + (t / 1000) * (hi - lo)));
+  const shown = (v: number) => {
+    const p = v * 100;
+    return p < 10 ? String(Math.round(p * 10) / 10) : String(Math.round(p));
+  };
+  const [typed, setTyped] = useState<string | null>(null);
+  const commit = () => {
+    if (typed === null) return;
+    const n = Number(typed.replace(',', '.'));
+    setTyped(null);
+    if (Number.isFinite(n) && n > 0) {
+      props.onChange(clamp(n / 100));
+      props.onDone?.();
+    }
+  };
+  return (
+    <label style={{ display: 'grid', gap: 3, fontSize: 12.5, color: C.textSoft }}>
+      <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        <span>Size</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 3, color: C.muted }}>
+          <input
+            className="num"
+            inputMode="decimal"
+            aria-label="Size in percent"
+            value={typed ?? shown(props.value)}
+            onChange={(e) => setTyped(e.target.value.replace(/[^0-9.,]/g, '').slice(0, 7))}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+            }}
+            style={{ width: 54, padding: '1px 4px', fontSize: 12, textAlign: 'right', borderRadius: 6, border: `1px solid ${C.border}`, background: C.bg, color: C.text }}
+          />
+          %
+        </span>
+      </span>
+      <input
+        type="range"
+        min={0}
+        max={1000}
+        step={1}
+        value={toT(props.value)}
+        onChange={(e) => props.onChange(fromT(Number(e.target.value)))}
         onPointerUp={props.onDone}
         onKeyUp={props.onDone}
         style={{ width: '100%' }}
@@ -1698,7 +1758,7 @@ function LayerProps(p: {
       {l.kind === 'logo' && (
         <>
           {!p.logos[l.logo] && <div style={{ fontSize: 12, color: C.amber }}>This logo was deleted.</div>}
-          <Slider label="Size" value={l.size} min={0.05} max={l.frame === 'fin' ? 1.2 : 2} onChange={(v) => p.slide({ size: v } as Partial<Layer>)} onDone={p.done} fmt={pct} />
+          <LogSizeSlider value={l.size} onChange={(v) => p.slide({ size: v } as Partial<Layer>)} onDone={p.done} />
           <Slider label="Rotation" value={l.rot} min={-180} max={180} step={1} onChange={(v) => p.slide({ rot: v } as Partial<Layer>)} onDone={p.done} fmt={deg} />
         </>
       )}

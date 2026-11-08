@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 3.0. Free to play. See [Credits and licences](#credits-and-licences).
+Version 3.0.1. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -20,6 +20,11 @@ Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 3.0.1:
+
+- **The marketplace is now for alliances:** airlines buy and sell aircraft with the other airlines in their alliance. Leaving an alliance takes your listings down, and the aircraft come back.
+- **Logos in the livery editor can be any size,** from a tiny detail to many times the tail. The Size slider covers the whole range, and you can type an exact percentage.
 
 Version 3.0, the online update:
 
