@@ -1289,6 +1289,17 @@ export default function App() {
     if (!list.length) return;
     const legs = schedule.filter((s) => tails.has(s.tailNumber)).length;
     const owned = list.filter((a) => a.acquisition === 'owned');
+    // Only an aircraft with no flights can be sold (to the game or on the marketplace)
+    const busy = owned.filter((a) => schedule.some((s) => s.tailNumber === a.tailNumber));
+    if (busy.length) {
+      setGameAlert({
+        title: busy.length === 1 ? `${busy[0].tailNumber} still has flights` : `${busy.length} aircraft still have flights`,
+        message: `Only aircraft with no flights can be sold. Remove ${busy.length === 1 ? 'its' : 'their'} flights in the schedule first.`,
+        detail: busy.length > 1 ? busy.map((a) => a.tailNumber).join(', ') : undefined,
+        severity: 'info',
+      });
+      return;
+    }
     const leased = list.filter((a) => a.acquisition === 'leased');
     const t = disposalTerms(list);
     const one = list.length === 1 ? list[0] : null;
@@ -1391,6 +1402,7 @@ export default function App() {
     if (!me) return marketAnswer('share_first');
     const ac = fleet.find((f) => f.tailNumber === tail);
     if (!ac || ac.acquisition !== 'owned') return 'Only aircraft you own can be sold.';
+    if (schedule.some((s) => s.tailNumber === tail)) return `${tail} still has flights. Remove them in the schedule first.`;
     const id = crypto.randomUUID();
     const r = await listAircraft(me.id, id, ac, price);
     if (r !== 'listed') return marketAnswer(r);
@@ -1412,6 +1424,7 @@ export default function App() {
     cash,
     hub: hubIata,
     fleet,
+    flying: new Set(schedule.map((s) => s.tailNumber)),
     mine: marketMine,
     refresh: refreshMarket,
     list: listOnMarket,

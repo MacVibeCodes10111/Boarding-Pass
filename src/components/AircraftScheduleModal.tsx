@@ -164,11 +164,16 @@ export function AircraftScheduleModal({
             </Button>
           )}
           {onMarketSell && (
-            <Button variant="ghost" onClick={() => onMarketSell(aircraft.tailNumber)} title="List it for other airlines to buy">
+            <Button variant="ghost" disabled={acFlights.length > 0} onClick={() => onMarketSell(aircraft.tailNumber)} title={acFlights.length ? 'Remove its flights first' : 'List it for other airlines to buy'}>
               Sell on the marketplace
             </Button>
           )}
-          <Button variant="ghost" onClick={() => onSellOrReturnAircraft(aircraft.tailNumber)}>
+          <Button
+            variant="ghost"
+            disabled={aircraft.acquisition === 'owned' && acFlights.length > 0}
+            title={aircraft.acquisition === 'owned' && acFlights.length > 0 ? 'Only aircraft with no flights can be sold. Remove its flights first.' : undefined}
+            onClick={() => onSellOrReturnAircraft(aircraft.tailNumber)}
+          >
             {aircraft.acquisition === 'owned' ? `Sell for ${formatMoneyM(calcAircraftResaleUsd(aircraft.model))}` : 'Return to lessor'}
           </Button>
           <Button onClick={onClose}>Close</Button>

@@ -378,7 +378,7 @@ function AllianceHero(props: { a: Pick<PublicAlliance, 'name' | 'tag' | 'colours
 function JoiningPill(props: { joining: Joining }) {
   const open = props.joining === 'open';
   return (
-    <span style={{ fontSize: 11, fontWeight: 650, padding: '1px 8px', borderRadius: 999, border: `1px solid ${open ? C.green : C.border}`, color: open ? C.green : C.muted, whiteSpace: 'nowrap' }}>
+    <span style={{ justifySelf: 'start', alignSelf: 'center', fontSize: 11, fontWeight: 650, padding: '1px 8px', borderRadius: 999, border: `1px solid ${open ? C.green : C.border}`, color: open ? C.green : C.muted, whiteSpace: 'nowrap' }}>
       {open ? 'Open to join' : 'Request to join'}
     </span>
   );
@@ -392,22 +392,29 @@ function Totals(props: { cards: (FriendCard | null)[]; count: number; totals?: {
     const x = statsOf(c);
     return { fleet: s.fleet + x.fleet, routes: s.routes + x.routes, airports: s.airports + x.airports, hubs: s.hubs + x.hubs };
   }, { fleet: 0, routes: 0, airports: 0, hubs: 0 });
-  const tiles: [string, number, string][] = [
-    ['Airlines', props.count, `of ${MAX_ALLIANCE}`],
-    ['Aircraft', t.fleet, 'flying together'],
-    ['Routes', t.routes, 'between them'],
-    ['Airports', t.airports, 'served'],
-    ['Hubs', t.hubs, 'bases'],
-  ];
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8 }}>
-      {tiles.map(([label, v, sub]) => (
-        <div key={label} style={{ padding: '10px 12px', borderRadius: 12, background: C.raised, border: `1px solid ${C.lineSoft}` }}>
-          <div style={{ fontSize: 11.5, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 650 }}>{label}</div>
-          <div className="num" style={{ fontFamily: DISPLAY, fontSize: 26, fontWeight: 700, lineHeight: 1.1 }}>
-            {n(v)}
+    <StatStrip
+      items={[
+        [props.count === 1 ? 'airline' : 'airlines', n(props.count)],
+        ['aircraft', n(t.fleet)],
+        ['routes', n(t.routes)],
+        ['airports', n(t.airports)],
+        ['hubs', n(t.hubs)],
+      ]}
+    />
+  );
+}
+
+/** A row of numbers with their labels under them, in one card (fits a phone in one line). */
+function StatStrip(props: { items: [string, string][] }) {
+  return (
+    <div style={{ display: 'flex', borderRadius: 12, background: C.raised, border: `1px solid ${C.lineSoft}`, padding: '8px 4px' }}>
+      {props.items.map(([label, v], i) => (
+        <div key={label} style={{ flex: '1 1 0', minWidth: 0, textAlign: 'center', padding: '0 4px', borderLeft: i ? `1px solid ${C.lineSoft}` : 'none' }}>
+          <div className="num" style={{ fontFamily: DISPLAY, fontSize: 21, fontWeight: 700, lineHeight: 1.15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {v}
           </div>
-          <div style={{ fontSize: 11, color: C.faint }}>{sub}</div>
+          <div style={{ fontSize: 11, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
         </div>
       ))}
     </div>
@@ -597,14 +604,16 @@ function AllianceMap(props: { me: string; ownName: string; career: SaveGameState
           )}
         </div>
       )}
-      {all.length ? <RouteMap routes={routes} airports={airports} mapStyle={props.mapStyle} hub={hubOk || null} height="min(380px, 50vh)" label="The alliance’s route map" /> : <p style={note}>No flights to show yet. Airlines appear here once they show their flights to friends.</p>}
+      {all.length ? <RouteMap routes={routes} airports={airports} mapStyle={props.mapStyle} hub={hubOk || null} height="min(380px, 36vh)" label="The alliance’s route map" /> : <p style={note}>No flights to show yet. Airlines appear here once they show their flights to friends.</p>}
       {all.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
-          <MiniStat label={hubOk ? `Flights from ${hubOk}` : 'Flights a week'} value={n(hubOk ? fromHub?.dep ?? 0 : shown.reduce((s, a) => s + [...a.departures.values()].reduce((x, y) => x + y, 0), 0))} sub={hubOk ? 'departures a week' : 'all airlines shown'} />
-          <MiniStat label="Routes" value={n(routes.length)} sub={hubOk ? `from ${place(hubOk)}` : 'on the map'} />
-          <MiniStat label="Airports" value={n(airportsServed)} sub="reached" />
-          {hubOk ? <MiniStat label="Airlines here" value={n(fromHub?.airlines ?? 0)} sub={`fly from ${hubOk}`} /> : longest && <MiniStat label="Longest route" value={`${longest.a}–${longest.b}`} sub={`${n(longest.nm)} nm`} />}
-        </div>
+        <StatStrip
+          items={[
+            [hubOk ? `flights from ${hubOk}` : 'flights a week', n(hubOk ? fromHub?.dep ?? 0 : shown.reduce((s, a) => s + [...a.departures.values()].reduce((x, y) => x + y, 0), 0))],
+            ['routes', n(routes.length)],
+            ['airports', n(airportsServed)],
+            ...(hubOk ? [['airlines here', n(fromHub?.airlines ?? 0)] as [string, string]] : longest ? [[`longest, ${n(longest.nm)} nm`, `${longest.a}–${longest.b}`] as [string, string]] : []),
+          ]}
+        />
       )}
       {hubOk && hubRank.length > 0 && (
         <div style={{ display: 'grid', gap: 4 }}>
@@ -621,13 +630,13 @@ function AllianceMap(props: { me: string; ownName: string; career: SaveGameState
         <div style={{ display: 'grid', gap: 4 }}>
           <p style={{ ...headStyle, marginTop: 4 }}>Busiest hubs</p>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {hubs.slice(0, 6).map(([iata, t], i) => (
+            {hubs.slice(0, 4).map(([iata, t], i) => (
               <button
                 key={iata}
                 type="button"
                 onClick={() => setHub(iata)}
                 title={`Show only routes from ${place(iata)}`}
-                style={{ display: 'grid', gap: 1, textAlign: 'left', padding: '7px 11px', borderRadius: 10, border: `1px solid ${C.lineSoft}`, background: C.raised, color: C.text, cursor: 'pointer', minWidth: 110 }}
+                style={{ display: 'grid', gap: 1, textAlign: 'left', padding: '7px 11px', borderRadius: 10, border: `1px solid ${C.lineSoft}`, background: C.raised, color: C.text, cursor: 'pointer', flex: '1 1 140px', minWidth: 0 }}
               >
                 <span style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 17 }}>
                   {i === 0 && <span aria-hidden>★ </span>}
@@ -649,18 +658,6 @@ function AllianceMap(props: { me: string; ownName: string; career: SaveGameState
 
 function network(id: string, name: string, colour: string, snap: ScheduleSnapshot, airports: ReadonlyMap<string, Airport>): Network {
   return { id, name, colour, routes: friendAirlineStats(snap, airports).routes.map((r) => ({ ...r, colour })), departures: departuresByAirport(snap, airports) };
-}
-
-function MiniStat(props: { label: string; value: string; sub: string }) {
-  return (
-    <div style={{ padding: '8px 10px', borderRadius: 10, background: C.raised }}>
-      <div style={{ fontSize: 11.5, color: C.muted }}>{props.label}</div>
-      <div className="num" style={{ fontFamily: DISPLAY, fontSize: 20, fontWeight: 700, lineHeight: 1.15 }}>
-        {props.value}
-      </div>
-      <div style={{ fontSize: 11, color: C.faint }}>{props.sub}</div>
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -753,7 +750,7 @@ function FindAlliances(props: {
         ) : !featured || featured.alliances.length === 0 ? (
           <p style={note}>No alliances to feature yet. Start one and it could be picked next.</p>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 8 }}>
+          <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 8 }}>
             {featured.alliances.map((a) => (
               <FeaturedCard key={a.id} a={a} onOpen={() => setOpen(a.id)} />
             ))}
@@ -967,7 +964,7 @@ function AllianceEditor(props: { airline: string; mode: 'career' | 'sandbox'; bu
       </label>
       <div style={{ display: 'grid', gap: 6 }}>
         <span style={{ fontSize: 12, color: C.muted }}>How airlines join</span>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
+        <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
           {(
             [
               ['request', 'Request to join', 'Airlines ask; you accept or decline each one.'],

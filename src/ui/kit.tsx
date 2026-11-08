@@ -189,7 +189,7 @@ export const globalCss = () => `
   html[data-layout=phone] .bp-panel-head { padding: 12px 14px 10px !important; }
   html[data-layout=phone] .bp-panel-body { padding: 12px 12px 20px !important; }
   /* Grids inside panels and dialogs: stat rows become two columns, marked layouts stack */
-  html[data-layout=phone] :is(.bp-panel-body, [role=dialog]) [style*="grid-template-columns: repeat("] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  html[data-layout=phone] :is(.bp-panel-body, [role=dialog]) [style*="grid-template-columns: repeat("]:not(.bp-stack) { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   html[data-layout=phone] .bp-stack { grid-template-columns: minmax(0, 1fr) !important; }
   html[data-layout=phone] .bp-ap-row { flex-wrap: wrap; row-gap: 6px !important; }
   html[data-layout=phone] .bp-ap-row > :nth-child(2) { flex-basis: calc(100% - 52px) !important; }
@@ -213,12 +213,14 @@ export const globalCss = () => `
   .bp-sheet-popup .maplibregl-popup-content { width: 100%; max-height: 46dvh; overflow-y: auto; overscroll-behavior: contain; }
   html[data-layout=phone] .bp-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   html[data-layout=phone] .bp-tiles > :first-child { grid-column: 1 / -1; }
-  html[data-layout=phone] .bp-fleet-row { grid-template-columns: 22px 24px minmax(0, 1fr) auto !important; row-gap: 6px !important; column-gap: 10px !important; }
-  html[data-layout=phone] .bp-fleet-row > :nth-child(1), html[data-layout=phone] .bp-fleet-row > :nth-child(2) { grid-row: 1; }
+  html[data-layout=phone] .bp-fleet-row { grid-template-columns: 22px minmax(0, 1.15fr) minmax(0, 1fr) !important; row-gap: 4px !important; column-gap: 10px !important; }
+  html[data-layout=phone] .bp-fleet-row > :nth-child(1) { grid-column: 1; grid-row: 1 / 4; }
+  html[data-layout=phone] .bp-fleet-row > :nth-child(2) { grid-column: 2; grid-row: 1 / 4; align-self: center; }
   html[data-layout=phone] .bp-fleet-row > :nth-child(3) { grid-column: 3; grid-row: 1; }
-  html[data-layout=phone] .bp-fleet-row > :nth-child(4) { grid-column: 3 / -1; grid-row: 2; }
-  html[data-layout=phone] .bp-fleet-row > :nth-child(5) { grid-column: 3 / -1; grid-row: 3; }
-  html[data-layout=phone] .bp-fleet-row > :nth-child(6) { grid-column: 4; grid-row: 1; }
+  html[data-layout=phone] .bp-fleet-row > :nth-child(4) { grid-column: 3; grid-row: 2; }
+  html[data-layout=phone] .bp-fleet-row > :nth-child(5) { grid-column: 3; grid-row: 3; }
+  html[data-layout=phone] .bp-fleet-row > :nth-child(6) { grid-column: 2 / -1; grid-row: 4; margin-top: 6px; }
+  html[data-layout=phone] .bp-fleet-row > :nth-child(6) > * { flex: 1; }
   html[data-layout=phone] .bp-debt-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   html[data-layout=phone] .bp-debt-grid > :last-child { grid-column: 1 / -1; }
   html[data-layout=phone] .bp-goal { grid-template-columns: 22px minmax(0, 1fr) !important; }

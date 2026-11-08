@@ -6,6 +6,7 @@ import { leaseStatus, weeksText } from '../game/leasing';
 import { calcAircraftScheduleUsage, flightsForTail, getAircraftCircuitStatus } from '../game/scheduling';
 import type { AircraftModel, CabinConfig, PlayerAircraft, ScheduledFlight } from '../game/types';
 import { Button, C, EmptyState, SearchInput, Segmented, SidePanel, inputStyle } from '../ui/kit';
+import { useLayout } from '../ui/layout';
 import { BulkCabinModal, ManageAircraftModal, ReRegisterModal, ReplaceAircraftModal } from './FleetActions';
 
 /** Rows drawn per group before "Show more". */
@@ -77,6 +78,7 @@ export function FleetPanel(props: FleetPanelProps) {
   };
   const [show, setShow] = useState<Show>('all');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const phone = useLayout() === "phone";
   // Big fleets: each group draws its first rows, with "Show more" for the rest
   const [limits, setLimits] = useState<Record<string, number>>({});
   const [dialog, setDialog] = useState<{ kind: 'manage' | 'cabin' | 'replace' | 'reregister'; tails: string[] } | null>(null);
@@ -290,7 +292,11 @@ export function FleetPanel(props: FleetPanelProps) {
                 }}
               >
                 <input type="checkbox" aria-label={`Select ${ac.tailNumber}`} checked={selected.has(ac.tailNumber)} onChange={() => toggle(ac.tailNumber)} />
-                <AircraftPhoto model={ac.model} width={64} fallback={iconForModel(ac.model)} tailNumber={ac.tailNumber} liveryIndex={ac.livery} style={{ justifySelf: 'center' }} />
+                {phone ? (
+                  <AircraftPhoto model={ac.model} width="100%" paintWidth={340} fallback={iconForModel(ac.model)} iconSize={40} tailNumber={ac.tailNumber} liveryIndex={ac.livery} style={{ justifySelf: 'center' }} />
+                ) : (
+                  <AircraftPhoto model={ac.model} width={64} fallback={iconForModel(ac.model)} tailNumber={ac.tailNumber} liveryIndex={ac.livery} style={{ justifySelf: 'center' }} />
+                )}
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 650 }}>
                     {ac.tailNumber}

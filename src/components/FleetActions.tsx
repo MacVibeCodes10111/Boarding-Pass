@@ -107,9 +107,10 @@ export function ManageAircraftModal(props: {
           </Button>
         )}
         <span style={{ flex: 1 }} />
-        <Button variant="ghost" onClick={props.onSellOrReturn}>
+        <Button variant="ghost" disabled={!leased && props.flights > 0} title={!leased && props.flights > 0 ? 'Remove its flights first' : undefined} onClick={props.onSellOrReturn}>
           {leased ? (rt.early ? 'Return early' : 'Return') : 'Sell'}
         </Button>
+        {!leased && props.flights > 0 && <span style={{ flexBasis: '100%', fontSize: 12, color: C.muted, textAlign: 'right' }}>Only aircraft with no flights can be sold.</span>}
       </div>
     </ModalShell>
   );

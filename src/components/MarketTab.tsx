@@ -16,7 +16,7 @@ import { usdShort } from '../game/career';
 import { LISTING_DAYS, MAX_LISTINGS, browseMarket, buyListing, cabinSeats, clampPrice, marketAnswer, marketCabin, priceBand, type MarketMine, type MarketOffer, type MarketSort } from '../game/market';
 import type { AircraftCategory, PlayerAircraft } from '../game/types';
 import { Icon } from '../ui/icons';
-import { Button, C, DISPLAY, Segmented, inputStyle } from '../ui/kit';
+import { Button, C, DISPLAY, ModalShell, Segmented, inputStyle } from '../ui/kit';
 import { AircraftPhoto } from './AircraftPhoto';
 import { AllianceTag } from './FriendsTab';
 
@@ -30,6 +30,8 @@ export interface MarketHooks {
   cash: number;
   hub: string;
   fleet: PlayerAircraft[];
+  /** Registrations that have flights (those can't be sold). */
+  flying: ReadonlySet<string>;
   /** This career's listings and trades, as last read. */
   mine: MarketMine | null;
   /** Reads the marketplace again and applies anything new to the career. */
@@ -139,7 +141,12 @@ function Buy(props: { me: MyAirline; busy: boolean; act: Act; market?: MarketHoo
       window.clearTimeout(t);
     };
   }, [me.id, models, maxUsd, ours, alliance, sort, v]);
-  const typeChoices = useMemo(() => [...AIRCRAFT_BY_ID.values()].filter((m) => !cat || m.category === cat).sort((a, b) => a.name.localeCompare(b.name)), [cat]);
+  // One menu: every aircraft, a whole size, or one type
+  const groups = useMemo(
+    () => CATEGORIES.filter((c) => c.value).map((c) => ({ ...c, types: [...AIRCRAFT_BY_ID.values()].filter((m) => m.category === c.value).sort((a, b) => a.name.localeCompare(b.name)) })),
+    [],
+  );
+  const pick = type ? `t:${type}` : cat ? `c:${cat}` : '';
 
   const buy = (o: MarketOffer) =>
     void props.act(`Buying the ${o.model.name}…`, async () => {
@@ -154,25 +161,32 @@ function Buy(props: { me: MyAirline; busy: boolean; act: Act; market?: MarketHoo
 
   return (
     <div style={{ display: 'grid', gap: 10 }}>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <select aria-label="Size" value={cat} onChange={(e) => (setCat(e.target.value as AircraftCategory | ''), setType(''))} style={{ ...inputStyle, width: 'auto', flex: '1 1 140px' }}>
-          {CATEGORIES.map((c) => (
-            <option key={c.value} value={c.value}>
-              {c.label}
-            </option>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <select
+          aria-label="Which aircraft"
+          value={pick}
+          onChange={(e) => {
+            const v = e.target.value;
+            setCat(v.startsWith('c:') ? (v.slice(2) as AircraftCategory) : '');
+            setType(v.startsWith('t:') ? v.slice(2) : '');
+          }}
+          style={{ ...inputStyle, flex: 1, minWidth: 0 }}
+        >
+          <option value="">Every aircraft</option>
+          {groups.map((g) => (
+            <optgroup key={g.value} label={g.label}>
+              <option value={`c:${g.value}`}>All {g.label.toLowerCase()}</option>
+              {g.types.map((m) => (
+                <option key={m.id} value={`t:${m.id}`}>
+                  {m.name}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
-        <select aria-label="Type" value={type} onChange={(e) => setType(e.target.value)} style={{ ...inputStyle, width: 'auto', flex: '2 1 180px' }}>
-          <option value="">Every type</option>
-          {typeChoices.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-            </option>
-          ))}
-        </select>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: C.muted, flex: '1 1 130px' }}>
-          Up to $
-          <input inputMode="decimal" value={max} onChange={(e) => setMax(e.target.value.replace(/[^0-9.]/g, '').slice(0, 7))} placeholder="any" aria-label="Most to pay, in millions" style={{ ...inputStyle, width: 70 }} />M
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12.5, color: C.muted, flex: 'none' }}>
+          $
+          <input inputMode="decimal" value={max} onChange={(e) => setMax(e.target.value.replace(/[^0-9.]/g, '').slice(0, 7))} placeholder="max" aria-label="Most to pay, in millions" style={{ ...inputStyle, width: 64 }} />M
         </label>
       </div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -192,7 +206,6 @@ function Buy(props: { me: MyAirline; busy: boolean; act: Act; market?: MarketHoo
             Only from {alliance.tag}
           </label>
         )}
-        {market && !market.sandbox && <span style={{ marginLeft: 'auto', fontSize: 12.5, color: C.muted }}>Cash {usdShort(market.cash)}</span>}
       </div>
       {said && (
         <p role="status" style={{ fontSize: 12.5, margin: 0 }}>
@@ -208,7 +221,7 @@ function Buy(props: { me: MyAirline; busy: boolean; act: Act; market?: MarketHoo
           <p style={note}>Other airlines’ aircraft appear here when they list them. You can sell yours in Sell.</p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
+        <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(240px, 100%), 1fr))', gap: 10 }}>
           {offers.map((o) => {
             const newPrice = o.model.base_price_usd;
             const off = Math.round((1 - o.price / newPrice) * 100);
@@ -216,7 +229,7 @@ function Buy(props: { me: MyAirline; busy: boolean; act: Act; market?: MarketHoo
             return (
               <article key={o.id} style={{ display: 'grid', gap: 6, padding: 10, borderRadius: 12, background: C.raised, border: `1px solid ${C.lineSoft}` }}>
                 <div style={{ display: 'grid', placeItems: 'center', minHeight: 70, borderRadius: 8, background: `${C.bg}88` }}>
-                  <AircraftPhoto model={o.model} width="100%" paintWidth={260} style={{ maxHeight: 96 }} />
+                  <AircraftPhoto model={o.model} width="100%" paintWidth={380} plain />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
                   <span style={{ fontWeight: 700, fontSize: 14, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.model.name}</span>
@@ -270,12 +283,15 @@ function Buy(props: { me: MyAirline; busy: boolean; act: Act; market?: MarketHoo
 function Sell(props: { market: MarketHooks; busy: boolean; act: Act; onListed: () => void }) {
   const { market } = props;
   const owned = market.fleet.filter((a) => a.acquisition === 'owned' && AIRCRAFT_BY_ID.has(a.model.id));
-  const [tail, setTail] = useState<string>(() => (market.sellTail && owned.some((a) => a.tailNumber === market.sellTail) ? market.sellTail : ''));
+  const free = (a: PlayerAircraft) => !market.flying.has(a.tailNumber);
+  const pickable = (t: string | null | undefined) => !!t && owned.some((a) => a.tailNumber === t && free(a));
+  const [tail, setTail] = useState<string>(() => (pickable(market.sellTail) ? market.sellTail! : ''));
+  const [picking, setPicking] = useState(false);
   useEffect(() => {
-    if (market.sellTail && owned.some((a) => a.tailNumber === market.sellTail)) setTail(market.sellTail);
+    if (pickable(market.sellTail)) setTail(market.sellTail!);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [market.sellTail]);
-  const ac = owned.find((a) => a.tailNumber === tail) ?? null;
+  const ac = owned.find((a) => a.tailNumber === tail && free(a)) ?? null;
   const band = ac ? priceBand(ac.model) : null;
   const [price, setPrice] = useState(0);
   useEffect(() => {
@@ -284,36 +300,69 @@ function Sell(props: { market: MarketHooks; busy: boolean; act: Act; onListed: (
   }, [tail]);
   const [said, setSaid] = useState('');
   const openCount = market.mine?.listings.filter((l) => l.status === 'open').length ?? 0;
+  const ready = owned.filter(free).length;
 
-  if (!owned.length) return <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>Only aircraft you own can be sold here. Leased ones go back to the lessor instead.</p>;
+  if (!owned.length) return <p style={note}>Only aircraft you own can be sold here. Leased ones go back to the lessor instead.</p>;
   return (
     <div style={{ display: 'grid', gap: 10 }}>
-      <label style={{ display: 'grid', gap: 4, fontSize: 12, color: C.muted }}>
-        Which aircraft
-        <select value={tail} onChange={(e) => (setSaid(''), setTail(e.target.value))} style={inputStyle}>
-          <option value="">Pick one of your {owned.length} owned aircraft</option>
-          {owned.map((a) => (
-            <option key={a.tailNumber} value={a.tailNumber}>
-              {a.tailNumber} · {a.model.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <button
+        type="button"
+        onClick={() => setPicking(true)}
+        style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: ac ? 8 : '14px 12px', borderRadius: 12, cursor: 'pointer', textAlign: 'left', font: 'inherit', color: C.text, background: C.raised, border: `1px solid ${C.border}` }}
+      >
+        {ac ? (
+          <>
+            <span style={{ flex: '0 0 46%', maxWidth: 260 }}>
+              <AircraftPhoto model={ac.model} width="100%" paintWidth={260} tailNumber={ac.tailNumber} liveryIndex={ac.livery} noTag />
+            </span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: 'block', fontWeight: 700, fontSize: 15 }}>{ac.tailNumber}</span>
+              <span style={{ display: 'block', fontSize: 12.5, color: C.muted }}>{ac.model.name}</span>
+            </span>
+          </>
+        ) : (
+          <span style={{ flex: 1, fontWeight: 650, fontSize: 14 }}>Choose an aircraft to sell</span>
+        )}
+        <span style={{ fontSize: 12.5, color: C.brand, fontWeight: 650, flex: 'none' }}>{ac ? 'Change' : `${ready} ready`}</span>
+      </button>
+      {!ac && <p style={note}>Only aircraft you own with no flights can be sold. Remove an aircraft’s flights in its schedule first.</p>}
+      {picking && (
+        <ModalShell onClose={() => setPicking(false)} maxWidth={520} zIndex={260}>
+          <h2 style={{ fontFamily: DISPLAY, fontSize: 22, margin: '0 0 4px' }}>Sell which aircraft?</h2>
+          <p style={{ ...note, marginBottom: 12 }}>Only aircraft with no flights can be sold.</p>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {[...owned].sort((a, b) => Number(!free(a)) - Number(!free(b))).map((a) => {
+              const ok = free(a);
+              return (
+                <button
+                  key={a.tailNumber}
+                  type="button"
+                  disabled={!ok}
+                  onClick={() => {
+                    setSaid('');
+                    setTail(a.tailNumber);
+                    setPicking(false);
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 8, borderRadius: 12, textAlign: 'left', font: 'inherit', color: C.text, cursor: ok ? 'pointer' : 'default', opacity: ok ? 1 : 0.55, background: C.raised, border: `1px solid ${a.tailNumber === tail ? C.brand : C.lineSoft}` }}
+                >
+                  <span style={{ flex: '0 0 50%', maxWidth: 240 }}>
+                    <AircraftPhoto model={a.model} width="100%" paintWidth={240} tailNumber={a.tailNumber} liveryIndex={a.livery} noTag />
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontWeight: 700, fontSize: 14.5 }}>{a.tailNumber}</span>
+                    <span style={{ display: 'block', fontSize: 12.5, color: C.muted }}>{a.model.name}</span>
+                    <span style={{ display: 'block', fontSize: 12, marginTop: 2, color: ok ? C.green : C.muted }}>{ok ? `Up to ${usdShort(priceBand(a.model).max)}` : 'Has flights'}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </ModalShell>
+      )}
       {ac && band && (
         <div style={{ display: 'grid', gap: 10, padding: 12, borderRadius: 12, background: C.raised }}>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ width: 170, flex: 'none' }}>
-              <AircraftPhoto model={ac.model} width={170} tailNumber={ac.tailNumber} liveryIndex={ac.livery} />
-            </div>
-            <div style={{ flex: '1 1 200px', minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>
-                {ac.tailNumber} · {ac.model.name}
-              </div>
-              <div style={{ fontSize: 12, color: C.muted }}>{ac.model.is_cargo ? `${ac.model.cargo_cap_tons} t cargo` : `${cabinSeats(marketCabin(ac.model, ac.cabin))} seats · ${seatsText(ac.cabin)}`}</div>
-              <div style={{ fontSize: 12, color: C.muted }}>
-                New {usdShort(ac.model.base_price_usd)} · the game pays {usdShort(band.value)}
-              </div>
-            </div>
+          <div style={{ fontSize: 12.5, color: C.muted }}>
+            {ac.model.is_cargo ? `${ac.model.cargo_cap_tons} t cargo` : `${cabinSeats(marketCabin(ac.model, ac.cabin))} seats · ${seatsText(ac.cabin)}`} · new {usdShort(ac.model.base_price_usd)} · the game pays {usdShort(band.value)}
           </div>
           <label style={{ display: 'grid', gap: 6 }}>
             <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
@@ -323,37 +372,35 @@ function Sell(props: { market: MarketHooks; busy: boolean; act: Act; onListed: (
               </span>
             </span>
             <input type="range" min={band.min} max={band.max} step={10_000} value={price} onChange={(e) => setPrice(clampPrice(ac.model, Number(e.target.value)))} style={{ width: '100%', accentColor: C.brand }} />
-            <span style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: C.faint }}>
+            <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 11.5, color: C.faint }}>
               <span>{usdShort(band.min)}</span>
-              <span>{price > band.value ? `${usdShort(price - band.value)} more than selling to the game` : price < band.value ? `${usdShort(band.value - price)} less than selling to the game` : 'Same as selling to the game'}</span>
+              <span style={{ textAlign: 'center' }}>{price > band.value ? `+${usdShort(price - band.value)} on the game’s price` : price < band.value ? `−${usdShort(band.value - price)} on the game’s price` : 'The game’s price'}</span>
               <span>{usdShort(band.max)}</span>
             </span>
           </label>
           <p style={note}>
-            {ac.tailNumber} leaves your fleet as soon as it’s listed{market.fleet.length ? ', and its flights are cancelled' : ''}. You’re paid when another airline buys it. If nobody does within {LISTING_DAYS} days, or you take it down, it comes back. {market.sandbox ? 'Sandbox money isn’t counted.' : ''}
+            It leaves your fleet when listed. You’re paid when another airline buys it; if nobody does in {LISTING_DAYS} days, or you take it down, it comes back.
           </p>
           {said && <p style={{ fontSize: 12.5, margin: 0, color: C.red }}>{said}</p>}
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Button
-              variant="primary"
-              disabled={props.busy || openCount >= MAX_LISTINGS}
-              onClick={() =>
-                void props.act(`Listing ${ac.tailNumber}…`, async () => {
-                  const r = await market.list(ac.tailNumber, price);
-                  if (r) setSaid(r);
-                  else {
-                    setTail('');
-                    props.onListed();
-                  }
-                })
-              }
-            >
-              List {ac.tailNumber} for {usdShort(price)}
-            </Button>
-            <span style={{ fontSize: 12, color: C.muted }}>
-              {openCount} of {MAX_LISTINGS} listed
-            </span>
-          </div>
+          <Button
+            variant="primary"
+            disabled={props.busy || openCount >= MAX_LISTINGS}
+            onClick={() =>
+              void props.act(`Listing ${ac.tailNumber}…`, async () => {
+                const r = await market.list(ac.tailNumber, price);
+                if (r) setSaid(r);
+                else {
+                  setTail('');
+                  props.onListed();
+                }
+              })
+            }
+          >
+            List for {usdShort(price)}
+          </Button>
+          <span style={{ fontSize: 12, color: C.muted, textAlign: 'center' }}>
+            {openCount} of {MAX_LISTINGS} listed
+          </span>
         </div>
       )}
     </div>
