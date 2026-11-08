@@ -344,6 +344,13 @@ function AirlineTab(props: { busy: boolean; act: Act; current: SaveGameState | n
   const sub: React.CSSProperties = { display: 'block', fontSize: 12, color: C.muted, lineHeight: 1.45 };
   const { current, selected } = props;
   if (!featureOn('profiles')) return <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>Nothing is shared with other players. Sharing options will appear here when they’re ready, all off until you turn them on.</p>;
+  const unlocks = [
+    featureOn('friends') && 'Add friends with a private friend code, and see their airlines.',
+    featureOn('friends') && featureOn('friends_map') && 'Show your flights on friends’ maps, if you choose to.',
+    featureOn('alliances') && 'Start or join an alliance of up to 20 airlines.',
+    featureOn('marketplace') && 'Buy and sell used aircraft with other airlines, for game money only.',
+    featureOn('reports') && 'Report anything that breaks the rules; a moderator checks it.',
+  ].filter((x): x is string => !!x);
   const shown = `Friends can see its name, code, callsign, colours, liveries${featureOn('logos') ? ', logos (checked before other players see them)' : ''} and a summary such as fleet size. Never your money or your account.`;
 
   if (!selected) {
@@ -358,6 +365,13 @@ function AirlineTab(props: { busy: boolean; act: Act; current: SaveGameState | n
     return (
       <div style={{ display: 'grid', gap: 8 }}>
         <p style={{ fontSize: 12.5, color: C.muted, margin: 0, lineHeight: 1.5 }}>Nothing is shared with other players unless you turn it on here.</p>
+        {unlocks.length > 0 && (
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: C.textDim, lineHeight: 1.6 }}>
+            {unlocks.map((u) => (
+              <li key={u}>{u}</li>
+            ))}
+          </ul>
+        )}
         <div style={{ ...row, display: 'grid', gap: 10 }}>
           <span>
             <span style={{ display: 'block', fontWeight: 650 }}>Share {current.airlineName}</span>

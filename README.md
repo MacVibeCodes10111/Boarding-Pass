@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 2.72. Free to play. See [Credits and licences](#credits-and-licences).
+Version 3.0. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -20,6 +20,19 @@ Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 3.0, the online update:
+
+- **Online, if you want it.** Sign in, open a career and choose Online to share that airline with other players. Nothing is shared until you turn it on, and the game works fully without it. Each shared airline (up to 10) gets its own friend code and friends.
+- **Friends:** add friends with a private friend code, see their airlines (liveries, stats, route map and fleet), and choose whether their aircraft fly on your map, on your own game's clock. Remove or block anyone at any time.
+- **Alliances:** start one or join one, with up to 20 airlines. Choose your name, tag, colours and logo, and whether airlines can join at once or must ask. See the alliance's network on a map, its busiest hubs and its biggest airlines. Search every alliance, and three are featured each week.
+- **The marketplace:** buy used aircraft from other airlines for less than new, or sell yours. Only aircraft you own with no flights can be sold. Game money only.
+- **Logos** in your liveries are checked before other players see them, and anything that breaks the rules can be reported.
+- **Career and Sandbox airlines are kept apart** online. Save files can no longer be exported, and an old save file always opens as a new Sandbox career.
+- **Safer saves:** saving can no longer lose a career, and if the cloud and this device disagree, both versions are kept. A clear message for a broken save file, instead of a blank screen.
+- **On the map:** Follow keeps the camera on an aircraft, and in 3D each aircraft in the air is drawn once, without a flat copy underneath.
+- **On phones:** bigger aircraft pictures in the fleet list, and the Online window opens like the other menus.
+- **Cleaner aircraft pictures:** the C919 windscreen is back, and stray dark shapes on the A300, A310, A330, A340-300 and Tu-204 tailplanes are gone.
 
 Version 2.72:
 

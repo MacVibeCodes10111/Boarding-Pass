@@ -99,7 +99,8 @@ export function CreditsModal({ onClose }: { onClose: () => void }) {
 
         <Section title="Privacy, terms, cookies and accessibility">
           <div style={{ fontSize: 12.5, lineHeight: 1.55, color: C.textDim }}>
-            No ads, no tracking and no cookies. Your airline is saved on your own device; an account is optional, only for cloud saves. Read the{' '}
+            No ads, no tracking and no cookies. Your airline is saved on your own device; an account is optional, for cloud saves and for playing online.
+            Online features (friends, alliances, the marketplace, logos and reports) share only what you choose, and are off until you turn them on. Read the{' '}
             {link('https://boardingpass.my/privacy.html', 'Privacy policy')}, {link('https://boardingpass.my/terms.html', 'Terms of use')},{' '}
             {link('https://boardingpass.my/cookies.html', 'Cookies and storage')} and {link('https://boardingpass.my/accessibility.html', 'Accessibility')}.
           </div>
