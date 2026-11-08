@@ -3,6 +3,7 @@
 // ============================================================================
 import { AIRCRAFT_BY_ID } from './aircraftCatalog';
 import { MAX_FARE_MULT, getDefaultCabinForModel, getRouteDemandAndFares } from './economics';
+import { normaliseMarket } from './marketSave';
 import { isProtectedSave, openProtectedSave, protectSave } from './saveCrypt';
 import { daysOrAll } from './time';
 import type { Airport, PlayerAircraft, SaveGameState, ScheduledFlight } from './types';
@@ -56,10 +57,13 @@ function capFares(fl: ScheduledFlight): ScheduledFlight['fares'] {
   return { ...fl.fares, econ: c(fl.fares.econ, ref.econ)!, prem: c(fl.fares.prem, ref.prem)!, bus: c(fl.fares.bus, ref.bus)!, first: c(fl.fares.first, ref.first)!, cargoPerTon: c(fl.fares.cargoPerTon, ref.cargoPerTon) };
 }
 
+const TRADE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 export function hydrateSave(raw: SaveGameState, airportByIata: Map<string, Airport>): SaveGameState {
   const fleet: PlayerAircraft[] = (raw.fleet ?? []).map((ac) => {
     const model = AIRCRAFT_BY_ID.get(ac.model?.id) ?? ac.model;
-    return { ...ac, model, cabin: ac.cabin ?? getDefaultCabinForModel(model) };
+    const { trade, ...rest } = ac;
+    return { ...rest, model, cabin: ac.cabin ?? getDefaultCabinForModel(model), ...(typeof trade === 'string' && TRADE_ID.test(trade) ? { trade } : {}) };
   });
   const tails = new Set(fleet.map((a) => a.tailNumber));
   const saved = raw.savedAirports ?? {};
@@ -83,6 +87,7 @@ export function hydrateSave(raw: SaveGameState, airportByIata: Map<string, Airpo
     fleet,
     schedule,
     savedAirports: undefined,
+    market: normaliseMarket(raw.market),
   };
 }
 

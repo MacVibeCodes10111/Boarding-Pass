@@ -5,6 +5,8 @@
 //   signed in. Nothing is sent anywhere until they sign in. New documents
 //   (LEGAL_VERSION in features.ts) bring the legal step back.
 //   Each tab shows what's coming while its feature flag is off.
+//   In a career it's a side panel like the others (OnlineSidePanel); on the
+//   main menu, a window (OnlineHost).
 //
 //   Everything is per airline. Inside a career, it's about that career: share it,
 //   its friends, its map. On the main menu, the player picks one of the airlines
@@ -17,35 +19,70 @@ import { onlineModeOf, type OnlineMode } from '../game/profile';
 import { readSaveSlots } from '../game/saves';
 import type { SaveGameState } from '../game/types';
 import { Icon } from '../ui/icons';
-import { Button, C, DISPLAY, ModalShell, Segmented, inputStyle } from '../ui/kit';
+import { Button, C, DISPLAY, ModalShell, Segmented, SidePanel, inputStyle } from '../ui/kit';
 import { AgeCheck, CHANGED_EVENT, SignInForm, openCloud } from './CloudPanel';
 import { AlliancesTab } from './AlliancesTab';
 import { ConfirmButton, FriendsTab } from './FriendsTab';
+import { MarketTab, type MarketHooks } from './MarketTab';
 import { checkNotices } from './ReportButton';
 import type { MapStyleId } from './LiveMap';
 import type { Airport } from '../game/types';
 
 const OPEN_EVENT = 'bp-open-online';
 type Act = (label: string, fn: () => Promise<unknown>) => Promise<void>;
-type Tab = 'airline' | 'friends' | 'alliances';
+export type OnlineTab = 'airline' | 'friends' | 'alliances' | 'market';
+type Tab = OnlineTab;
 
-/** Opens the Online window from anywhere (the bottom bar, the home screen). */
+/** Opens Online from anywhere: the window on the main menu, the panel in a career. */
 export const openOnline = () => window.dispatchEvent(new Event(OPEN_EVENT));
-
-type Where = { career?: () => SaveGameState; airports?: ReadonlyMap<string, Airport>; mapStyle?: MapStyleId };
-
-/** `career` is the career being played (none on the main menu). */
-export function OnlineHost(props: Where) {
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    const onOpen = () => setOpen(true);
-    window.addEventListener(OPEN_EVENT, onOpen);
-    return () => window.removeEventListener(OPEN_EVENT, onOpen);
-  }, []);
-  return open ? <OnlineModal {...props} onClose={() => setOpen(false)} /> : null;
+/** Listens for openOnline() (the career's panel uses this). */
+export function onOpenOnline(fn: () => void): () => void {
+  window.addEventListener(OPEN_EVENT, fn);
+  return () => window.removeEventListener(OPEN_EVENT, fn);
 }
 
-function OnlineModal(props: Where & { onClose: () => void }) {
+type Where = { career?: () => SaveGameState; airports?: ReadonlyMap<string, Airport>; mapStyle?: MapStyleId; market?: MarketHooks; startTab?: Tab };
+
+/** The main menu's Online window. */
+export function OnlineHost(props: Where) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => onOpenOnline(() => setOpen(true)), []);
+  if (!open) return null;
+  const close = () => setOpen(false);
+  return (
+    <ModalShell onClose={close} maxWidth={620} label="Online">
+      <div style={{ padding: '4px 4px 2px' }}>
+        <h2 style={{ fontFamily: DISPLAY, fontSize: 26, fontWeight: 700, margin: '0 0 4px' }}>Online</h2>
+        <p style={{ fontSize: 13.5, color: C.muted, margin: '0 0 14px', lineHeight: 1.45 }}>Share your airline with other players. It’s optional: the game works fully without it.</p>
+        <OnlineContent {...props} onClose={close} />
+      </div>
+    </ModalShell>
+  );
+}
+
+/** Online in a career: a side panel like Bank or Fleet. */
+export function OnlineSidePanel(props: Where & { airlineName: string; onClose: () => void }) {
+  const [, redraw] = useState(0);
+  useEffect(() => onCloudChange(() => redraw((n) => n + 1)), []);
+  const shared = airlineFor(props.career?.().saveId);
+  return (
+    <SidePanel
+      title="Online"
+      width={880}
+      onClose={props.onClose}
+      subtitle={
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span>{props.airlineName}</span>
+          <span style={{ fontSize: 12, fontWeight: 650, padding: '1px 8px', borderRadius: 999, border: `1px solid ${shared ? C.green : C.border}`, color: shared ? C.green : C.muted }}>{shared ? `Shared · ${modeLabel(shared.mode)}` : 'Not shared'}</span>
+        </span>
+      }
+    >
+      <OnlineContent {...props} />
+    </SidePanel>
+  );
+}
+
+function OnlineContent(props: Where & { onClose: () => void }) {
   const [user, setUser] = useState<CloudUser | null | undefined>(undefined);
   const [age, setAge] = useState<AgeStatus>(ageStatus());
   const [agreed, setAgreed] = useState(legalAccepted);
@@ -104,20 +141,16 @@ function OnlineModal(props: Where & { onClose: () => void }) {
     if (!user) return <SignInForm busy={busy} act={act} agreed />;
     if (!flagsRead) return <p style={{ color: C.muted, fontSize: 13 }}>Checking…</p>;
     if (!featureOn('online')) return <p style={{ fontSize: 13.5, lineHeight: 1.5 }}>Online features aren’t open yet. They’ll appear here when they’re ready.</p>;
-    return <OnlineArea user={user} busy={busy} act={act} onClose={props.onClose} career={props.career} airports={props.airports} mapStyle={props.mapStyle} />;
+    return <OnlineArea user={user} busy={busy} act={act} onClose={props.onClose} career={props.career} airports={props.airports} mapStyle={props.mapStyle} market={props.market} startTab={props.startTab} />;
   };
 
   return (
-    <ModalShell onClose={props.onClose} maxWidth={500} label="Online">
-      <div style={{ padding: '4px 4px 2px' }}>
-        <h2 style={{ fontFamily: DISPLAY, fontSize: 26, fontWeight: 700, margin: '0 0 4px' }}>Online</h2>
-        <p style={{ fontSize: 13.5, color: C.muted, margin: '0 0 14px', lineHeight: 1.45 }}>Share your airline with other players. It’s optional: the game works fully without it.</p>
-        {body()}
-        <div role="status" aria-live="polite" style={{ minHeight: 18, marginTop: 10, fontSize: 13, color: error ? C.red : C.muted }}>
-          {error || status}
-        </div>
+    <div>
+      {body()}
+      <div role="status" aria-live="polite" style={{ minHeight: 18, marginTop: 10, fontSize: 13, color: error ? C.red : C.muted }}>
+        {error || status}
       </div>
-    </ModalShell>
+    </div>
   );
 }
 
@@ -179,7 +212,10 @@ function LegalGate(props: { onDone: () => void }) {
 }
 
 function OnlineArea(props: Where & { user: CloudUser; busy: boolean; act: Act; onClose: () => void }) {
-  const [tab, setTab] = useState<Tab>('airline');
+  const [tab, setTab] = useState<Tab>(props.startTab ?? 'airline');
+  useEffect(() => {
+    if (props.startTab) setTab(props.startTab);
+  }, [props.startTab, props.market?.sellTail]);
   const inGame = props.career !== undefined;
   const current = props.career?.() ?? null;
   const airlines = myAirlines();
@@ -197,13 +233,7 @@ function OnlineArea(props: Where & { user: CloudUser; busy: boolean; act: Act; o
 
   return (
     <div>
-      {inGame ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, fontSize: 13 }}>
-          <Icon name="fleet" size={16} color={C.muted} />
-          <span style={{ flex: 1, minWidth: 0, fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{current?.airlineName ?? 'This airline'}</span>
-          <span style={{ fontSize: 12, color: selected ? C.green : C.muted }}>{selected ? `Shared · ${modeLabel(selected.mode)}` : 'Not shared'}</span>
-        </div>
-      ) : (
+      {inGame ? null : (
         airlines.length > 0 && (
           <label style={{ display: 'grid', gap: 4, fontSize: 12, color: C.muted, marginBottom: 10 }}>
             Which airline
@@ -225,6 +255,7 @@ function OnlineArea(props: Where & { user: CloudUser; busy: boolean; act: Act; o
           { value: 'airline', label: inGame ? 'This airline' : 'My airlines' },
           { value: 'friends', label: 'Friends' },
           { value: 'alliances', label: 'Alliances' },
+          { value: 'market', label: 'Marketplace' },
         ]}
       />
       <div style={{ marginTop: 12 }}>
@@ -244,6 +275,14 @@ function OnlineArea(props: Where & { user: CloudUser; busy: boolean; act: Act; o
             <AlliancesTab me={selected} busy={props.busy} act={props.act} career={inGame ? current : null} airports={props.airports} mapStyle={props.mapStyle} />
           ) : (
             <NotShared inGame={inGame} onShare={() => setTab('airline')} what="Alliances are made of airlines" />
+          ))}
+        {tab === 'market' &&
+          (!featureOn('marketplace') ? (
+            <ComingSoon icon="buy" title="The marketplace is on the way" lines={['Sell aircraft you own to other airlines.', 'Buy used aircraft for less than new.', 'Game money only.']} />
+          ) : selected ? (
+            <MarketTab me={selected} busy={props.busy} act={props.act} market={inGame ? props.market : undefined} />
+          ) : (
+            <NotShared inGame={inGame} onShare={() => setTab('airline')} what="The marketplace is for shared airlines" />
           ))}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 14, paddingTop: 12, borderTop: `1px solid ${C.line}`, fontSize: 12.5, color: C.muted }}>
@@ -282,7 +321,7 @@ function NotShared(props: { inGame: boolean; what: string; onShare: () => void }
   );
 }
 
-function ComingSoon(props: { icon: 'flag' | 'globe'; title: string; lines: string[] }) {
+function ComingSoon(props: { icon: 'flag' | 'globe' | 'buy'; title: string; lines: string[] }) {
   return (
     <div style={{ padding: '22px 16px', borderRadius: 12, background: C.raised, textAlign: 'center' }}>
       <Icon name={props.icon} size={28} color={C.muted} style={{ display: 'block', margin: '0 auto' }} />

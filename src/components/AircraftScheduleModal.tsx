@@ -23,6 +23,8 @@ export interface AircraftScheduleModalProps {
   onUpdateFlight: (updated: ScheduledFlight) => void;
   onDeleteFlight: (flightId: string) => void;
   onSellOrReturnAircraft: (tailNumber: string) => void;
+  /** Sell it to another airline on the marketplace (only when that's possible). */
+  onMarketSell?: (tailNumber: string) => void;
   /** The airline's liveries by name (v2.66): with two, the aircraft can wear either. */
   liveryNames?: string[];
   onSetLivery?: (tailNumber: string, index: number) => void;
@@ -43,6 +45,7 @@ export function AircraftScheduleModal({
   onUpdateFlight,
   onDeleteFlight,
   onSellOrReturnAircraft,
+  onMarketSell,
   liveryNames = [],
   onSetLivery,
   onEditLivery,
@@ -158,6 +161,11 @@ export function AircraftScheduleModal({
           {onEditLivery && (
             <Button variant="ghost" onClick={() => onEditLivery(Math.min(aircraft.livery ?? 0, Math.max(0, liveryNames.length - 1)))}>
               Edit livery
+            </Button>
+          )}
+          {onMarketSell && (
+            <Button variant="ghost" onClick={() => onMarketSell(aircraft.tailNumber)} title="List it for other airlines to buy">
+              Sell on the marketplace
             </Button>
           )}
           <Button variant="ghost" onClick={() => onSellOrReturnAircraft(aircraft.tailNumber)}>

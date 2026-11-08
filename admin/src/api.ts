@@ -97,6 +97,7 @@ export async function act(name: string, args: Record<string, unknown>) {
 }
 const ANSWERS: Record<string, string> = {
   not_found: 'That isn’t there any more.',
+  already: 'That was already done.',
   bad: 'Something in that wasn’t right.',
   admin: 'Admins can’t be suspended. Remove them from the team first.',
   last_owner: 'There has to be at least one owner.',

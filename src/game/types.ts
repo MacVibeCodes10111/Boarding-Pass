@@ -138,6 +138,8 @@ export interface PlayerAircraft {
   lease?: LeaseTerms;
   /** Which of the airline's liveries it wears (v2.66; 0 or none = the main one). */
   livery?: number;
+  /** The marketplace trade it was bought in (Update B), so a reversed trade can find it. */
+  trade?: string;
 }
 
 export interface Fares {
@@ -278,6 +280,9 @@ export interface SaveGameState {
   airlineColours?: AirlineColours;
   /** The airline's logo (v2.69): a square WebP or PNG data URL (see MAX_LOGO_BYTES), set in Airline details. */
   airlineLogo?: string;
+  // --- Update B ---
+  /** What this career has applied from the marketplace (see game/market.ts). */
+  market?: { applied: string[] };
 }
 
 /** Minimal leg description used by the conflict checker. */

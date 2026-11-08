@@ -84,6 +84,16 @@ export function friendAirlineStats(snap: ScheduleSnapshot, airports: ReadonlyMap
   };
 }
 
+/** Departures a week from each airport, from a shared weekly schedule. */
+export function departuresByAirport(snap: ScheduleSnapshot, airports: ReadonlyMap<string, Airport>): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const [o, d, , , days] of snap.flights) {
+    if (o === d || !airports.has(o) || !airports.has(d)) continue;
+    out.set(o, (out.get(o) ?? 0) + daysIn(days));
+  }
+  return out;
+}
+
 /** The routes as great-circle lines and the airports as points, for a map. */
 type Feature = { type: 'Feature'; properties: Record<string, unknown>; geometry: { type: 'LineString'; coordinates: [number, number][] } | { type: 'Point'; coordinates: [number, number] } };
 

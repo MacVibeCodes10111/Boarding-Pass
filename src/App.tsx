@@ -115,11 +115,13 @@ import type {
 import { APP_VERSION } from './version';
 import { MainMenu } from './components/MainMenu';
 import { CloudHost, openCloud } from './components/CloudPanel';
-import { OnlineHost, openOnline } from './components/OnlinePanel';
+import { OnlineHost, OnlineSidePanel, onOpenOnline, openOnline, type OnlineTab } from './components/OnlinePanel';
+import type { MarketHooks } from './components/MarketTab';
+import { applyMarket, cancelListing, claimMarket, listAircraft, loadMarketMine, marketActions, marketAnswer, normaliseMarket, withApplied, type MarketMine, type MarketSave } from './game/market';
 import { NoticesHost } from './components/ReportButton';
 import { FriendAirlineHost } from './components/FriendAirline';
 import { IS_DEV } from './game/channel';
-import { airlineFor, cloudDeleteSave, downloadCareer, newerCloudCopy, nextRev, onCloudChange, publishIfDue } from './game/cloud';
+import { airlineFor, cloudDeleteSave, downloadCareer, mightBeSignedIn, newerCloudCopy, nextRev, onCloudChange, publishIfDue } from './game/cloud';
 import { featureOn, onFeaturesChange } from './game/features';
 import { friendsOnMap, onFriendsMapChange, refreshFriendsMap, setFriendsMapAirline, wantFriendsMap, withFriends, type FriendOnMap } from './game/friendsMap';
 import { RouteFromBar } from './components/RouteFromBar';
@@ -468,6 +470,10 @@ export default function App() {
 
   // Saves
   const [activeSaveId, setActiveSaveId] = useState(`SAVE-${Date.now()}`);
+  // The marketplace (Update B): what this career has applied, and its listings and trades as last read
+  const [market, setMarket] = useState<MarketSave>({ applied: [] });
+  const [marketMine, setMarketMine] = useState<MarketMine | null>(null);
+  const [onlineStart, setOnlineStart] = useState<{ tab?: OnlineTab; sellTail?: string | null }>({});
   useEffect(() => {
     const update = () => setMapAirline(airlineFor(activeSaveId)?.id ?? null);
     update();
@@ -844,6 +850,7 @@ export default function App() {
     isAutosave,
     career,
     replacesAiAirline: replacedAi,
+    market,
   });
 
   /** Writes the current career into its slot. Returns false if storage failed. */
@@ -865,10 +872,17 @@ export default function App() {
   // Save straight after a career opens (once its state has rendered), so the
   // catch-up just applied can never be counted twice.
   const persistAfterRender = useRef(false);
+  /** Marketplace steps applied to this career, told to the server once the save holding them is written. */
+  const claimAfterSave = useRef<{ saveId: string; keys: string[] } | null>(null);
   useEffect(() => {
     if (persistAfterRender.current && screen === 'dashboard') {
       persistAfterRender.current = false;
-      persistRef.current(true);
+      const saved = persistRef.current(true);
+      const c = claimAfterSave.current;
+      if (saved && c) {
+        claimAfterSave.current = null;
+        void Promise.all(c.keys.map((k) => claimMarket(c.saveId, k).catch(() => undefined)));
+      }
     }
   });
   useEffect(() => {
@@ -944,6 +958,8 @@ export default function App() {
     setAwayReport(null);
     setFleet([]);
     setSchedule([]);
+    setMarket({ applied: [] });
+    setMarketMine(null);
     // every airline starts in the standard livery
     setLiveries([standardLivery()]);
     setAirlineLogo(undefined);
@@ -996,6 +1012,8 @@ export default function App() {
     setGameMode(s.gameMode as GameMode);
     setFleet(tidyFleetLiveries(s.fleet, loadedLiveries));
     setSchedule(s.schedule);
+    setMarket(normaliseMarket(s.market));
+    setMarketMine(null);
     setLedgerHistory(s.ledgerHistory ?? []);
     setEconSpeed(s.econPaused ? 'paused' : 'normal');
 
@@ -1296,6 +1314,124 @@ export default function App() {
       },
     });
   };
+
+  // ---------------------------------------------------------------------------
+  // The marketplace (Update B, see game/market.ts). The server is the record; this
+  // career applies what happened, writes its save, then tells the server (once).
+  // ---------------------------------------------------------------------------
+  const [marketFlag, setMarketFlag] = useState(() => featureOn('marketplace'));
+  useEffect(() => onFeaturesChange(() => setMarketFlag(featureOn('marketplace'))), []);
+  const marketOn = screen === 'dashboard' && marketFlag;
+  const marketBusy = useRef(false);
+  const marketAgain = useRef(false);
+  const applyMarketRef = useRef<(mine: MarketMine, saveId: string) => void>(() => undefined);
+  applyMarketRef.current = (mine, saveId) => {
+    if (saveId !== activeSaveId) return;
+    const { apply, claim } = marketActions(mine, market);
+    if (!apply.length) {
+      if (claim.length) void Promise.all(claim.map((k) => claimMarket(saveId, k).catch(() => undefined)));
+      return;
+    }
+    const res = applyMarket(fleet, market, apply, { hub: hubIata, now: econRef.current.min, newTail: (f) => regFor(f)[0], money: (x) => formatMoneyM(x, 2) });
+    setFleet(res.fleet);
+    if (res.removed.length) {
+      const gone = new Set(res.removed);
+      setSchedule((prev) => prev.filter((x) => !gone.has(x.tailNumber)));
+      setScheduleModal((m) => (m && gone.has(m.tail) ? null : m));
+    }
+    const net = res.cashIn - res.cashOut;
+    if (net) bookCash(net > 0 ? 'sale' : 'purchase', net);
+    setMarket(res.market);
+    const before = claimAfterSave.current?.saveId === saveId ? claimAfterSave.current.keys : [];
+    claimAfterSave.current = { saveId, keys: [...before, ...res.claim, ...claim] };
+    persistAfterRender.current = true;
+    if (res.news.length) flashToast(res.news.join(' '), 7000);
+  };
+  /** Reads this career's listings and trades, and applies anything new. */
+  const refreshMarket = async () => {
+    if (!marketOn || !mightBeSignedIn()) return;
+    if (marketBusy.current) {
+      marketAgain.current = true;
+      return;
+    }
+    marketBusy.current = true;
+    const saveId = activeSaveId;
+    try {
+      const mine = await loadMarketMine(saveId);
+      if (mine) {
+        setMarketMine(mine);
+        applyMarketRef.current(mine, saveId);
+      }
+    } catch {
+      // Tried again in a few minutes
+    } finally {
+      marketBusy.current = false;
+      if (marketAgain.current) {
+        marketAgain.current = false;
+        void refreshMarketRef.current();
+      }
+    }
+  };
+  const refreshMarketRef = useRef(refreshMarket);
+  refreshMarketRef.current = refreshMarket;
+  // Soon after a career opens, then every few minutes: sales come in while it's open
+  useEffect(() => {
+    if (!marketOn) return;
+    const first = window.setTimeout(() => void refreshMarketRef.current(), 4000);
+    const id = window.setInterval(() => void refreshMarketRef.current(), 3 * 60_000);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(id);
+    };
+  }, [marketOn, activeSaveId]);
+
+  /** Lists an owned aircraft. It leaves the fleet once the server has the listing. '' when it worked. */
+  const listOnMarket = async (tail: string, price: number): Promise<string> => {
+    const me = airlineFor(activeSaveId);
+    if (!me) return marketAnswer('share_first');
+    const ac = fleet.find((f) => f.tailNumber === tail);
+    if (!ac || ac.acquisition !== 'owned') return 'Only aircraft you own can be sold.';
+    const id = crypto.randomUUID();
+    const r = await listAircraft(me.id, id, ac, price);
+    if (r !== 'listed') return marketAnswer(r);
+    dropAircraft(new Set([tail]));
+    setMarket((m) => withApplied(m, [`l:${id}`]));
+    persistAfterRender.current = true;
+    flashToast(`${tail} is on the marketplace for ${formatMoneyM(price, 2)}. You’re paid when it sells.`, 5000);
+    void refreshMarket();
+    return '';
+  };
+  const cancelOnMarket = async (id: string): Promise<string> => {
+    const r = await cancelListing(activeSaveId, id);
+    await refreshMarket();
+    return r === 'cancelled' ? '' : marketAnswer(r);
+  };
+  const marketHooks: MarketHooks = {
+    saveId: activeSaveId,
+    sandbox: gameMode === 'sandbox',
+    cash,
+    hub: hubIata,
+    fleet,
+    mine: marketMine,
+    refresh: refreshMarket,
+    list: listOnMarket,
+    cancel: cancelOnMarket,
+    sellTail: onlineStart.sellTail ?? null,
+  };
+  /** From an aircraft's window: Online, on the Marketplace's Sell page, with that aircraft picked. */
+  const sellOnMarket = (tail: string) => {
+    setScheduleModal(null);
+    setOnlineStart({ tab: 'market', sellTail: tail });
+    setPanel('online');
+  };
+  // openOnline() from anywhere in a career opens the panel
+  useEffect(() => {
+    if (screen !== 'dashboard') return;
+    return onOpenOnline(() => setPanel('online'));
+  }, [screen]);
+  useEffect(() => {
+    if (panel !== 'online') setOnlineStart({});
+  }, [panel]);
 
   /** Buy out a leased aircraft: it becomes yours and the deposit comes back. */
   const buyOutLease = (tail: string) => {
@@ -1852,12 +1988,10 @@ export default function App() {
         onOpen={setPanel}
         onOpenGroup={openGroup}
         onSave={saveCareer}
-        onOnline={openOnline}
         onMenu={() => setMenuOpen(true)}
         version={APP_VERSION}
       />
       <CloudHost openSaveId={activeSaveId} onSlotsChanged={() => setSavedGames(readSaveSlots())} toast={flashToast} />
-      <OnlineHost career={() => currentSaveState()} airports={airportByIata} mapStyle={mapStyle} />
       <FriendAirlineHost airports={airportByIata} mapStyle={mapStyle} />
       {liveryOpen && (
         <LiveryEditor
@@ -2045,6 +2179,17 @@ export default function App() {
           }}
         />
       )}
+      {panel === 'online' && (
+        <OnlineSidePanel
+          airlineName={airlineName}
+          career={() => currentSaveState()}
+          airports={airportByIata}
+          mapStyle={mapStyle}
+          market={marketHooks}
+          startTab={onlineStart.tab}
+          onClose={closePanel}
+        />
+      )}
       {panel === 'bank' && (
         <BankPanel
           key={bankTab}
@@ -2119,6 +2264,7 @@ export default function App() {
             onUpdateFlight={updateFlight}
             onDeleteFlight={deleteFlightWithPair}
             onSellOrReturnAircraft={sellOrReturnAircraft}
+            onMarketSell={marketFlag && modalAircraft.acquisition === 'owned' && airlineFor(activeSaveId) ? sellOnMarket : undefined}
             liveryNames={liveries.map((l, i) => (i ? specialLabel(l) : l.name || 'Main livery'))}
             airlineLogo={airlineLogo}
             onSetLivery={(tail, i) => setAircraftLivery([tail], i)}

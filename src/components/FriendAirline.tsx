@@ -212,15 +212,23 @@ function List(props: { rows: string[][]; more: number }) {
 }
 
 /** Routes on a small map of its own, in the same map style as the game's. A route with a colour is drawn in it. */
-export function RouteMap(props: { routes: readonly MapRoute[]; airports: ReadonlyMap<string, Airport>; mapStyle: MapStyleId; label?: string }) {
+/**
+ * Routes on a small map. Changing `routes` (or `hub`, an airport drawn larger) redraws the lines
+ * and fits them in view, without making the map again.
+ */
+export function RouteMap(props: { routes: readonly MapRoute[]; airports: ReadonlyMap<string, Airport>; mapStyle: MapStyleId; label?: string; height?: string; hub?: string | null }) {
   const box = useRef<HTMLDivElement | null>(null);
+  const live = useRef<{ map: any; fit: () => void; bounds: [[number, number], [number, number]] | null } | null>(null);
   const { routes, airports, mapStyle } = props;
+  const latest = useRef({ routes, hub: props.hub ?? null });
+  latest.current = { routes, hub: props.hub ?? null };
+  const hubPaint = (hub: string | null): unknown => (hub ? ['case', ['==', ['get', 'iata'], hub], 7, 3.5] : 3.5);
   useEffect(() => {
     let map: any = null;
     let dead = false;
     void loadMaplibre().then((ml) => {
       if (dead || !box.current) return;
-      const m = friendRouteMap(routes, airports);
+      const m = friendRouteMap(latest.current.routes, airports);
       map = new ml.Map({ container: box.current, style: mapStyleFor(mapStyle), attributionControl: false, center: [0, 30], zoom: 0.4, minZoom: -1.5, dragRotate: false, pitchWithRotate: false, touchPitch: false, fadeDuration: 0 });
       map.addControl(new TrustedCredits(), 'bottom-right');
       map.on('load', () => {
@@ -229,7 +237,7 @@ export function RouteMap(props: { routes: readonly MapRoute[]; airports: Readonl
         map.addSource('fr-routes', { type: 'geojson', data: m.lines });
         map.addSource('fr-airports', { type: 'geojson', data: m.points });
         map.addLayer({ id: 'fr-routes', type: 'line', source: 'fr-routes', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['coalesce', ['get', 'colour'], tint], 'line-opacity': 0.85, 'line-width': ['interpolate', ['linear'], ['get', 'weekly'], 1, 1.2, 14, 2.2, 60, 4] } });
-        map.addLayer({ id: 'fr-airports', type: 'circle', source: 'fr-airports', paint: { 'circle-radius': 3.5, 'circle-color': tint, 'circle-stroke-color': halo, 'circle-stroke-width': 1.5 } });
+        map.addLayer({ id: 'fr-airports', type: 'circle', source: 'fr-airports', paint: { 'circle-radius': hubPaint(latest.current.hub), 'circle-color': tint, 'circle-stroke-color': halo, 'circle-stroke-width': 1.5 } });
         map.addLayer({
           id: 'fr-labels',
           type: 'symbol',
@@ -237,16 +245,30 @@ export function RouteMap(props: { routes: readonly MapRoute[]; airports: Readonl
           layout: { 'text-field': ['get', 'iata'], 'text-font': MAP_FONT, 'text-size': 11, 'text-offset': [0, 0.9], 'text-anchor': 'top', 'text-optional': true },
           paint: { 'text-color': mapStyle === 'light' ? '#1e293b' : '#f1f5f9', 'text-halo-color': halo, 'text-halo-width': 1.2 },
         });
-        const fit = () => m.bounds && map.fitBounds(m.bounds, { padding: 34, maxZoom: 6, duration: 0 });
-        fit();
+        const state = { map, bounds: m.bounds, fit: () => state.bounds && map.fitBounds(state.bounds, { padding: 34, maxZoom: 6, duration: 0 }) };
+        live.current = state;
+        state.fit();
         // A phone turned round, or the window resized: all of it in view again
-        map.on('resize', fit);
+        map.on('resize', () => state.fit());
       });
     });
     return () => {
       dead = true;
+      live.current = null;
       map?.remove();
     };
-  }, [routes, airports, mapStyle]);
-  return <div ref={box} role="img" aria-label={props.label ?? 'Their route map'} style={{ height: 'min(300px, 45vh)', borderRadius: 12, overflow: 'hidden', background: C.raised }} />;
+  }, [airports, mapStyle]);
+  // New routes or a new hub: the same map, redrawn
+  useEffect(() => {
+    const s = live.current;
+    if (!s) return;
+    const m = friendRouteMap(routes, airports);
+    s.map.getSource('fr-routes')?.setData(m.lines);
+    s.map.getSource('fr-airports')?.setData(m.points);
+    s.map.setPaintProperty('fr-airports', 'circle-radius', hubPaint(props.hub ?? null));
+    s.bounds = m.bounds;
+    s.fit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routes, props.hub]);
+  return <div ref={box} role="img" aria-label={props.label ?? 'Their route map'} style={{ height: props.height ?? 'min(300px, 45vh)', borderRadius: 12, overflow: 'hidden', background: C.raised }} />;
 }

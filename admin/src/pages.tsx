@@ -6,12 +6,13 @@
 // ============================================================================
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { liveryFromProfile } from '../../src/game/profile';
+import { AIRCRAFT_BY_ID } from '../../src/game/aircraftCatalog';
 import { paintedPhoto } from '../../src/game/liveryPaint';
 import { Button, C, DISPLAY, inputStyle } from '../../src/ui/kit';
 import { act, actOnLogo, forgetPicture, listLogos, logoPicture, rpc, storageUsage, type Channel, type LogoRow, type Me } from './api';
 
 export interface Route {
-  page: 'dashboard' | 'reports' | 'airlines' | 'alliances' | 'logos' | 'log' | 'team';
+  page: 'dashboard' | 'reports' | 'airlines' | 'alliances' | 'market' | 'logos' | 'log' | 'team';
   id: string;
 }
 interface Ctx {
@@ -26,6 +27,7 @@ export function Page(props: Ctx) {
   if (page === 'reports') return <Reports {...props} />;
   if (page === 'airlines') return id ? <Airline {...props} id={id} /> : <Airlines {...props} />;
   if (page === 'alliances') return id ? <Alliance {...props} id={id} /> : <Alliances {...props} />;
+  if (page === 'market') return <Market {...props} />;
   if (page === 'logos') return <Logos {...props} />;
   if (page === 'log') return <Log {...props} />;
   if (page === 'team') return <Team {...props} />;
@@ -358,6 +360,8 @@ const ACTIONS: Record<string, string> = {
   alliance_remove: 'Removed from alliance',
   alliance_lead: 'Changed leader',
   alliance_disband: 'Disbanded alliance',
+  market_reverse: 'Reversed a trade',
+  market_remove: 'Took a listing down',
   report_resolved: 'Resolved report',
   report_dismissed: 'Dismissed report',
   logo_approve: 'Approved logo',
@@ -794,6 +798,84 @@ function Alliance({ channel, id }: Ctx & { id: string }) {
       </Box>
       <Box title="What moderators did">
         <History items={a.actions} />
+      </Box>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Marketplace: open listings and recent trades. Flags: the same two airlines
+// trading again and again, or prices right at the edge of the allowed band.
+// ---------------------------------------------------------------------------
+const money = (n: number) => `${(n / 1e6).toLocaleString(undefined, { maximumFractionDigits: 2 })}M`;
+const modelName = (id: string) => AIRCRAFT_BY_ID.get(id)?.name ?? id;
+
+function Market({ channel }: Ctx) {
+  const r = useLoad(() => rpc<J>('admin_market', { p_channel: channel }), [channel]);
+  const [only, setOnly] = useState(false);
+  const m = r.data;
+  if (r.error) return <Err e={r.error} />;
+  if (!m) return <Muted>Loading…</Muted>;
+  const trades = (m.trades as J[]).filter((t) => !only || t.pair || t.edge);
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      <H1 right={<Button size="sm" variant="subtle" onClick={r.reload}>Refresh</Button>}>Marketplace</H1>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <Tile label="Open listings" value={m.open} />
+        <Tile label="Trades in the last day" value={m.tradesToday} />
+        <Tile label="Flagged (recent)" value={(m.trades as J[]).filter((t) => (t.pair || t.edge) && !t.reversedAt).length} warn={(m.trades as J[]).some((t) => (t.pair || t.edge) && !t.reversedAt)} />
+      </div>
+      <Box
+        title="Recent trades"
+        right={
+          <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, cursor: 'pointer' }}>
+            <input type="checkbox" checked={only} onChange={(e) => setOnly(e.target.checked)} /> Only flagged
+          </label>
+        }
+      >
+        <div style={{ display: 'grid', gap: 8 }}>
+          {trades.length === 0 && <Muted>None.</Muted>}
+          {trades.map((t) => (
+            <div key={t.id} style={{ display: 'grid', gap: 6, padding: '8px 10px', borderRadius: 10, background: C.raised }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', fontSize: 13 }}>
+                <b>{modelName(t.model)}</b>
+                <span style={{ color: C.muted }}>{t.tail}</span>
+                <b>{money(t.price)}</b>
+                {t.lo != null && <span style={{ color: C.muted }}>(allowed {money(t.lo)}–{money(t.hi)})</span>}
+                <span style={{ color: C.muted }}>· {t.mode === 'sandbox' ? 'Sandbox' : 'Career'} · {when(t.at)}</span>
+                {t.pair && <Pill tone="amber">Same two airlines, 3+ trades</Pill>}
+                {t.edge && <Pill tone="amber">Price at the edge</Pill>}
+                {t.reversedAt && <Pill tone="muted">Reversed {day(t.reversedAt)}</Pill>}
+              </div>
+              <div style={{ fontSize: 13 }}>
+                {t.seller ? <a href={`#/airlines/${t.seller}`}>{t.sellerLabel}</a> : t.sellerLabel} sold to {t.buyer ? <a href={`#/airlines/${t.buyer}`}>{t.buyerLabel}</a> : t.buyerLabel}
+                {t.reversedReason && <span style={{ color: C.muted }}> · reversed: {t.reversedReason}</span>}
+              </div>
+              {!t.reversedAt && (
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <Change label="Reverse" danger note="The aircraft goes back to the seller and the buyer gets their money back, next time each game is open. Both get a notice." run={(reason) => act('admin_market_reverse', { p_channel: channel, p_trade: t.id, p_reason: reason })} onDone={r.reload} />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </Box>
+      <Box title={`Open listings (${(m.listings as J[]).length})`}>
+        <div style={{ display: 'grid', gap: 8 }}>
+          {(m.listings as J[]).length === 0 && <Muted>None.</Muted>}
+          {(m.listings as J[]).map((l) => (
+            <div key={l.id} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: '8px 10px', borderRadius: 10, background: C.raised, fontSize: 13 }}>
+              <b>{modelName(l.model)}</b>
+              <span style={{ color: C.muted }}>{l.tail}</span>
+              <b>{money(l.price)}</b>
+              <span style={{ color: C.muted }}>
+                · <a href={`#/airlines/${l.seller}`}>{l.sellerLabel}</a> · {l.mode === 'sandbox' ? 'Sandbox' : 'Career'} · listed {day(l.createdAt)}
+              </span>
+              <span style={{ flex: 1 }} />
+              <Change label="Take down" danger note="The aircraft goes back to the seller's fleet. They get a notice." run={(reason) => act('admin_market_remove', { p_channel: channel, p_listing: l.id, p_reason: reason })} onDone={r.reload} />
+            </div>
+          ))}
+        </div>
       </Box>
     </div>
   );

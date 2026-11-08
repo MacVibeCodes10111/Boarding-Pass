@@ -28,7 +28,12 @@ export interface Alliance extends Omit<AllianceBadge, 'members'> {
   members: AllianceMember[];
   /** Airlines invited and not answered yet (the leader only). */
   invited: { id: string; at: string; card: FriendCard | null }[];
+  /** How airlines get in: at once, or by asking the leader. */
+  joining: Joining;
+  /** Airlines asking to join (the leader only). */
+  requests: { id: string; at: string; card: FriendCard | null }[];
 }
+export type Joining = 'open' | 'request';
 export interface AllianceInvite {
   alliance: AllianceBadge;
   from: FriendCard | null;
@@ -38,6 +43,8 @@ export interface AllianceData {
   mode: 'career' | 'sandbox';
   alliance: Alliance | null;
   invites: AllianceInvite[];
+  /** Alliances this airline has asked to join. */
+  asked: { alliance: AllianceBadge; at: string }[];
 }
 
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -68,6 +75,11 @@ export function normaliseAlliances(x: unknown): AllianceData | null {
         .filter((i) => typeof i.id === 'string' && ID.test(i.id))
         .slice(0, MAX_ALLIANCE)
         .map((i) => ({ id: String(i.id), at: when(i.at), card: card(i.card) })),
+      joining: a.joining === 'open' ? 'open' : 'request',
+      requests: list(a.requests)
+        .filter((i) => typeof i.id === 'string' && ID.test(i.id))
+        .slice(0, 100)
+        .map((i) => ({ id: String(i.id), at: when(i.at), card: card(i.card) })),
     };
   }
   const invites: AllianceInvite[] = [];
@@ -75,8 +87,75 @@ export function normaliseAlliances(x: unknown): AllianceData | null {
     const al = normaliseAllianceBadge(i.alliance);
     if (al) invites.push({ alliance: al, from: card(i.from), at: when(i.at) });
   }
-  return { mode: o.mode === 'sandbox' ? 'sandbox' : 'career', alliance, invites };
+  const asked: AllianceData['asked'] = [];
+  for (const i of list(o.asked).slice(0, 10)) {
+    const al = normaliseAllianceBadge(i.alliance);
+    if (al) asked.push({ alliance: al, at: when(i.at) });
+  }
+  return { mode: o.mode === 'sandbox' ? 'sandbox' : 'career', alliance, invites, asked };
 }
+
+// ---------------------------------------------------------------------------
+// Finding alliances: what every airline of the same mode sees
+// ---------------------------------------------------------------------------
+export interface AllianceTotals {
+  fleet: number;
+  routes: number;
+  airports: number;
+  hubs: number;
+}
+export interface PublicAlliance extends AllianceBadge {
+  description: string;
+  createdAt: string;
+  joining: Joining;
+  totals: AllianceTotals;
+  /** Its airlines, leader first (only when looking at one alliance). */
+  airlines: { id: string; role: 'leader' | 'member'; joinedAt: string; card: FriendCard | null }[] | null;
+  /** Where the airline looking stands with it (only when looking at one alliance). */
+  standing: 'member' | 'other' | 'invited' | 'asked' | 'none' | null;
+}
+const total = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? Math.max(0, Math.min(1e7, Math.round(x))) : 0);
+
+export function normalisePublicAlliance(x: unknown): PublicAlliance | null {
+  const badge = normaliseAllianceBadge(x);
+  if (!badge) return null;
+  const o = x as Record<string, unknown>;
+  const t = (o.totals ?? {}) as Record<string, unknown>;
+  const STANDING = ['member', 'other', 'invited', 'asked', 'none'] as const;
+  return {
+    ...badge,
+    description: typeof o.description === 'string' ? o.description.slice(0, 300) : '',
+    createdAt: when(o.createdAt),
+    joining: o.joining === 'open' ? 'open' : 'request',
+    totals: { fleet: total(t.fleet), routes: total(t.routes), airports: total(t.airports), hubs: total(t.hubs) },
+    airlines: Array.isArray(o.airlines)
+      ? list(o.airlines)
+          .filter((m) => typeof m.id === 'string' && ID.test(m.id))
+          .slice(0, MAX_ALLIANCE)
+          .map((m) => ({ id: String(m.id), role: m.role === 'leader' ? ('leader' as const) : ('member' as const), joinedAt: when(m.joinedAt), card: card(m.card) }))
+      : null,
+    standing: STANDING.includes(o.standing as (typeof STANDING)[number]) ? (o.standing as PublicAlliance['standing']) : null,
+  };
+}
+const publicList = (x: unknown) => list(x).map(normalisePublicAlliance).filter((a): a is PublicAlliance => a !== null);
+
+export interface Featured {
+  week: string;
+  /** When the next three are picked. */
+  until: string;
+  alliances: PublicAlliance[];
+}
+export async function loadFeatured(me: string): Promise<Featured | null> {
+  const r = (await cloudRpc('alliance_featured', { p_me: me })) as Record<string, unknown> | null;
+  if (!r || typeof r !== 'object') return null;
+  return { week: typeof r.week === 'string' ? r.week.slice(0, 10) : '', until: when(r.until), alliances: publicList(r.alliances).slice(0, 3) };
+}
+export const searchAlliances = async (me: string, q: string) => publicList(await cloudRpc('alliance_search', { p_me: me, p_q: q.trim().slice(0, 40) })).slice(0, 20);
+export const viewAlliance = async (me: string, id: string) => normalisePublicAlliance(await cloudRpc('alliance_view', { p_me: me, p_id: id }));
+export const joinAlliance = async (me: string, id: string) => String(await cloudRpc('alliance_join', { p_me: me, p_alliance: id }));
+export const cancelAllianceRequest = (me: string, id: string) => cloudRpc('alliance_request_cancel', { p_me: me, p_alliance: id });
+export const answerAllianceRequest = async (me: string, id: string, accept: boolean) => String(await cloudRpc('alliance_request_answer', { p_me: me, p_id: id, p_accept: accept }));
+export const setAllianceJoining = async (me: string, j: Joining) => String(await cloudRpc('alliance_set_joining', { p_me: me, p_joining: j }));
 
 // ---------------------------------------------------------------------------
 // What players type
@@ -109,6 +188,10 @@ const ANSWERS: Record<string, string> = {
   full: `The alliance is full: ${MAX_ALLIANCE} airlines, counting the ones invited.`,
   gone: 'That invite isn’t there any more.',
   locked: 'A moderator changed this alliance, so it can’t be edited for a while.',
+  requested: 'Asked. The leader will accept or decline.',
+  already_asked: 'You’ve already asked to join.',
+  too_many_asks: 'An airline can ask up to 5 alliances at once. Take one back first.',
+  bad: 'That didn’t work. Try again.',
 };
 /** What to tell the player after an alliance action ('' when it worked and needs no words). */
 export const allianceAnswer = (r: unknown) => ANSWERS[String(r)] ?? 'That didn’t work. Try again later.';
@@ -119,6 +202,7 @@ export interface AllianceForm {
   colours: { a: string; b: string };
   description: string;
   useLogo: boolean;
+  joining: Joining;
 }
 const formArgs = (f: AllianceForm) => ({ p_name: f.name.trim(), p_tag: cleanTag(f.tag), p_colours: f.colours, p_description: f.description.trim(), p_use_logo: f.useLogo });
 
