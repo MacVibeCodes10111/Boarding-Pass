@@ -94,6 +94,12 @@ export function offsetLatLonNm(latDeg: number, lonDeg: number, bearingDeg: numbe
   return [round5(normalizeLon(lon2 * RAD2DEG)), round5(lat2 * RAD2DEG)];
 }
 
+/** The same point, its longitude moved by whole turns to sit nearest `refLon` (keeps unwrapped lines unbroken across the date line). */
+export function nearLon(p: LonLat, refLon: number): LonLat {
+  const k = Math.round((refLon - p[0]) / 360) * 360;
+  return k ? [p[0] + k, p[1]] : p;
+}
+
 export function normalizeLon(lon: number): number {
   return ((((lon + 180) % 360) + 360) % 360) - 180;
 }

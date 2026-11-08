@@ -8,6 +8,7 @@ import {
   calcCoordDistanceNm,
   calcDistanceNm,
   interpolateCoordPair,
+  nearLon,
   offsetLatLonNm,
   type LonLat,
 } from './geo';
@@ -945,12 +946,13 @@ export function splitFlightPath(flight: ScheduledFlight, depSimDay: number, prog
     if (Math.abs(off) <= 0.05) return p;
     const q = proc.points[Math.min(i + 1, proc.points.length - 1)];
     const r = proc.points[Math.max(i - 1, 0)];
-    return offsetLatLonNm(p[1], p[0], calcBearingDeg(r, q) + 90, off);
+    // offsetLatLonNm folds longitudes into ±180; put it back beside its unwrapped neighbours
+    return nearLon(offsetLatLonNm(p[1], p[0], calcBearingDeg(r, q) + 90, off), p[0]);
   });
   const offHere = cruiseOffsetNm(flight.id, proc, alongNm);
   const pA = proc.points[segIdx];
   const pB = proc.points[segIdx + 1] ?? pA;
-  const here = Math.abs(offHere) > 0.05 ? offsetLatLonNm(coordinates[1], coordinates[0], calcBearingDeg(pA, pB) + 90, offHere) : coordinates;
+  const here = Math.abs(offHere) > 0.05 ? nearLon(offsetLatLonNm(coordinates[1], coordinates[0], calcBearingDeg(pA, pB) + 90, offHere), coordinates[0]) : coordinates;
   return {
     flown: [...shifted.slice(0, segIdx + 1), here],
     remaining: [here, ...shifted.slice(segIdx + 1)],
