@@ -28,8 +28,8 @@ declare
   uid uuid := auth.uid();
   sid uuid;
   cur uuid;
-  cur_made timestamp;
-  my_made timestamp;
+  cur_made timestamptz;
+  my_made timestamptz;
 begin
   if uid is null then raise exception 'Not signed in'; end if;
   begin
