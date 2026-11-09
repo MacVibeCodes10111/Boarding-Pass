@@ -634,14 +634,19 @@ const NEO_MASK_OUTLINE = [
   0.032, 0.828, 0.017, 0.826, 0.002, 0.811,
 ];
 /** Where it sits, in cabin heights (the cockpit is the same size on every type): the outline's top left corner behind the nose and below the crown, and its height. */
-const NEO_MASK_AT = { x: 0.31, y: 0.385 - 0.81 * 0.235, h: 0.235 };
-const NEO_MASK_COLOUR = '#121418';
+const NEO_MASK_AT = { x: 0.25, y: 0.41 - 0.828 * 0.25, h: 0.25 };
+/** Small moves for pictures whose cockpit sits a little differently: [back, down], in cabin heights. */
+const NEO_MASK_MOVE: Record<string, [number, number]> = { 'a321neo': [-0.05, 0.025], 'a321lr': [-0.05, 0.025], 'a321xlr': [-0.05, 0.025] };
+const NEO_MASK_COLOUR = '#0b0c0e';
+/** How much of the picture still shows through it: a hint of the window frames and shine. */
+const NEO_MASK_SHOW = 0.1;
 
 function drawNeoMask(c: CanvasRenderingContext2D, g: Geometry) {
   const b = g.body;
-  const x = b.nose + NEO_MASK_AT.x * b.hc;
+  const [mx, my] = NEO_MASK_MOVE[g.id] ?? [0, 0];
+  const x = b.nose + (NEO_MASK_AT.x + mx) * b.hc;
   c.save();
-  c.translate(x, b.c0 + b.slope * x + NEO_MASK_AT.y * b.hc);
+  c.translate(x, b.c0 + b.slope * x + (NEO_MASK_AT.y + my) * b.hc);
   c.rotate(frameAngle(g, 'body'));
   const s = NEO_MASK_AT.h * b.hc;
   c.scale(s, s);
@@ -651,6 +656,41 @@ function drawNeoMask(c: CanvasRenderingContext2D, g: Geometry) {
   c.fillStyle = NEO_MASK_COLOUR;
   c.fill();
   c.restore();
+}
+
+/**
+ * The neo mask laid solid over the finished picture, windows included: the
+ * cockpit glass isn't in any part's mask, and on some pictures it's partly
+ * see-through, so painting it like a layer left light windows inside the mask.
+ * Kept on the aircraft.
+ */
+function neoMaskOnto(O: Uint8ClampedArray, g: Geometry, sg: CanvasRenderingContext2D) {
+  const { w, h } = g;
+  sg.setTransform(1, 0, 0, 1, 0, 0);
+  sg.globalAlpha = 1;
+  sg.globalCompositeOperation = 'source-over';
+  sg.clearRect(0, 0, w, h);
+  drawNeoMask(sg, g);
+  const D = sg.getImageData(0, 0, w, h).data;
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const a = D[i + 3];
+      if (!a) continue;
+      const t = (a / 255) * (1 - NEO_MASK_SHOW);
+      const inside = g.body.top[x] >= 0 && y >= g.body.top[x];
+      if (!inside) {
+        // the cockpit glass at the top of the nose, above the fuselage's outline: darkened, keeping the picture's own edge
+        if (!O[i + 3]) continue;
+        for (let k = 0; k < 3; k++) O[i + k] = D[i + k] * t + O[i + k] * (1 - t);
+        continue;
+      }
+      // in the fuselage: solid, see-through glass included
+      const oa = O[i + 3] / 255;
+      const na = t + oa * (1 - t);
+      for (let k = 0; k < 3; k++) O[i + k] = (D[i + k] * t + O[i + k] * oa * (1 - t)) / na;
+      O[i + 3] = na * 255;
+    }
 }
 
 /**
@@ -694,8 +734,6 @@ export function renderLiveryPixels(g: Geometry, livery: Livery, name: string, lo
     if (l.hidden || l.opacity <= 0) continue;
     layOn(() => drawLayer(sg, g, l, name, logos, reg), l.region, l.opacity);
   }
-  // the neo mask, over every layer
-  if (livery.neoMask && NEO_MASK_MODELS.includes(g.id)) layOn(() => drawNeoMask(sg, g), 'fuselage', 1);
   // the paint multiplied into the picture
   const O = new Uint8ClampedArray(g.B);
   for (let i = 0, j = 0; i < O.length; i += 4, j += 3) {
@@ -704,6 +742,7 @@ export function renderLiveryPixels(g: Geometry, livery: Livery, name: string, lo
     O[i + 1] = (O[i + 1] * P[j + 1]) / 255;
     O[i + 2] = (O[i + 2] * P[j + 2]) / 255;
   }
+  if (livery.neoMask && NEO_MASK_MODELS.includes(g.id)) neoMaskOnto(O, g, sg);
   if (outW >= w) return new ImageData(O, w, h);
   return shrink(O, w, h, Math.max(1, Math.round(outW)));
 }
