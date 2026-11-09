@@ -560,11 +560,41 @@ function Airlines({ channel, me }: Ctx) {
         </Button>
       </form>
       <Err e={r.error} />
-      <div style={{ display: 'grid', gap: 6 }}>
+      <div style={{ display: 'grid', gap: 10 }}>
         {r.data?.length === 0 && <Muted>None found.</Muted>}
-        {r.data?.map((a) => <AirlineRow key={a.id} a={a} />)}
+        {r.data && byAccount(r.data).map((g) => <AccountGroup key={g.key} airlines={g.airlines} />)}
       </div>
     </div>
+  );
+}
+
+/** Airlines in the server's order (newest account first), gathered under their account. */
+function byAccount(list: J[]): { key: string; airlines: J[] }[] {
+  const groups = new Map<string, J[]>();
+  for (const a of list) {
+    const k = String(a.account ?? a.id);
+    groups.set(k, [...(groups.get(k) ?? []), a]);
+  }
+  return [...groups].map(([key, airlines]) => ({ key, airlines }));
+}
+
+/** One account: its username (owner only) or its account key, and every airline it shares. */
+function AccountGroup(props: { airlines: J[] }) {
+  const first = props.airlines[0];
+  const n = props.airlines.length;
+  return (
+    <section style={{ display: 'grid', gap: 6, padding: 10, borderRadius: 12, border: `1px solid ${C.line}`, background: C.panel }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '0 2px' }}>
+        <b style={{ fontSize: 13.5 }}>{first.username ? `@${first.username}` : `Account ${first.account ?? ''}`}</b>
+        <span style={{ fontSize: 12, color: C.muted, flex: 1 }}>
+          {n} airline{n === 1 ? '' : 's'}
+        </span>
+        {first.suspended && <Pill tone="red">Account suspended</Pill>}
+      </div>
+      {props.airlines.map((a) => (
+        <AirlineRow key={a.id} a={{ ...a, username: undefined, suspended: false }} />
+      ))}
+    </section>
   );
 }
 
