@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LOGO_SIZE_MAX, LOGO_SIZE_MIN, layerFor, normaliseLivery } from './livery';
+import { LOGO_SIZE_MAX, LOGO_SIZE_MIN, layerFor, liveryKey, normaliseLivery } from './livery';
 
 const logo = (size: number, adj?: number) => ({
   v: 2,
@@ -22,5 +22,15 @@ describe('logo sizes', () => {
 
   it('a size for one aircraft type gets the same range', () => {
     expect(sizeOf(logo(0.5, 30), 'a320-200')).toBe(30);
+  });
+});
+
+describe('neo mask', () => {
+  it('is kept when on, left out otherwise, and changes the painted picture', () => {
+    const on = normaliseLivery({ ...logo(0.5), neoMask: true })!;
+    expect(on.neoMask).toBe(true);
+    const off = normaliseLivery({ ...logo(0.5), neoMask: 'yes' })!;
+    expect('neoMask' in off).toBe(false);
+    expect(liveryKey(on, 'Air')).not.toBe(liveryKey(off, 'Air'));
   });
 });

@@ -14,7 +14,7 @@
 //   pictures are cached as object URLs.
 // ============================================================================
 import { aircraftArt } from './aircraftPhotos';
-import { FONT_CSS, layerFor, layerText, liveryKey, type Frame, type Layer, type Livery, type PathCmd, type Region } from './livery';
+import { FONT_CSS, NEO_MASK_MODELS, layerFor, layerText, liveryKey, type Frame, type Layer, type Livery, type PathCmd, type Region } from './livery';
 
 /**
  * Painted pictures, by aircraft, livery, registration and size. A picture
@@ -622,6 +622,37 @@ function drawLayer(c: CanvasRenderingContext2D, g: Geometry, l: Layer, name: str
   c.restore();
 }
 
+// ----------------------------------------------------------------------------
+// The neo mask (v3.0.3): the A320neo family's dark "raccoon mask" round the
+// cockpit windows, a livery option rather than a layer
+// ----------------------------------------------------------------------------
+/** Its outline, x then y, in mask heights: the front tip at (0, 0.81), the windshield's slope up from it, the round end behind the side windows. */
+const NEO_MASK_OUTLINE = [
+  0, 0.805, 0.687, 0.179, 0.702, 0.179, 0.885, 0.132, 1.038, 0.101, 1.298, 0.061, 1.557, 0.032, 1.847, 0.013, 1.924, 0.002, 2.03, 0.002, 2.122, 0.015, 2.199, 0.034, 2.321, 0.08,
+  2.428, 0.136, 2.504, 0.187, 2.565, 0.238, 2.641, 0.319, 2.672, 0.364, 2.702, 0.433, 2.718, 0.49, 2.725, 0.55, 2.727, 0.603, 2.72, 0.662, 2.704, 0.718, 2.689, 0.754, 2.643, 0.824,
+  2.582, 0.882, 2.475, 0.926, 2.338, 0.962, 2.261, 0.975, 2.109, 0.992, 1.91, 1, 1.803, 0.998, 1.651, 0.989, 1.483, 0.97, 1.254, 0.929, 1.071, 0.884, 0.918, 0.834, 0.887, 0.828,
+  0.032, 0.828, 0.017, 0.826, 0.002, 0.811,
+];
+/** Where it sits, in cabin heights (the cockpit is the same size on every type): the outline's top left corner behind the nose and below the crown, and its height. */
+const NEO_MASK_AT = { x: 0.31, y: 0.385 - 0.81 * 0.235, h: 0.235 };
+const NEO_MASK_COLOUR = '#121418';
+
+function drawNeoMask(c: CanvasRenderingContext2D, g: Geometry) {
+  const b = g.body;
+  const x = b.nose + NEO_MASK_AT.x * b.hc;
+  c.save();
+  c.translate(x, b.c0 + b.slope * x + NEO_MASK_AT.y * b.hc);
+  c.rotate(frameAngle(g, 'body'));
+  const s = NEO_MASK_AT.h * b.hc;
+  c.scale(s, s);
+  c.beginPath();
+  for (let i = 0; i < NEO_MASK_OUTLINE.length; i += 2) c[i ? 'lineTo' : 'moveTo'](NEO_MASK_OUTLINE[i], NEO_MASK_OUTLINE[i + 1]);
+  c.closePath();
+  c.fillStyle = NEO_MASK_COLOUR;
+  c.fill();
+  c.restore();
+}
+
 /**
  * The livery on the aircraft as pixels, `outW` wide (the picture's own width
  * by default). All blending is done here in code: Safari can draw a canvas
@@ -635,19 +666,16 @@ export function renderLiveryPixels(g: Geometry, livery: Livery, name: string, lo
   // the paint, white to start
   const P = new Uint8ClampedArray(n * 3).fill(255);
   const [, sg] = reused(0, w, h);
-  for (const shared of livery.layers) {
-    // as it is on this aircraft model
-    const l = layerFor(shared, g.id);
-    if (!l) continue;
-    if (l.hidden || l.opacity <= 0) continue;
+  /** One drawing laid onto the paint, cut to a part of the aircraft. */
+  const layOn = (draw: () => void, region: Region, opacity: number) => {
     sg.setTransform(1, 0, 0, 1, 0, 0);
     sg.globalAlpha = 1;
     sg.globalCompositeOperation = 'source-over';
     sg.clearRect(0, 0, w, h);
-    drawLayer(sg, g, l, name, logos, reg);
+    draw();
     const D = sg.getImageData(0, 0, w, h).data;
-    const [Mk, k] = g.mask(l.region);
-    const op = Math.max(0, Math.min(1, l.opacity)) / 65025;
+    const [Mk, k] = g.mask(region);
+    const op = Math.max(0, Math.min(1, opacity)) / 65025;
     for (let i = 0, j = 0; i < D.length; i += 4, j += 3) {
       const da = D[i + 3];
       if (!da) continue;
@@ -658,7 +686,16 @@ export function renderLiveryPixels(g: Geometry, livery: Livery, name: string, lo
       P[j + 1] += (D[i + 1] - P[j + 1]) * a;
       P[j + 2] += (D[i + 2] - P[j + 2]) * a;
     }
+  };
+  for (const shared of livery.layers) {
+    // as it is on this aircraft model
+    const l = layerFor(shared, g.id);
+    if (!l) continue;
+    if (l.hidden || l.opacity <= 0) continue;
+    layOn(() => drawLayer(sg, g, l, name, logos, reg), l.region, l.opacity);
   }
+  // the neo mask, over every layer
+  if (livery.neoMask && NEO_MASK_MODELS.includes(g.id)) layOn(() => drawNeoMask(sg, g), 'fuselage', 1);
   // the paint multiplied into the picture
   const O = new Uint8ClampedArray(g.B);
   for (let i = 0, j = 0; i < O.length; i += 4, j += 3) {

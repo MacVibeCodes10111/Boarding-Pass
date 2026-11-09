@@ -126,7 +126,12 @@ export interface Livery {
   logos: Record<string, string>;
   /** The logo shown as the airline's logo (in the corner of the screen and beside its flights), v2.67. */
   badge?: string;
+  /** The A320neo family's "raccoon mask": dark paint round the cockpit windows (v3.0.3). Only painted on NEO_MASK_MODELS. */
+  neoMask?: boolean;
 }
+
+/** The aircraft that can wear the neo mask: the A320neo family. */
+export const NEO_MASK_MODELS = ['a319neo', 'a320neo', 'a321neo', 'a321lr', 'a321xlr'];
 
 export const MAX_LAYERS = 40;
 export const MAX_STROKES = 400;
@@ -584,7 +589,7 @@ export function normaliseLivery(x: unknown): Livery | undefined {
   }
   const badge = typeof o.badge === 'string' && logos[o.badge] ? o.badge : undefined;
   const name = typeof o.name === 'string' && !moderate(o.name) ? o.name.slice(0, 30) : undefined;
-  return { v: 2, name, layers, logos, badge };
+  return { v: 2, name, layers, logos, badge, ...(o.neoMask === true ? { neoMask: true } : {}) };
 }
 
 /** The airline's liveries from saved data: the v2.66 list, or the single livery of earlier versions. */
@@ -605,7 +610,7 @@ export const normaliseLogo = (v: unknown): string | undefined =>
 
 /** A short key for caching painted pictures. */
 export function liveryKey(l: Livery, name: string, reg = ''): string {
-  const s = JSON.stringify(l.layers) + '|' + Object.keys(l.logos).join(',') + '|' + name + '|' + reg;
+  const s = JSON.stringify(l.layers) + '|' + Object.keys(l.logos).join(',') + '|' + name + '|' + reg + (l.neoMask ? '|neo' : '');
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
   return `${(h >>> 0).toString(36)}-${s.length}`;

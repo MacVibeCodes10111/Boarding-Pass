@@ -15,6 +15,7 @@ import {
   LIVERY_STYLES,
   MAX_LAYERS,
   MAX_LOGOS,
+  NEO_MASK_MODELS,
   MAX_STROKES,
   REGION_LABEL,
   EDIT_REGIONS,
@@ -1240,6 +1241,20 @@ export function LiveryEditor(props: {
           </div>
         );
       })}
+      <label title="A dark mask round the cockpit windows, on the A319neo, A320neo, A321neo, A321LR and A321XLR" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, cursor: 'pointer', marginTop: 4, paddingTop: 8, borderTop: `1px solid ${C.line}` }}>
+        <input
+          type="checkbox"
+          checked={Boolean(doc.neoMask)}
+          onChange={(e) => {
+            const on = e.target.checked;
+            commit({ ...docRef.current, neoMask: on || undefined });
+            // show it: switch the preview to an aircraft that wears it
+            if (on && !NEO_MASK_MODELS.includes(model)) setModel(choices.find((m) => NEO_MASK_MODELS.includes(m)) ?? 'a320neo');
+          }}
+        />
+        <span style={{ flex: 1 }}>Neo mask</span>
+        <span style={{ fontSize: 11, color: C.faint }}>A320neo family</span>
+      </label>
     </div>
   );
 
