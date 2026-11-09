@@ -77,8 +77,22 @@ export function formatNavaidFreq(freqKhz: number, type: string): string {
 // ----------------------------------------------------------------------------
 // Runways (real data from runways.csv, otherwise a deterministic fake layout)
 // ----------------------------------------------------------------------------
+/**
+ * Real runways by airport code, from the full airport list. An airport object
+ * without runways (a flight still linked to the small built-in list, or one
+ * read back from a save, which leaves runways out) uses these, so it never
+ * gets the made-up layout when the real one is known.
+ */
+const knownRunways = new Map<string, RunwayEndPair[]>();
+export function rememberRunways(airports: Airport[]) {
+  knownRunways.clear();
+  for (const a of airports) if (a.iata_code && a.runways && a.runways.length > 0) knownRunways.set(a.iata_code, a.runways);
+}
+
 export function getAirportRunways(airport: Airport): RunwayEndPair[] {
   if (airport.runways && airport.runways.length > 0) return airport.runways;
+  const known = knownRunways.get(airport.iata_code);
+  if (known) return known;
 
   const code = (airport.iata_code + '___').slice(0, 3);
   const seed = (code.charCodeAt(0) * 31 + code.charCodeAt(1) * 17 + code.charCodeAt(2) * 13) % 18;

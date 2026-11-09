@@ -87,7 +87,7 @@ import {
   maplibreHasGlobe,
   type PlaneIcon,
 } from './game/icons';
-import { clearFlightGeometryCache, runwayLanes, setGlobalNavaidsMemory } from './game/navdata';
+import { clearFlightGeometryCache, rememberRunways, runwayLanes, setGlobalNavaidsMemory } from './game/navdata';
 import {
   MAX_SAVE_SLOTS,
   hasRoomForCareer,
@@ -544,6 +544,10 @@ export default function App() {
   // Derived data
   // ---------------------------------------------------------------------------
   const airportByIata = useMemo(() => new Map(airports.map((a) => [a.iata_code, a])), [airports]);
+  // the latest airports, for code that runs after a wait (opening a career checks the cloud first, and the
+  // full airport list can arrive meanwhile: flights linked to the small built-in list had no runways)
+  const airportByIataRef = useRef(airportByIata);
+  airportByIataRef.current = airportByIata;
   const mapTraffic = useMemo(() => (shownAiTraffic && friendsFlag && friendsLayer ? withFriends(shownAiTraffic, friendAirlines, airportByIata) : shownAiTraffic), [shownAiTraffic, friendsFlag, friendsLayer, friendAirlines, airportByIata]);
   const econById = useMemo(() => computeNetworkEconomics({ hubs, schedule, fleet }), [hubs, schedule, fleet]);
   const canAfford = (cost: number) => gameMode === 'sandbox' || cash >= cost;
@@ -638,6 +642,7 @@ export default function App() {
         let parsed = parseOurAirportsCsvFiles(apText, rwyText ?? undefined, network ? airlineAirportPositions(network) : undefined);
         if (network) parsed = applyNetworkWeights(parsed, network);
         if (parsed.length > 500) {
+          rememberRunways(parsed);
           clearFlightGeometryCache();
           setAirports(parsed);
           runwayAirportsRef.current = new Map(parsed.map((a) => [a.iata_code, a]));
@@ -996,7 +1001,7 @@ export default function App() {
 
   const loadCareer = (raw: SaveGameState) => {
     setTourOpen(false);
-    const s = hydrateSave(raw, airportByIata);
+    const s = hydrateSave(raw, airportByIataRef.current);
     setActiveSaveId(s.saveId);
     setAirlineName(s.airlineName);
     // a career saved before liveries (or with none yet) starts in the standard livery; one the player made plain white stays so
