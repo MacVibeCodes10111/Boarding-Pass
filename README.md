@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 3.0.1. Free to play. See [Credits and licences](#credits-and-licences).
+Version 3.0.2. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -20,6 +20,11 @@ Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 3.0.2:
+
+- **Signed in on one device at a time.** Signing in on a new device signs your account out of the old one; your careers stay on it. Sign in there again to switch back.
+- **No more doubled careers.** If a career was played on two devices before they synced, the game asks which version to keep instead of adding an "(other copy)" career.
 
 Version 3.0.1:
 
