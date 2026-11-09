@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 3.0.2. Free to play. See [Credits and licences](#credits-and-licences).
+Version 3.0.3. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -20,6 +20,11 @@ Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 3.0.3:
+
+- **Neo mask:** a new switch in the livery editor (under Parts) paints the dark "raccoon mask" round the cockpit windows on the A319neo, A320neo, A321neo, A321LR and A321XLR.
+- **Real runways on the website and phones.** Opening a career just as the game finished loading could send its flights to made-up runways, lining up across the airport instead of on the real runways.
 
 Version 3.0.2:
 
