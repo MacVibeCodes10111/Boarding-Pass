@@ -11,6 +11,9 @@ import {
   USERNAME_RULE,
   ageStatus,
   cloudOverview,
+  cloudConflicts,
+  onSignedOutElsewhere,
+  resolveConflict,
   currentUser,
   deleteAccount,
   finishDesktopSignIn,
@@ -36,11 +39,13 @@ import {
   syncNow,
   validUsername,
   type AgeStatus,
+  type CloudConflict,
   type CloudOverview,
   type CloudUser,
   type SyncReport,
 } from '../game/cloud';
 import { readSaveSlots } from '../game/saves';
+import { formatMoneyM } from '../game/time';
 import type { SaveGameState } from '../game/types';
 import { Icon } from '../ui/icons';
 import { Button, C, DISPLAY, ModalShell, Segmented, inputStyle, labelStyle } from '../ui/kit';
@@ -64,6 +69,7 @@ export function CloudHost(props: {
   toast: (message: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [conflict, setConflict] = useState<CloudConflict | null>(null);
   const latest = useRef(props);
   latest.current = props;
 
@@ -79,10 +85,7 @@ export function CloudHost(props: {
         latest.current.onSlotsChanged();
         latest.current.toast(r.received.length === 1 ? `${r.received[0]} arrived from your other device` : `${r.received.length} careers arrived from your other devices`);
       }
-      if (r.kept.length) {
-        latest.current.onSlotsChanged();
-        latest.current.toast(`${r.kept[0]} was played on two devices at once. Both are safe: the other version is on your home screen as “${r.kept[0]} (other copy)”.`);
-      }
+      setConflict(cloudConflicts()[0] ?? null);
       if (r.waiting.length && latest.current.openSaveId)
         latest.current.toast(`A newer copy of ${r.waiting[0]} was saved on another device. Go to the home screen to load it.`);
       if (r.problem && !quiet) latest.current.toast(r.problem);
@@ -121,6 +124,12 @@ export function CloudHost(props: {
         });
     }
 
+    const offElsewhere = onSignedOutElsewhere(() => {
+      setConflict(null);
+      latest.current.toast('You signed in on another device, so you were signed out here. Your careers stay on this device.');
+      announceChange();
+    });
+
     const timer = window.setInterval(() => void run(), SYNC_EVERY_MS);
     const onVis = () => void run();
     document.addEventListener('visibilitychange', onVis);
@@ -131,10 +140,62 @@ export function CloudHost(props: {
       document.removeEventListener('visibilitychange', onVis);
       window.removeEventListener(OPEN_EVENT, onOpen);
       unlisten?.();
+      offElsewhere();
     };
   }, []);
 
-  return open ? <CloudModal onClose={() => setOpen(false)} openSaveId={props.openSaveId} onSlotsChanged={props.onSlotsChanged} /> : null;
+  const settled = () => {
+    latest.current.onSlotsChanged();
+    setConflict(cloudConflicts()[0] ?? null);
+    void syncNow(latest.current.openSaveId).then(() => announceChange());
+  };
+
+  return (
+    <>
+      {open && <CloudModal onClose={() => setOpen(false)} openSaveId={props.openSaveId} onSlotsChanged={props.onSlotsChanged} />}
+      {conflict && !open && conflict.saveId !== props.openSaveId && <ConflictModal conflict={conflict} onDone={settled} onLater={() => setConflict(null)} />}
+    </>
+  );
+}
+
+/** Which version of a career to keep, when it changed on two devices (v3.0.2). */
+function ConflictModal(props: { conflict: CloudConflict; onDone: () => void; onLater: () => void }) {
+  const k = props.conflict;
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const pick = (keep: 'here' | 'cloud') => {
+    setBusy(true);
+    setError('');
+    resolveConflict(k.saveId, keep)
+      .then(props.onDone)
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setBusy(false));
+  };
+  const card = (title: string, s: SaveGameState, rev: number, keep: 'here' | 'cloud') => (
+    <div style={{ display: 'grid', gap: 6, padding: 12, borderRadius: 12, background: C.panel, border: `1px solid ${C.line}` }}>
+      <div style={{ fontWeight: 700, fontSize: 14 }}>{title}</div>
+      <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.45 }}>
+        Saved {ago(rev)} · Day {s.simDay} · {formatMoneyM(s.cash)} · {s.fleet.length} aircraft
+      </div>
+      <Button variant={keep === 'cloud' ? 'primary' : undefined} disabled={busy} onClick={() => pick(keep)}>
+        Keep this one
+      </Button>
+    </div>
+  );
+  return (
+    <ModalShell onClose={props.onLater} maxWidth={440} label="Pick which version to keep">
+      <div style={{ display: 'grid', gap: 10, padding: '4px 4px 2px' }}>
+        <h2 style={{ fontFamily: DISPLAY, fontSize: 24, fontWeight: 700, margin: 0 }}>Which {k.name}?</h2>
+        <p style={{ fontSize: 13.5, color: C.muted, margin: 0, lineHeight: 1.45 }}>
+          This career was played here and on another device since they last synced. Pick the version to carry on with; the other one is removed.
+        </p>
+        {card(`From ${k.fromName || 'your other device'}`, k.cloud, k.cloudRev, 'cloud')}
+        {card('On this device', k.here, Number(k.here.rev ?? 0), 'here')}
+        {error && <div style={{ fontSize: 13, color: C.red }}>{error}</div>}
+        <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>Not sure? Close this and you’ll be asked again; this career won’t sync until you pick.</p>
+      </div>
+    </ModalShell>
+  );
 }
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];

@@ -10,7 +10,7 @@ vi.stubGlobal('localStorage', {
 
 const { MAX_SAVE_SLOTS, hasRoomForCareer, readSaveSlots, readSaveFileText, upsertSaveSlot, writeSaveSlots } = await import('./saves');
 const { protectSave } = await import('./saveCrypt');
-const { recordAge, storeIncoming } = await import('./cloud');
+const { cloudConflicts, preferThisCopy, recordAge, resolveConflict, storeIncoming } = await import('./cloud');
 const { MAX_CATCH_UP_GAME_MIN, advanceEconomy, liveTickGameMinutes } = await import('./clock');
 import type { SaveGameState } from './types';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -101,66 +101,76 @@ describe('cloud copies arriving on this device', () => {
     expect(acks).toEqual([200]);
   });
 
-  it('keeps the other device’s progress when an older copy was opened here', async () => {
+  it('asks which to keep when an older copy was opened here, and changes nothing until then', async () => {
     const opened = 5_000_000; // opening the old copy gave it a new, higher revision
     writeSaveSlots([career('A', opened)]);
     setSynced('A', 100);
     const { c, acks } = server();
     const r = await storeIncoming(c, row('A', 200), null);
-    expect(r).toMatchObject({ kind: 'had', kept: true });
-    const copy = readSaveSlots().find((s) => s.saveId === 'A-copy');
-    expect(copy?.rev).toBe(200);
-    expect(copy?.airlineName).toBe('Airline A (other copy)');
-    expect(readSaveSlots().find((s) => s.saveId === 'A')?.rev).toBe(opened);
-    expect(acks).toEqual([200]);
+    expect(r.kind).toBe('conflict');
+    expect(ids()).toEqual(['A']); // no second career
+    expect(readSaveSlots()[0].rev).toBe(opened);
+    expect(acks).toEqual([]); // not delivered: it stays in the cloud and this device doesn't upload over it
+    expect(cloudConflicts().map((k) => [k.saveId, k.cloudRev])).toEqual([['A', 200]]);
   });
 
-  it('keeps the other device’s progress on a device that has just signed back in', async () => {
+  it('asks on a device that has just signed back in', async () => {
     writeSaveSlots([career('A', 5_000_000)]); // nothing recorded as synced
     const r = await storeIncoming(server().c, row('A', 200), null);
-    expect(r).toMatchObject({ kind: 'had', kept: true });
-    expect(readSaveSlots().find((s) => s.saveId === 'A-copy')?.rev).toBe(200);
+    expect(r.kind).toBe('conflict');
+    expect(ids()).toEqual(['A']);
   });
 
-  it('adds no copy when both devices already have the same version', async () => {
+  it('nothing to ask when both devices already have the same version', async () => {
     writeSaveSlots([career('A', 200)]);
     setSynced('A', 100);
     const r = await storeIncoming(server().c, row('A', 200), null);
-    expect(r).toMatchObject({ kind: 'had', kept: false });
-    expect(ids()).toEqual(['A']);
+    expect(r.kind).toBe('had');
+    expect(cloudConflicts()).toEqual([]);
   });
 
-  it('still uploads this device’s version after keeping the other one', async () => {
-    writeSaveSlots([career('A', 5_000_000)]);
+  it('keeping the cloud’s version replaces this one, with no copy left over', async () => {
+    writeSaveSlots([career('A', 5_000_000, 'Mine')]);
     setSynced('A', 100);
-    await storeIncoming(server().c, row('A', 200), null);
-    expect(JSON.parse(mem.get(SYNCED)!).A).toBe(200); // below 5,000,000, so it still counts as unsent
+    const { c, acks } = server();
+    await storeIncoming(c, row('A', 200, 'Theirs'), null);
+    await resolveConflict('A', 'cloud', c);
+    expect(readSaveSlots().map((s) => [s.saveId, s.rev, s.airlineName])).toEqual([['A', 200, 'Theirs']]);
+    expect(acks).toEqual([200]);
+    expect(cloudConflicts()).toEqual([]);
   });
 
-  it('refreshes one copy instead of adding more each time', async () => {
-    writeSaveSlots([career('A', 5_000_000)]);
+  it('keeping this device’s version leaves it newer than the cloud’s, so it uploads', async () => {
+    // Two hours played here, and the cloud's copy is newer still (or the other device's clock is ahead)
+    writeSaveSlots([career('A', 100 + 2 * 3_600_000, 'Mine')]);
     setSynced('A', 100);
-    await storeIncoming(server().c, row('A', 200), null);
-    await storeIncoming(server().c, row('A', 300), null);
-    expect(ids().filter((id) => id === 'A-copy')).toHaveLength(1);
-    expect(readSaveSlots().find((s) => s.saveId === 'A-copy')?.rev).toBe(300);
+    const { c, acks } = server();
+    await storeIncoming(c, row('A', 100 + 3 * 3_600_000, 'Theirs'), null);
+    expect(cloudConflicts()).toHaveLength(1);
+    await resolveConflict('A', 'here', c);
+    const [a] = readSaveSlots();
+    expect(a.airlineName).toBe('Mine');
+    expect(a.rev).toBe(100 + 3 * 3_600_000 + 1);
+    expect(JSON.parse(mem.get(SYNCED)!).A).toBe(100 + 3 * 3_600_000); // below its own revision: still to upload
+    expect(acks[acks.length - 1]).toBe(100 + 3 * 3_600_000);
   });
 
-  it('keeps long unsent play here as a copy when a newer copy arrives', async () => {
-    const twoHours = 2 * 3_600_000;
-    writeSaveSlots([career('A', 100 + twoHours)]);
-    setSynced('A', 100);
-    const r = await storeIncoming(server().c, row('A', 100 + 3 * 3_600_000), null);
-    expect(r).toMatchObject({ kind: 'stored', kept: true });
-    expect(readSaveSlots().find((s) => s.saveId === 'A-copy')?.rev).toBe(100 + twoHours);
-  });
-
-  it('adds no copy for the last moments before the game closed', async () => {
+  it('a newer copy replaces the last moments before the game closed, without asking', async () => {
     writeSaveSlots([career('A', 100 + 60_000)]);
     setSynced('A', 100);
     const r = await storeIncoming(server().c, row('A', 100 + 3_600_000), null);
-    expect(r).toMatchObject({ kind: 'stored', kept: false });
+    expect(r.kind).toBe('stored');
     expect(ids()).toEqual(['A']);
+  });
+
+  it('opening this device’s copy on purpose sets the cloud’s newer one aside', async () => {
+    writeSaveSlots([career('A', 100)]);
+    const { acks } = server();
+    const mine = await preferThisCopy(career('A', 100), 900);
+    expect(mine.rev).toBe(901);
+    expect(readSaveSlots()[0].rev).toBe(901);
+    expect(JSON.parse(mem.get(SYNCED)!).A).toBe(900);
+    expect(acks).toEqual([]); // signed out in tests: told to the server on the next sync instead
   });
 
   it('never replaces the career being played, and doesn’t mark it delivered', async () => {

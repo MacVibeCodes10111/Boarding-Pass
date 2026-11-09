@@ -68,6 +68,8 @@ To go live: run `2026-11-07-alliances.sql` on the live project, republish the le
 
 Since `supabase/2026-11-08-market-alliances.sql` the marketplace works only inside an alliance: listing needs one (`no_alliance`), browsing shows only the airline's own alliance, buying checks the seller is in it (`not_ally`), and leaving an alliance (or it ending) takes the airline's open listings down, so its game takes the aircraft back.
 
+Since `supabase/2026-11-08-one-device.sql` an account is signed in on one device at a time: `private.cloud_gate()` (which every player call passes) keeps the most recent sign-in's session in `private.active_sessions` and refuses older ones with code `P0410`; the game then signs out on that device. The admin site never calls the gate, so signing in there doesn't sign the game out.
+
 ## Reports, moderation and the admin site
 
 `supabase/2026-11-07-admin.sql`, the Worker's `src/admin.ts`, and the site in `admin/` (`npm run admin:dev` on port 1430, `npm run admin:build` to `admin/dist`). Players report an airline, an alliance or a logo (`report_make`, 10 a day, behind the `reports` flag) and get a plain notice, once, when a moderator changes something of theirs (`notices_mine`; never who did it).

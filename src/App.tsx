@@ -121,7 +121,7 @@ import { applyMarket, cancelListing, claimMarket, listAircraft, loadMarketMine, 
 import { NoticesHost } from './components/ReportButton';
 import { FriendAirlineHost } from './components/FriendAirline';
 import { IS_DEV } from './game/channel';
-import { airlineFor, cloudDeleteSave, downloadCareer, mightBeSignedIn, newerCloudCopy, nextRev, onCloudChange, publishIfDue } from './game/cloud';
+import { airlineFor, cloudDeleteSave, downloadCareer, mightBeSignedIn, newerCloudCopy, nextRev, onCloudChange, preferThisCopy, publishIfDue } from './game/cloud';
 import { featureOn, onFeaturesChange } from './game/features';
 import { friendsOnMap, onFriendsMapChange, refreshFriendsMap, setFriendsMapAirline, wantFriendsMap, withFriends, type FriendOnMap } from './game/friendsMap';
 import { RouteFromBar } from './components/RouteFromBar';
@@ -1080,7 +1080,7 @@ export default function App() {
     setGameAlert({
       title: 'A newer copy is in the cloud',
       message: `${sv.airlineName} was saved more recently on ${newer.fromName || 'another device'}.`,
-      detail: 'Download it to carry on from there. If you open the copy on this device instead, both are kept, as two separate careers.',
+      detail: 'Download it to carry on from there. If you open the copy on this device instead, it replaces the newer copy in the cloud.',
       severity: 'warning',
       confirmLabel: 'Download and open',
       onConfirm: () => {
@@ -1094,7 +1094,9 @@ export default function App() {
       },
       secondaryLabel: 'Open this copy',
       secondaryCloses: true,
-      onSecondary: () => loadCareer(sv),
+      onSecondary: () => {
+        preferThisCopy(sv, newer.rev).then(loadCareer, () => loadCareer(sv));
+      },
     });
   };
 
