@@ -49,12 +49,24 @@ export function serializeSave(state: SaveGameState): SaveGameState {
 }
 
 /** Re-links saved flights/aircraft to the current airport list and catalog. */
-/** Fares from older saves above five times the market (which used to sell anyway) come down to it. */
+/**
+ * Fares from older saves above five times the market (which used to sell anyway) come down to it.
+ * A fare that's missing or isn't a number becomes the market fare: one bad fare made the flight's
+ * profit, and then the airline's cash, "not a number" for good.
+ */
 function capFares(fl: ScheduledFlight): ScheduledFlight['fares'] {
-  if (!fl.fares || !(fl.distanceNm > 0)) return fl.fares;
+  if (!(fl.distanceNm > 0)) return fl.fares;
   const ref = getRouteDemandAndFares(fl.origin, fl.destination, fl.distanceNm).refFares;
-  const c = (v: number | undefined, r: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(v, Math.round(r * MAX_FARE_MULT)) : v);
-  return { ...fl.fares, econ: c(fl.fares.econ, ref.econ)!, prem: c(fl.fares.prem, ref.prem)!, bus: c(fl.fares.bus, ref.bus)!, first: c(fl.fares.first, ref.first)!, cargoPerTon: c(fl.fares.cargoPerTon, ref.cargoPerTon) };
+  const old = fl.fares ?? ({} as Partial<ScheduledFlight['fares']>);
+  const c = (v: number | undefined, r: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(v, Math.round(r * MAX_FARE_MULT))) : r);
+  return { ...old, econ: c(old.econ, ref.econ), prem: c(old.prem, ref.prem), bus: c(old.bus, ref.bus), first: c(old.first, ref.first), cargoPerTon: old.cargoPerTon === undefined ? undefined : c(old.cargoPerTon, ref.cargoPerTon) };
+}
+
+const CABIN_KEYS = ['econSeats', 'premSeats', 'busSeats', 'firstSeats', 'econPitchIn', 'premPitchIn', 'busPitchIn', 'firstPitchIn'] as const;
+/** The saved cabin if every figure in it is a real number, else the type's usual one. */
+function cabinFrom(cabin: PlayerAircraft['cabin'] | undefined, model: PlayerAircraft['model']): PlayerAircraft['cabin'] {
+  const ok = cabin && CABIN_KEYS.every((k) => typeof cabin[k] === 'number' && Number.isFinite(cabin[k]) && cabin[k] >= 0);
+  return ok ? cabin : getDefaultCabinForModel(model);
 }
 
 const TRADE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -63,7 +75,7 @@ export function hydrateSave(raw: SaveGameState, airportByIata: Map<string, Airpo
   const fleet: PlayerAircraft[] = (raw.fleet ?? []).map((ac) => {
     const model = AIRCRAFT_BY_ID.get(ac.model?.id) ?? ac.model;
     const { trade, ...rest } = ac;
-    return { ...rest, model, cabin: ac.cabin ?? getDefaultCabinForModel(model), ...(typeof trade === 'string' && TRADE_ID.test(trade) ? { trade } : {}) };
+    return { ...rest, model, cabin: cabinFrom(ac.cabin, model), ...(typeof trade === 'string' && TRADE_ID.test(trade) ? { trade } : {}) };
   });
   const tails = new Set(fleet.map((a) => a.tailNumber));
   const saved = raw.savedAirports ?? {};

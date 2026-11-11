@@ -522,32 +522,38 @@ export function reviewProgramme(
   const stagesMet = [...career.stagesMet];
   const since: Record<string, number> = { ...(career.goalsSince ?? {}) };
   let sinceChanged = false;
-  for (const g of GOALS) {
-    if (goalsMet.includes(g.id)) continue;
-    if (!goalDone(g, metrics)) {
+  // Stage by stage: a stage's milestones pay only once every stage before it is complete (the Bank
+  // says "Opens when stage N is complete. Progress already counts"). Before v3.0.4 any milestone
+  // paid as soon as it was met, so a new airline could lease a hundred small aircraft for a day and
+  // collect the stage 5 grants. Progress on a stage that isn't open still counts, its day's wait included.
+  for (const st of STAGES) {
+    const open = STAGES.slice(0, st.stage - 1).every((s) => stagesMet.includes(s.stage));
+    for (const g of goalsOfStage(st.stage)) {
+      if (goalsMet.includes(g.id)) continue;
+      if (!goalDone(g, metrics)) {
+        if (g.id in since) {
+          delete since[g.id];
+          sinceChanged = true;
+        }
+        continue;
+      }
+      if (g.stage > 1) {
+        if (!(g.id in since)) {
+          since[g.id] = ctx.econMin;
+          sinceChanged = true;
+        }
+        if (ctx.econMin - since[g.id] < GOAL_HOLD_MIN) continue;
+      }
+      if (!open) continue;
       if (g.id in since) {
         delete since[g.id];
         sinceChanged = true;
       }
-      continue;
+      goalsMet.push(g.id);
+      letters.push(milestoneLetter(g, metrics, ctx.airlineName, ctx.econMin));
     }
-    if (g.stage > 1) {
-      if (!(g.id in since)) {
-        since[g.id] = ctx.econMin;
-        sinceChanged = true;
-      }
-      if (ctx.econMin - since[g.id] < GOAL_HOLD_MIN) continue;
-    }
-    if (g.id in since) {
-      delete since[g.id];
-      sinceChanged = true;
-    }
-    goalsMet.push(g.id);
-    letters.push(milestoneLetter(g, metrics, ctx.airlineName, ctx.econMin));
-  }
-  for (const st of STAGES) {
     if (stagesMet.includes(st.stage)) continue;
-    if (!goalsOfStage(st.stage).every((g) => goalsMet.includes(g.id))) continue;
+    if (!open || !goalsOfStage(st.stage).every((g) => goalsMet.includes(g.id))) continue;
     stagesMet.push(st.stage);
     const after = { ...career, goalsMet, stagesMet };
     letters.push(stageLetter(st, ctx.airlineName, ctx.econMin, creditLine(after, ctx.fleet)));

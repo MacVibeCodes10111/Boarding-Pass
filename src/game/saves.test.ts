@@ -8,7 +8,7 @@ vi.stubGlobal('localStorage', {
   removeItem: (k: string) => void mem.delete(k),
 });
 
-const { MAX_SAVE_SLOTS, hasRoomForCareer, readSaveSlots, readSaveFileText, upsertSaveSlot, writeSaveSlots } = await import('./saves');
+const { MAX_SAVE_SLOTS, hasRoomForCareer, hydrateSave, readSaveSlots, readSaveFileText, upsertSaveSlot, writeSaveSlots } = await import('./saves');
 const { protectSave } = await import('./saveCrypt');
 const { cloudConflicts, preferThisCopy, recordAge, resolveConflict, storeIncoming } = await import('./cloud');
 const { MAX_CATCH_UP_GAME_MIN, advanceEconomy, liveTickGameMinutes } = await import('./clock');
@@ -188,6 +188,46 @@ describe('cloud copies arriving on this device', () => {
     const r = await storeIncoming(server().c, { ...row('A', 200), data: 'BP2.x.y.AAAA' }, null);
     expect(r.kind).toBe('dropped');
     expect(readSaveSlots()[0].rev).toBe(100);
+  });
+});
+
+describe('a save with bad figures in it', () => {
+  it('gets the usual cabin and the market fares, so its money stays a number', async () => {
+    const { BUILTIN_AIRPORTS } = await import('./builtinData');
+    const { computeNetworkEconomics } = await import('./economics');
+    const ap = (c: string) => BUILTIN_AIRPORTS.find((a) => a.iata_code === c)!;
+    const raw = {
+      ...career('A', 1),
+      hubs: ['JFK'],
+      fleet: [{ tailNumber: 'N1', model: { id: 'a320neo' }, acquisition: 'owned', hubIata: 'JFK', cabin: { econ: 150 } }],
+      schedule: [{ id: 'F1', flightNumber: 'XX1', tailNumber: 'N1', origin: ap('JFK'), destination: ap('ORD'), depTimeMin: 600, arrTimeMin: 740, distanceNm: 640, blockTimeMin: 140, daysOfWeek: [true, true, true, true, true, true, true], fares: { econ: 150, prem: 'lots', first: -5 } }],
+    } as unknown as SaveGameState;
+    const s = hydrateSave(raw, new Map(BUILTIN_AIRPORTS.map((a) => [a.iata_code, a])));
+    expect(s.fleet[0].cabin.econSeats).toBeGreaterThan(100);
+    const f = s.schedule[0].fares;
+    expect(f.econ).toBe(150);
+    expect(f.prem).toBeGreaterThan(0);
+    expect(f.bus).toBeGreaterThan(0);
+    expect(f.first).toBe(0);
+    const e = computeNetworkEconomics({ hubs: s.hubs!, schedule: s.schedule, fleet: s.fleet }).get('F1')!;
+    expect(Number.isFinite(e.profit)).toBe(true);
+  });
+
+  it('leaves a good cabin and good fares alone', async () => {
+    const { AIRCRAFT_BY_ID } = await import('./aircraftCatalog');
+    const { BUILTIN_AIRPORTS } = await import('./builtinData');
+    const { getDefaultCabinForModel } = await import('./economics');
+    const ap = (c: string) => BUILTIN_AIRPORTS.find((a) => a.iata_code === c)!;
+    const cabin = { ...getDefaultCabinForModel(AIRCRAFT_BY_ID.get('a320neo')!), econSeats: 120 };
+    const fares = { econ: 99, prem: 180, bus: 400, first: 700, cargoPerTon: 300 };
+    const raw = {
+      ...career('A', 1),
+      fleet: [{ tailNumber: 'N1', model: { id: 'a320neo' }, acquisition: 'owned', hubIata: 'JFK', cabin }],
+      schedule: [{ id: 'F1', flightNumber: 'XX1', tailNumber: 'N1', origin: ap('JFK'), destination: ap('ORD'), depTimeMin: 600, arrTimeMin: 740, distanceNm: 640, blockTimeMin: 140, fares }],
+    } as unknown as SaveGameState;
+    const s = hydrateSave(raw, new Map(BUILTIN_AIRPORTS.map((a) => [a.iata_code, a])));
+    expect(s.fleet[0].cabin).toEqual(cabin);
+    expect(s.schedule[0].fares).toEqual(fares);
   });
 });
 

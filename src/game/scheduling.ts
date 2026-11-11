@@ -129,6 +129,28 @@ export function getAircraftCircuitStatus(
     };
   }
 
+  // Legs sorted by time of day are a loop; the aircraft's day starts somewhere in it. A day that
+  // runs past midnight UTC (22:00 out, 00:35 on) starts at the late leg, not at 00:35: pick the
+  // start that leaves the chain unbroken, then one at the aircraft's base, then the longest wait.
+  if (sortedFlights.length > 1) {
+    const n = sortedFlights.length;
+    let best = 0;
+    let bestScore: [number, number, number] = [Infinity, 0, 0];
+    for (let k = 0; k < n; k++) {
+      let breaks = 0;
+      for (let i = 1; i < n; i++) if (sortedFlights[(k + i - 1) % n].destination.iata_code !== sortedFlights[(k + i) % n].origin.iata_code) breaks++;
+      const first = sortedFlights[k];
+      const prev = sortedFlights[(k + n - 1) % n];
+      const wait = (((first.depTimeMin - prev.depTimeMin - prev.blockTimeMin) % MIN_PER_DAY) + MIN_PER_DAY) % MIN_PER_DAY;
+      const score: [number, number, number] = [breaks, first.origin.iata_code === aircraft.hubIata ? 0 : 1, -wait];
+      if (score[0] < bestScore[0] || (score[0] === bestScore[0] && (score[1] < bestScore[1] || (score[1] === bestScore[1] && score[2] < bestScore[2])))) {
+        best = k;
+        bestScore = score;
+      }
+    }
+    if (best) sortedFlights.push(...sortedFlights.splice(0, best));
+  }
+
   const startIata = sortedFlights[0].origin.iata_code;
   const lastFlight = sortedFlights[sortedFlights.length - 1];
   const currentEndIata = lastFlight.destination.iata_code;
@@ -303,28 +325,64 @@ export function findScheduleConflict(
         destIata: cl.destIata as string,
         daysOfWeek: daysOrAll(cl.daysOfWeek),
       })),
-  ].sort((a, b) => a.depTimeMin - b.depTimeMin);
+  ];
 
-  for (let dayIdx = 0; dayIdx < 7; dayIdx++) {
-    const dayLegs = combined.filter((l) => l.daysOfWeek[dayIdx]);
-    for (let i = 1; i < dayLegs.length; i++) {
-      const prev = dayLegs[i - 1];
-      const curr = dayLegs[i];
-      if (prev.destIata !== curr.originIata) {
-        return `Spatial Continuity Error (${DAY_NAMES_SHORT[dayIdx]}): Aircraft lands at ${prev.destIata} on ${prev.label}, so ${curr.label} must depart from ${prev.destIata} (cannot teleport to ${curr.originIata}).`;
-      }
-    }
+  const gap = findContinuityBreak(combined);
+  if (gap) {
+    const { prev, curr } = gap;
+    return `Spatial Continuity Error (${DAY_NAMES_SHORT[gap.dayIdx]}): Aircraft lands at ${prev.destIata} on ${prev.label}, so ${curr.label} must depart from ${prev.destIata} (cannot teleport to ${curr.originIata}).`;
   }
   return null;
 }
 
+interface ChainLeg {
+  label: string;
+  depTimeMin: number;
+  originIata: string;
+  destIata: string;
+  daysOfWeek: WeekDays;
+}
+
+/**
+ * The first place an aircraft's legs don't join up, or null. Two legs on the
+ * same UTC day must join: the second leaves from where the first landed. The
+ * one jump allowed is an unfinished chain's: once a day, back to where the
+ * day starts. That is usually overnight, between the last leg of a day and
+ * the first of the next; for a day that runs past midnight UTC (22:00 out,
+ * 00:35 on) it falls in the middle of the UTC day instead, which used to be
+ * refused, so such a chain could never be built.
+ */
+function findContinuityBreak(legs: ChainLeg[]): { dayIdx: number; prev: ChainLeg; curr: ChainLeg } | null {
+  const flown = legs
+    .flatMap((leg) => leg.daysOfWeek.flatMap((on, d) => (on ? [{ at: d * MIN_PER_DAY + leg.depTimeMin, d, leg }] : [])))
+    .sort((a, b) => a.at - b.at);
+  const n = flown.length;
+  if (n < 2) return null;
+  const breaks: { at: number; d: number; sameDay: boolean; prev: ChainLeg; curr: ChainLeg }[] = [];
+  for (let i = 0; i < n; i++) {
+    const prev = flown[i];
+    const curr = flown[(i + 1) % n];
+    if (prev.leg.destIata !== curr.leg.originIata) breaks.push({ at: curr.at, d: curr.d, sameDay: i + 1 < n && prev.d === curr.d, prev: prev.leg, curr: curr.leg });
+  }
+  const sameDay = breaks.filter((b) => b.sameDay);
+  if (!sameDay.length) return null;
+  const home = breaks[0].curr.originIata;
+  const onceADay = breaks.every((b, i) => {
+    const next = breaks[(i + 1) % breaks.length];
+    const apart = (((next.at - b.at) % MIN_PER_WEEK) + MIN_PER_WEEK) % MIN_PER_WEEK || MIN_PER_WEEK;
+    return b.curr.originIata === home && apart >= MIN_PER_DAY;
+  });
+  if (onceADay) return null;
+  return { dayIdx: sameDay[0].d, prev: sameDay[0].prev, curr: sameDay[0].curr };
+}
+
 /** True when an aircraft's flights don't join up (it would have to jump between airports on a day). */
 export function hasContinuityBreak(flights: ScheduledFlight[]): boolean {
-  for (let d = 0; d < 7; d++) {
-    const day = flights.filter((f) => daysOrAll(f.daysOfWeek)[d]).sort((a, b) => a.depTimeMin - b.depTimeMin);
-    for (let i = 1; i < day.length; i++) if (day[i - 1].destination.iata_code !== day[i].origin.iata_code) return true;
-  }
-  return false;
+  return (
+    findContinuityBreak(
+      flights.map((f) => ({ label: f.flightNumber, depTimeMin: f.depTimeMin, originIata: f.origin.iata_code, destIata: f.destination.iata_code, daysOfWeek: daysOrAll(f.daysOfWeek) }))
+    ) !== null
+  );
 }
 
 /**
