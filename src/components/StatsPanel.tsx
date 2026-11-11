@@ -9,7 +9,7 @@ import type { WeekLedger } from '../game/clock';
 import type { FlightEconomics } from '../game/economics';
 import { computeAirlineStats, type AirlineStats, type RouteStat, type Slice } from '../game/stats';
 import type { Airport, PlayerAircraft, ScheduledFlight } from '../game/types';
-import { Button, C, EmptyState, Segmented, SidePanel } from '../ui/kit';
+import { Button, C, EmptyState, Segmented, SidePanel, well } from '../ui/kit';
 import { AIRCRAFT_BY_ID } from '../game/aircraftCatalog';
 import { AIRCRAFT_PHOTOS } from '../game/aircraftPhotos';
 import { AircraftHero, LiveryContext } from './AircraftPhoto';
@@ -37,7 +37,6 @@ const signedUsd = (v: number) => (v > 0 ? `+${usd(v)}` : usd(v));
 /** Big counts: 14,419,000 → 14.4M. */
 /** Up to 6 digits as they are, then 1.39M: big airlines' totals stay inside their boxes. */
 const compact = (n: number) => (Math.abs(n) >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 1 : 2)}M` : num(n));
-const big = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e4 ? `${Math.round(n / 1e3)}k` : num(n));
 
 /** Width of an element in CSS pixels, so charts draw at 1:1 (text never scales). */
 function useWidth<T extends HTMLElement>(): [React.MutableRefObject<T | null>, number] {
@@ -68,10 +67,10 @@ function Card({ title, note, children, table, wide }: { title: string; note?: st
   return (
     <section
       aria-label={title}
-      style={{ gridColumn: wide ? '1 / -1' : undefined, background: C.panelAlt, border: `1px solid ${C.line}`, borderRadius: 10, padding: '12px 14px 14px', minWidth: 0 }}
+      style={{ gridColumn: wide ? '1 / -1' : undefined, background: well(), borderRadius: 14, padding: '14px 16px 16px', minWidth: 0 }}
     >
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
-        <h3 style={{ margin: 0, fontSize: 13.5, fontWeight: 650, color: C.text }}>{title}</h3>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
+        <h3 style={{ margin: 0, fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.muted }}>{title}</h3>
         {note && <span style={{ fontSize: 11.5, color: C.muted }}>{note}</span>}
         <span style={{ flex: 1 }} />
         {table && (
@@ -147,8 +146,8 @@ function Hover({ at, children }: { at: { x: string; y: string } | null; children
 
 function Tile({ label, value, sub }: { label: string; value: React.ReactNode; sub?: React.ReactNode }) {
   return (
-    <div style={{ background: C.panelAlt, border: `1px solid ${C.line}`, borderRadius: 10, padding: '10px 12px', minWidth: 0 }}>
-      <div style={{ fontSize: 11.5, color: C.muted }}>{label}</div>
+    <div style={{ background: well(), borderRadius: 14, padding: '12px 14px', minWidth: 0 }}>
+      <div style={{ fontSize: 12, color: C.muted }}>{label}</div>
       <div className="num" style={{ fontSize: 19, fontWeight: 650, color: C.text, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {value}
       </div>
@@ -375,7 +374,7 @@ function UtilisationBars({ rows }: { rows: AirlineStats['utilisation'] }) {
             <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               <span style={{ color: C.text, fontWeight: 600 }}>{u.tail}</span> <span style={{ color: C.muted }}>{u.model}</span>
             </span>
-            <div style={{ height: 12, background: C.bg, borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{ height: 12, background: well(), borderRadius: 4, overflow: 'hidden' }}>
               <div style={{ width: `${u.usedPct}%`, height: '100%', background: BAR, borderRadius: '0 4px 4px 0' }} />
             </div>
             <span className="num" style={{ textAlign: 'right', color: C.textSoft }}>
@@ -440,17 +439,11 @@ function LiveryCard({ fleet, onEdit }: { fleet: PlayerAircraft[]; onEdit: () => 
   const model = pick?.model ?? AIRCRAFT_BY_ID.get('a320neo');
   if (!model) return null;
   return (
-    <section aria-label="Livery" style={{ marginBottom: 12, borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.line}`, background: C.panelAlt }}>
+    <section aria-label="Livery" style={{ position: 'relative', marginBottom: 12, borderRadius: 14, overflow: 'hidden' }}>
       <AircraftHero model={model} tailNumber={pick?.tailNumber ?? ''} liveryIndex={pick?.livery} photoWidth="min(72%, 620px)" style={{ borderRadius: 0, aspectRatio: '4 / 1' }} />
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 14px', flexWrap: 'wrap' }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 650 }}>{ctx?.liveries.length ? 'Your livery' : 'Plain white for now'}</div>
-          <div style={{ fontSize: 12, color: C.muted }}>{ctx?.liveries.length ? 'On every aircraft you fly, here, in the fleet and on the map.' : 'Give your airline its own colours, tail and titles.'}</div>
-        </div>
-        <Button size="sm" variant="primary" onClick={onEdit}>
-          {ctx?.liveries.length ? 'Edit livery' : 'Design a livery'}
-        </Button>
-      </div>
+      <Button size="sm" onClick={onEdit} style={{ position: 'absolute', right: 10, bottom: 10 }}>
+        {ctx?.liveries.length ? 'Edit livery' : 'Design a livery'}
+      </Button>
     </section>
   );
 }
@@ -493,20 +486,17 @@ export function StatsPanel(props: {
 
   return (
     <SidePanel
-      title={`${props.airlineName} in numbers`}
-      subtitle="A scheduled week, and how the weeks have gone"
+      title="Overview"
       width={900}
       onClose={props.onClose}
-      actions={props.onLivery && <Button onClick={props.onLivery}>Livery</Button>}
     >
       {props.onLivery && <LiveryCard fleet={props.fleet} onEdit={props.onLivery} />}
       {st.departures === 0 ? (
         <EmptyState
-          title="Nothing to count yet"
-          body="Schedule your first flights and this page fills with your passengers, profits, fleet and network."
+          title="No flights yet"
           action={
             <Button variant="primary" onClick={props.onOpenAirports}>
-              Find an airport to fly to
+              Pick an airport
             </Button>
           }
         />
@@ -514,29 +504,28 @@ export function StatsPanel(props: {
         <div style={{ display: 'grid', gap: 12 }}>
           {/* Headline */}
           <div className="bp-tiles" style={{ display: 'grid', gridTemplateColumns: 'minmax(210px, 1.25fr) repeat(3, minmax(0, 1fr))', gap: 10 }}>
-            <div style={{ gridRow: 'span 2', background: C.panelAlt, border: `1px solid ${C.line}`, borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-              <div style={{ fontSize: 12, color: C.muted }}>Profit a week, as scheduled</div>
+            <div style={{ gridRow: 'span 2', background: well(), borderRadius: 14, padding: '14px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <div style={{ fontSize: 12, color: C.muted }}>Profit a week</div>
               <div className="num" style={{ fontSize: 34, fontWeight: 700, color: st.profit >= 0 ? C.green : C.red, letterSpacing: -0.5, marginTop: 2 }}>
                 {signedUsd(st.profit)}
               </div>
               <div className="num" style={{ fontSize: 12, color: C.textDim, marginTop: 6, lineHeight: 1.55 }}>
                 {usd(st.revenue)} revenue, {usd(st.cost)} costs
                 <br />
-                {props.sandbox ? 'Unlimited cash (sandbox)' : `${usd(props.cash)} in the bank`}
+                {props.sandbox ? 'Sandbox' : `${usd(props.cash)} cash`}
               </div>
             </div>
-            <Tile label="Passengers a week" value={num(st.pax)} sub={`${num(st.seats)} seats`} />
-            <Tile label="Load factor" value={`${st.loadFactorPct}%`} sub={`${big(st.paxNm)} of ${big(st.seatNm)} seat-nm filled`} />
+            <Tile label="Passengers a week" value={num(st.pax)} />
+            <Tile label="Load factor" value={`${st.loadFactorPct}%`} sub={`${num(st.seats)} seats`} />
             <Tile label="Departures a week" value={num(st.departures)} sub={`${num(st.blockHours)} block hours`} />
             <Tile label="Fleet" value={num(st.fleet)} sub={`${st.owned} owned, ${st.leased} leased`} />
             <Tile label="Network" value={`${num(st.routes)} route${st.routes === 1 ? "" : "s"}`} sub={`${st.destinations} airports, ${st.countries} countries`} />
-            <Tile label="Distance flown a week" value={`${num(st.nmFlown)} nm`} sub={`${(st.nmFlown / 21_639).toFixed(1)}× around the world`} />
+            <Tile label="Distance a week" value={`${num(st.nmFlown)} nm`} sub={`${(st.nmFlown / 21_639).toFixed(1)}× around the world`} />
           </div>
 
           <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Card
               title="Weekly results"
-              note={st.weekly.length <= 1 ? 'Bars build up as weeks close' : undefined}
               wide
               table={<DataTable head={['Week', 'Profit', 'Cash flow']} rows={st.weekly.map((w) => [`Week ${w.week}${w.partial ? ' (so far)' : ''}`, signedUsd(w.net), signedUsd(w.cashFlow)])} />}
             >
@@ -551,21 +540,15 @@ export function StatsPanel(props: {
                 />
               </div>
               <WeeklyChart weeks={st.weekly} metric={weekMetric} />
-              <div style={{ fontSize: 11.5, color: C.faint, marginTop: 6 }}>
-                {weekMetric === 'net'
-                  ? 'Profit: flights less leases and interest (repaying a loan itself isn’t a cost).'
-                  : 'Cash flow: every dollar in less every dollar out, including full loan instalments, loans drawn, purchases, sales and grants.'}{' '}
-                * this week so far.
-              </div>
             </Card>
 
-            <Card title="Fleet by aircraft family" table={sliceTable(st.fleetByFamily, 'Aircraft')}>
+            <Card title="Fleet" table={sliceTable(st.fleetByFamily, 'Aircraft')}>
               <Donut slices={st.fleetByFamily} unit="aircraft" centre="aircraft" />
             </Card>
-            <Card title="Departures by hub" note="a week" table={sliceTable(st.departuresByHub, 'Departures')}>
+            <Card title="Departures by hub" table={sliceTable(st.departuresByHub, 'Departures')}>
               <Donut slices={st.departuresByHub} unit="departures" centre="departures" />
             </Card>
-            <Card title="Seats by cabin" note="a week" table={sliceTable(st.seatsByCabin, 'Seats')}>
+            <Card title="Seats by cabin" table={sliceTable(st.seatsByCabin, 'Seats')}>
               <Donut slices={st.seatsByCabin} unit="seats" centre="seats" />
             </Card>
             <Card title="Routes by length" table={sliceTable(st.routesByLength, 'Routes')}>
@@ -573,8 +556,7 @@ export function StatsPanel(props: {
             </Card>
 
             <Card
-              title="Most profitable routes"
-              note="profit a week, both directions"
+              title="Best routes"
               table={<DataTable head={['Route', 'Profit a week', 'Passengers', 'Full']} rows={st.topRoutes.map((r) => [r.label, signedUsd(r.profit), num(r.pax), `${pct(r.pax, r.seats)}%`])} />}
             >
               <RouteBars routes={st.topRoutes} />
@@ -603,7 +585,7 @@ export function StatsPanel(props: {
                 <Record label="Best week" value={st.bestWeek ? signedUsd(st.bestWeek.net) : '–'} sub={st.bestWeek ? `week ${st.bestWeek.week}` : 'after your first full week'} />
                 <Record label="Reach" value={`${st.continents} continent${st.continents === 1 ? '' : 's'}`} sub={`${st.countries} countries`} />
               </div>
-              <div style={{ fontSize: 12, color: C.muted, margin: '16px 0 6px' }}>Where the money comes from</div>
+              <div style={{ fontSize: 12, color: C.muted, margin: '16px 0 6px' }}>Revenue</div>
               <SplitBar
                 parts={[
                   { label: 'Passengers', value: st.paxRevenue },
@@ -616,8 +598,8 @@ export function StatsPanel(props: {
             </Card>
 
             <Card
-              title="Aircraft utilisation"
-              note={`fleet average ${st.avgUtilisationPct}% of the week`}
+              title="Aircraft use"
+              note={`average ${st.avgUtilisationPct}%`}
               wide
               table={<DataTable head={['Aircraft', 'Type', 'In use', 'Hours a day']} rows={st.utilisation.map((u) => [u.tail, u.model, `${u.usedPct}%`, u.hoursPerDay])} />}
             >

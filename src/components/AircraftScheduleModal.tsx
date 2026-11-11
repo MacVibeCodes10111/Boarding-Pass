@@ -4,7 +4,7 @@ import { calcAircraftScheduleUsage, findScheduleConflict, flightsForTail, isFlig
 import { airportRestrictionFor, calcAircraftResaleUsd, getAircraftTierInfo } from '../game/tiers';
 import { MIN_PER_DAY, daysOrAll, formatClockShort, formatDurationHm, formatMoneyM, snapToFiveMin } from '../game/time';
 import type { Fares, PlayerAircraft, ScheduledFlight, WeekDays } from '../game/types';
-import { Button, C, DayPicker, ModalShell, NumberField, inputStyle, labelStyle } from '../ui/kit';
+import { Button, C, DayPicker, ModalShell, NumberField, SectionTitle, face, inputStyle, labelStyle, well } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { AircraftHero } from './AircraftPhoto';
 import { aircraftGateCode } from '../game/gateCode';
@@ -40,7 +40,6 @@ export function AircraftScheduleModal({
   playerHubs,
   fleet,
   initialSelectedFlightId,
-  radarIconUrl,
   onClose,
   onUpdateFlight,
   onDeleteFlight,
@@ -123,71 +122,62 @@ export function AircraftScheduleModal({
   const isCargo = aircraft.model.is_cargo;
 
   return (
-    <ModalShell onClose={onClose} closeButton={false}>
+    <ModalShell onClose={onClose}>
       <AircraftHero model={aircraft.model} tailNumber={aircraft.tailNumber} liveryIndex={aircraft.livery} style={{ marginBottom: 14 }} />
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 14, borderBottom: `1px solid ${C.line}`, marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {airlineLogo ? <img src={airlineLogo} alt="" style={{ width: 40, height: 40, borderRadius: 9, background: '#fff', padding: 3, objectFit: 'contain', boxSizing: 'border-box' }} /> : <img src={radarIconUrl} alt="" style={{ width: 40, height: 40 }} />}
-          <div>
-            <h2 style={{ margin: 0, fontSize: 19, fontWeight: 650 }}>
-              {aircraft.tailNumber} <span style={{ color: C.muted, fontWeight: 500 }}>{aircraft.model.name}</span>
-            </h2>
-            <div className="num" style={{ fontSize: 12.5, color: C.muted, marginTop: 3 }}>
-              {tierInfo.sizeLabel}, ICAO Code {aircraftGateCode(aircraft.model)}
-              {isCargo ? `, freighter ${aircraft.model.cargo_cap_tons} t` : ''}. Based at {aircraft.hubIata}, {aircraft.model.turnaround_min} min turnaround. {usage.usedPct}% booked ({usage.avgDailyHours} h a day).
-            </div>
+      {/* Header: what it is, then the few things you can do with it */}
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: '10px 12px' }}>
+        {airlineLogo && <img src={airlineLogo} alt="" style={{ width: 40, height: 40, borderRadius: 10, background: '#fff', padding: 3, objectFit: 'contain', boxSizing: 'border-box' }} />}
+        <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, lineHeight: 1.15 }}>
+            {aircraft.tailNumber} <span style={{ color: C.muted, fontWeight: 600 }}>{aircraft.model.name}</span>
+          </h2>
+          <div className="num" title={`${tierInfo.sizeLabel}, ICAO Code ${aircraftGateCode(aircraft.model)}, ${aircraft.model.turnaround_min} min turnaround`} style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>
+            {aircraft.hubIata} · {usage.usedPct}% used · {usage.avgDailyHours} h a day
+            {isCargo ? ` · ${aircraft.model.cargo_cap_tons} t` : ''}
           </div>
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
           {liveryNames.length > 1 && onSetLivery && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: C.textSoft }}>
-              Livery
-              <select
-                aria-label="Livery this aircraft wears"
-                value={Math.min(aircraft.livery ?? 0, liveryNames.length - 1)}
-                onChange={(e) => onSetLivery(aircraft.tailNumber, Number(e.target.value))}
-                style={{ background: C.raised, color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, padding: '6px 8px', fontSize: 13 }}
-              >
-                {liveryNames.map((n, i) => (
-                  <option key={i} value={i}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <select
+              aria-label="Livery this aircraft wears"
+              value={Math.min(aircraft.livery ?? 0, liveryNames.length - 1)}
+              onChange={(e) => onSetLivery(aircraft.tailNumber, Number(e.target.value))}
+              style={{ ...inputStyle, width: 'auto', padding: '6px 8px', fontSize: 13 }}
+            >
+              {liveryNames.map((n, i) => (
+                <option key={i} value={i}>
+                  {n}
+                </option>
+              ))}
+            </select>
           )}
           {onEditLivery && (
             <Button variant="ghost" onClick={() => onEditLivery(Math.min(aircraft.livery ?? 0, Math.max(0, liveryNames.length - 1)))}>
-              Edit livery
+              Livery
             </Button>
           )}
           {onMarketSell && (
-            <Button variant="ghost" disabled={acFlights.length > 0} onClick={() => onMarketSell(aircraft.tailNumber)} title={acFlights.length ? 'Remove its flights first' : 'List it for other airlines to buy'}>
-              Sell on the marketplace
+            <Button variant="ghost" disabled={acFlights.length > 0} onClick={() => onMarketSell(aircraft.tailNumber)} title={acFlights.length ? 'Remove its flights first' : 'Sell it to another airline'}>
+              Market
             </Button>
           )}
           <Button
             variant="ghost"
             disabled={aircraft.acquisition === 'owned' && acFlights.length > 0}
-            title={aircraft.acquisition === 'owned' && acFlights.length > 0 ? 'Only aircraft with no flights can be sold. Remove its flights first.' : undefined}
+            title={aircraft.acquisition === 'owned' && acFlights.length > 0 ? 'Remove its flights first' : undefined}
             onClick={() => onSellOrReturnAircraft(aircraft.tailNumber)}
           >
-            {aircraft.acquisition === 'owned' ? `Sell for ${formatMoneyM(calcAircraftResaleUsd(aircraft.model))}` : 'Return to lessor'}
+            {aircraft.acquisition === 'owned' ? `Sell · ${formatMoneyM(calcAircraftResaleUsd(aircraft.model))}` : 'Return'}
           </Button>
-          <Button onClick={onClose}>Close</Button>
         </div>
       </div>
 
       {/* Leg selector */}
       <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
-          Flights <span style={{ color: C.muted, fontWeight: 500 }}>{acFlights.length ? 'Pick one to edit' : ''}</span>
-        </div>
+        <SectionTitle>Flights</SectionTitle>
         {acFlights.length === 0 ? (
-          <div style={{ padding: 16, background: C.bg, borderRadius: 8, color: C.faint, fontSize: 12, textAlign: 'center' }}>
-            {aircraft.tailNumber} has no flights yet. Click an airport on the map to plan one.
+          <div style={{ padding: 18, background: well(), borderRadius: 14, color: C.muted, fontSize: 13, textAlign: 'center' }}>
+            No flights yet. Tap an airport on the map.
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -201,11 +191,13 @@ export function AircraftScheduleModal({
                   key={fl.id}
                   type="button"
                   onClick={() => setSelectedFlId(fl.id)}
+                  aria-pressed={isSel}
+                  title={legLocalText(fl.depTimeMin, fl.arrTimeMin, fl.origin.iata_code, fl.destination.iata_code) || undefined}
                   style={{
                     padding: '8px 12px',
-                    borderRadius: 8,
-                    border: `1px solid ${isSel ? C.brand : isPartner ? C.accent : C.border}`,
-                    background: isSel ? C.raised : C.bg,
+                    borderRadius: 10,
+                    border: `1px solid ${isSel ? C.brand : 'transparent'}`,
+                    background: isSel ? `${C.brand}1c` : isPartner ? face() : well(),
                     color: C.text,
                     cursor: 'pointer',
                     textAlign: 'left',
@@ -216,17 +208,12 @@ export function AircraftScheduleModal({
                   </div>
                   {tooBig && (
                     <div title={`${tooBig}. It keeps flying, but a new flight like it can't be scheduled.`} style={{ fontSize: 11.5, color: C.amber, marginTop: 2 }}>
-                      Too big for the airport, kept from before
+                      Too big for the airport
                     </div>
                   )}
                   <div className="num" style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>
-                    {formatClockShort(fl.depTimeMin)}–{formatClockShort(fl.arrTimeMin)} UTC ({formatDurationHm(fl.blockTimeMin)})
+                    {formatClockShort(fl.depTimeMin)}–{formatClockShort(fl.arrTimeMin)} UTC · {formatDurationHm(fl.blockTimeMin)}
                   </div>
-                  {legLocalText(fl.depTimeMin, fl.arrTimeMin, fl.origin.iata_code, fl.destination.iata_code) && (
-                    <div className="num" style={{ fontSize: 11.5, color: C.faint }}>
-                      {legLocalText(fl.depTimeMin, fl.arrTimeMin, fl.origin.iata_code, fl.destination.iata_code)}
-                    </div>
-                  )}
                 </button>
               );
             })}
@@ -262,7 +249,7 @@ export function AircraftScheduleModal({
           {conflictMsg && <ErrorBanner message={conflictMsg} />}
 
           {/* Edit form */}
-          <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, background: C.bg, padding: 14, borderRadius: 8, border: `1px solid ${C.line}` }}>
+          <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, background: well(), padding: 14, borderRadius: 14 }}>
             <div>
               <label style={{ ...labelStyle }}>Flight number</label>
               <input value={editFlightNum} onChange={(e) => setEditFlightNum(e.target.value)} style={{ ...inputStyle, marginBottom: 10, fontWeight: 700 }} />
@@ -271,7 +258,7 @@ export function AircraftScheduleModal({
             </div>
 
             <div>
-              <label style={{ ...labelStyle }}>{isCargo ? 'Freight rate ($ per tonne)' : 'Fares ($) and cargo rate ($ per tonne)'}</label>
+              <label style={{ ...labelStyle }}>{isCargo ? 'Freight rate' : 'Fares'}</label>
               <FaresEditor fares={editFares} onChange={setEditFares} cargoOnly={isCargo} refFares={refFares} />
             </div>
           </div>
@@ -281,7 +268,7 @@ export function AircraftScheduleModal({
               {pairedFlight ? `Delete ${selectedFlight.flightNumber} and ${pairedFlight.flightNumber}` : `Delete ${selectedFlight.flightNumber}`}
             </Button>
             <Button variant="primary" size="lg" disabled={Boolean(conflictMsg)} onClick={handleSave}>
-              Save changes
+              Save
             </Button>
           </div>
         </>
@@ -298,9 +285,8 @@ export function ErrorBanner({ message }: { message: string }) {
         display: 'flex',
         gap: 8,
         padding: '8px 12px',
-        background: `${C.red}18`,
-        border: `1px solid ${C.red}66`,
-        borderRadius: 8,
+        background: `${C.red}1c`,
+        borderRadius: 10,
         color: C.redSoft,
         fontSize: 12.5,
         marginBottom: 12,

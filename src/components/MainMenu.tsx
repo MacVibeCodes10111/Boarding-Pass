@@ -8,7 +8,7 @@ import { PRESET_LOGOS, presetLogo } from './livery/presetLogos';
 import { useMemo, useRef, useState } from 'react';
 import { IS_DEV } from '../game/channel';
 import { Icon, type IconName } from '../ui/icons';
-import { Button, C, DISPLAY, Field, ModalShell, inputStyle } from '../ui/kit';
+import { Button, C, DISPLAY, Field, ModalShell, SectionTitle, inputStyle } from '../ui/kit';
 import { openAppearance } from './Appearance';
 import { CreditsModal } from './Credits';
 
@@ -17,7 +17,8 @@ export function MainMenu(props: {
   version: string;
   onClose: () => void;
   onSave: () => void;
-  onCloud: () => void;
+  /** Opens the account (sign in, the player's airlines). */
+  onAccount: () => void;
   airlineCallsign: string;
   /** Change the airline's name and radio callsign; returns an error message. */
   onAirlineDetails: (name: string, callsign: string) => string | null;
@@ -35,74 +36,44 @@ export function MainMenu(props: {
   const [saved, setSaved] = useState(false);
   const [credits, setCredits] = useState(false);
   const [details, setDetails] = useState(false);
-  const row = (icon: IconName, label: string, hint: string, onClick: () => void) => (
+  const row = (icon: IconName, label: string, onClick: () => void, done = false) => (
     <button
       type="button"
       onClick={onClick}
       className="bp-row"
-      style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '11px 12px', borderRadius: 10, background: C.raised, border: `1px solid ${C.line}`, color: C.text, cursor: 'pointer', textAlign: 'left' }}
+      style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', padding: '11px 10px', background: 'transparent', border: 'none', color: C.text, cursor: 'pointer', textAlign: 'left', fontSize: 15, fontWeight: 550 }}
     >
-      <Icon name={icon} size={20} color={C.brand} />
-      <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <span style={{ fontWeight: 600, fontSize: 14.5 }}>{label}</span>
-        <span style={{ fontSize: 12, color: C.muted }}>{hint}</span>
-      </span>
+      <Icon name={done ? 'check' : icon} size={19} color={done ? C.green : C.muted} />
+      <span style={{ flex: 1 }}>{label}</span>
     </button>
   );
+  const away = (fn: () => void) => () => {
+    props.onClose();
+    fn();
+  };
   return (
     <>
-      <ModalShell onClose={props.onClose} maxWidth={420} closeButton={false}>
-        <div style={{ padding: '18px 18px 16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 2 }}>
-            <span style={{ fontFamily: DISPLAY, fontSize: 24, fontWeight: 700 }}>Menu</span>
-            <span style={{ fontSize: 13, color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{props.airlineName}</span>
-            <button
-              type="button"
-              aria-label="Back to the game"
-              title="Back to the game"
-              onClick={props.onClose}
-              style={{ width: 36, height: 36, flex: 'none', borderRadius: 10, display: 'grid', placeItems: 'center', background: C.raised, border: `1px solid ${C.border}`, color: C.textSoft, cursor: 'pointer', boxShadow: '0 2px 0 rgba(0,0,0,.25)' }}
-            >
-              <Icon name="close" size={15} />
-            </button>
-          </div>
-          <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 14 }}>Your career saves itself every minute, and money keeps coming in while you're away.</div>
-          <div style={{ display: 'grid', gap: 8 }}>
-            {row('save', saved ? 'Saved' : 'Save now', saved ? 'Your career is saved on this device.' : 'Save this career on this device', () => {
-              props.onSave();
-              setSaved(true);
-            })}
-            {row('swap', 'Cloud saves', 'Sign in to play your careers on all your devices', props.onCloud)}
-            {row('edit', 'Airline name, colours and logo', `${props.airlineName}, callsign ${props.airlineCallsign}`, () => setDetails(true))}
-            {row('layers', 'Livery', props.hasLivery ? 'Your airline\'s colours on its aircraft' : 'Paint your aircraft in your airline\'s colours', () => {
-              props.onClose();
-              props.onOpenLivery();
-            })}
-            {row('help', 'Welcome tour', 'How to play, in a minute', () => {
-              props.onClose();
-              props.onTour();
-            })}
-            {row('layers', 'Appearance', 'Theme and colours', () => {
-              props.onClose();
-              openAppearance();
-            })}
-            {row('letter', 'Credits and licences', 'Maps, data and software the game is built on', () => setCredits(true))}
-          </div>
-          <div style={{ height: 1, background: C.line, margin: '16px 0 14px' }} />
-          <div style={{ display: 'grid', gap: 8 }}>
-            <Button size="lg" block onClick={props.onClose}>
-              <Icon name="map" size={18} />
-              Back to the game
-            </Button>
-            <Button variant="primary" size="lg" block onClick={props.onLeave}>
-              <Icon name="exit" size={18} />
-              Save and leave to home screen
-            </Button>
-          </div>
-          <div className="num" style={{ fontSize: 11.5, color: C.faint, textAlign: 'center', marginTop: 10 }}>
-            Boarding Pass {props.version}
-            {IS_DEV ? ' dev' : ''}
-          </div>
+      <ModalShell onClose={props.onClose} maxWidth={360} label="Menu">
+        <h2 style={{ margin: '0 36px 10px 10px', fontFamily: DISPLAY, fontSize: 24, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{props.airlineName}</h2>
+        {row('save', saved ? 'Saved' : 'Save', () => {
+          props.onSave();
+          setSaved(true);
+        }, saved)}
+        {row('globe', 'Account', props.onAccount)}
+        <div style={{ height: 1, background: C.line, margin: '6px 10px' }} />
+        {row('edit', 'Name, colours and logo', () => setDetails(true))}
+        {row('fleet', 'Livery', away(props.onOpenLivery))}
+        {row('layers', 'Appearance', away(openAppearance))}
+        <div style={{ height: 1, background: C.line, margin: '6px 10px' }} />
+        {row('help', 'How to play', away(props.onTour))}
+        {row('letter', 'Credits', () => setCredits(true))}
+        <Button size="lg" block onClick={props.onLeave} style={{ marginTop: 12 }}>
+          <Icon name="exit" size={18} />
+          Save and exit
+        </Button>
+        <div className="num" style={{ fontSize: 11.5, color: C.faint, textAlign: 'center', marginTop: 12 }}>
+          {props.version}
+          {IS_DEV ? ' dev' : ''}
         </div>
       </ModalShell>
       {credits && <CreditsModal onClose={() => setCredits(false)} />}
@@ -110,6 +81,7 @@ export function MainMenu(props: {
     </>
   );
 }
+
 
 /** Rename the airline or change its radio callsign (v2.52). The code stays: flight numbers use it. */
 function AirlineDetailsModal(props: {
@@ -149,26 +121,26 @@ function AirlineDetailsModal(props: {
         }}
         style={{ display: 'grid', gap: 12 }}
       >
-        <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: 24 }}>Airline details</h2>
-        <Field label="Airline name">
-          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} style={inputStyle} />
-        </Field>
-        <Field label="Radio callsign" hint="What controllers call your flights on the map, like SPEEDBIRD or JETSTREAM. Letters, digits and spaces.">
-          <input value={callsign} onChange={(e) => setCallsign(e.target.value.toUpperCase())} maxLength={20} autoCapitalize="characters" spellCheck={false} style={inputStyle} />
-        </Field>
-        <div style={{ display: 'grid', gap: 10, padding: 12, borderRadius: 10, border: `1px solid ${C.line}` }}>
-          <div style={{ fontSize: 13, fontWeight: 650 }}>Airline colours</div>
-          <div style={{ fontSize: 12, color: C.muted, marginTop: -6 }}>Used by the ready-made liveries and logos.</div>
+        <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: 24 }}>Airline</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 10 }}>
+          <Field label="Name">
+            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} style={inputStyle} />
+          </Field>
+          <Field label="Callsign">
+            <input value={callsign} onChange={(e) => setCallsign(e.target.value.toUpperCase())} maxLength={20} autoCapitalize="characters" spellCheck={false} style={inputStyle} />
+          </Field>
+        </div>
+        <div style={{ display: 'grid', gap: 10, marginTop: 6 }}>
+          <SectionTitle>Colours</SectionTitle>
           <ColourPicker label="Main colour" value={colours.a} onChange={(a) => setColours((c) => ({ ...c, a }))} />
           <ColourPicker label="Second colour" value={colours.b} onChange={(b) => setColours((c) => ({ ...c, b }))} />
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
             <input type="checkbox" checked={Boolean(colours.theme)} onChange={(e) => setColours((c) => ({ ...c, theme: e.target.checked || undefined }))} />
-            Use them for the game’s look while I play this airline
+            Use as the game’s theme
           </label>
         </div>
-        <div style={{ display: 'grid', gap: 10, padding: 12, borderRadius: 10, border: `1px solid ${C.line}` }}>
-          <div style={{ fontSize: 13, fontWeight: 650 }}>Airline logo</div>
-          <div style={{ fontSize: 12, color: C.muted, marginTop: -6 }}>Shown in the corner and beside your flights, and ready to put on your aircraft in the livery editor.</div>
+        <div style={{ display: 'grid', gap: 10, marginTop: 6 }}>
+          <SectionTitle>Logo</SectionTitle>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ width: 56, height: 56, borderRadius: 12, background: '#fff', display: 'grid', placeItems: 'center', flex: 'none', border: `1px solid ${C.line}` }}>
               {logo ? <img src={logo} alt="Your airline logo" style={{ width: 48, height: 48, objectFit: 'contain' }} /> : <span style={{ fontSize: 11, color: '#667' }}>None</span>}
@@ -212,7 +184,7 @@ function AirlineDetailsModal(props: {
               ) : null
             )}
           </div>
-          <div style={{ fontSize: 11.5, color: C.muted }}>PNG, JPG or WebP, kept at its own size up to 1024×1024 and 48 KB. Only upload pictures you own or have the right to use.</div>
+          <div style={{ fontSize: 11.5, color: C.faint }}>Only upload pictures you own or have the right to use.</div>
         </div>
         <div role="alert" style={{ minHeight: 16, fontSize: 12.5, color: C.red }}>
           {err}

@@ -116,11 +116,10 @@ function NoAlliance(props: { onAlliances?: () => void }) {
   return (
     <div style={{ padding: '24px 16px', borderRadius: 12, background: C.raised, textAlign: 'center', display: 'grid', gap: 8, justifyItems: 'center' }}>
       <Icon name="globe" size={26} color={C.muted} />
-      <p style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 17, margin: 0 }}>The marketplace is for alliances</p>
-      <p style={{ ...note, maxWidth: 360 }}>Airlines buy and sell aircraft with the other airlines in their alliance. Join or start one to trade.</p>
+      <p style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 19, margin: 0 }}>Join an alliance to trade</p>
       {props.onAlliances && (
         <Button size="sm" variant="primary" onClick={props.onAlliances}>
-          Go to Alliances
+          Alliances
         </Button>
       )}
     </div>
@@ -231,7 +230,6 @@ function Buy(props: { me: MyAirline; busy: boolean; act: Act; market?: MarketHoo
         <div style={{ padding: '24px 16px', borderRadius: 12, background: C.raised, textAlign: 'center' }}>
           <Icon name="buy" size={26} color={C.muted} style={{ display: 'block', margin: '0 auto' }} />
           <p style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 17, margin: '8px 0 4px' }}>Nothing for sale{models.length || maxUsd ? ' that matches' : ' yet'}</p>
-          <p style={note}>Aircraft the other airlines in {props.tag ?? 'your alliance'} list appear here. You can sell yours in Sell.</p>
         </div>
       ) : (
         <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(240px, 100%), 1fr))', gap: 10 }}>

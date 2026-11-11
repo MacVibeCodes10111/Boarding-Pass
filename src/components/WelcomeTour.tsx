@@ -6,7 +6,6 @@
 // ============================================================================
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { useLayout } from '../ui/layout';
-import { Icon } from '../ui/icons';
 import { Button, C, DISPLAY, glass } from '../ui/kit';
 
 interface Step {
@@ -19,72 +18,12 @@ interface Step {
 
 function steps(p: { airlineName: string; hubIata: string; sandbox: boolean }): Step[] {
   const all: Step[] = [
-    {
-      title: `Welcome to ${p.airlineName}`,
-      body: [
-        `You run a new airline from ${p.hubIata}. Buy aircraft, plan routes to the world's real airports and grow into a global network.`,
-        'This tour takes about a minute. You can skip it, and replay it from Menu.',
-      ],
-    },
-    {
-      title: 'The map is live',
-      body: [
-        'The other aircraft are the real airlines flying today’s routes, in real time. Yours are drawn in your colour.',
-        'Drag to move, scroll or use + and − to zoom. Click an aircraft for its flight; click an airport to plan a route there.',
-      ],
-    },
-    {
-      title: 'Your money',
-      target: 'topbar',
-      body: p.sandbox
-        ? ['Sandbox: money is unlimited, so build whatever you like. The economy clock runs one game week per real day.']
-        : [
-            'Cash, profit this week and cash flow. The economy runs one game week per real day, and keeps running while the game is closed.',
-            'The clock beside them pauses the economy if you want to plan without it running.',
-          ],
-    },
-    {
-      title: '1. Get an aircraft',
-      target: 'buy',
-      body: [
-        'Buy has two tabs: Aircraft, and Airports & hubs. Buy or lease aircraft there. Leasing costs only a deposit up front; choose how long the lease runs (longer is cheaper a day). You can return it early for part of the deposit, or buy it out later.',
-        'Set How many to get several at once.',
-      ],
-    },
-    {
-      title: '2. Plan a route',
-      body: [
-        'Tap the airport you fly from (your hub), then the airport to fly to. The planner opens with an aircraft, a round trip and a time. The demand box shows how many people travel the route each day and who flies it today.',
-        'Fares start at the market price. Charge much more and fewer people buy; at three times the market price nobody does.',
-      ],
-    },
-    {
-      title: '3. My Airline',
-      target: 'my-airline',
-      body: [
-        'Overview, Fleet and Schedule, as tabs. Fleet lists every aircraft with how busy it is: tick several to sell, refit cabins, replace them with another type (their flights carry over) or schedule them together on one route.',
-        'Schedule shows every flight by hub or by aircraft. Your airline\u2019s badge in the top corner opens My Airline too.',
-      ],
-    },
-    {
-      title: 'The bank',
-      target: 'bank',
-      careerOnly: true,
-      body: [
-        'Northgate Aviation Bank lends money and pays grants for milestones (your first routes, more aircraft, new continents…). Letters arrive here.',
-        'Two weeks in a row overdrawn and the bank steps in.',
-      ],
-    },
-    {
-      title: 'The map, your way',
-      target: 'layers',
-      body: ['Map layers: map style, 3D aircraft, weather, how much other traffic to show, and Appearance for the game’s colours.'],
-    },
-    {
-      title: 'Saving',
-      target: 'menu',
-      body: ['Your career saves itself every minute. Menu has cloud saves, replays this tour, or takes you back to the home screen.', 'Good luck, captain.'],
-    },
+    { title: `Welcome to ${p.airlineName}`, body: [`Your airline starts at ${p.hubIata}. Buy aircraft, fly routes, grow.`] },
+    { title: 'Buy an aircraft', target: 'buy', body: ['Buy one outright, or lease it for a deposit.'] },
+    { title: 'Plan a route', body: ['Tap an airport on the map to fly there.'] },
+    { title: 'Your airline', target: 'airline', body: ['Your fleet, schedule and results.'] },
+    { title: 'Money', target: 'topbar', body: [p.sandbox ? 'Sandbox: money is unlimited.' : 'A game week passes each real day, even while you’re away.'] },
+    { title: 'The bank', target: 'bank', careerOnly: true, body: ['Loans, and grants for reaching milestones.'] },
   ];
   return all.filter((s) => !(s.careerOnly && p.sandbox));
 }
@@ -150,7 +89,7 @@ export function WelcomeTour(props: { airlineName: string; hubIata: string; sandb
   });
 
   // The card goes beside what it points at: above things in the bottom half, below things at the top
-  const W = Math.min(400, window.innerWidth - 24);
+  const W = Math.min(340, window.innerWidth - 24);
   const pad = 8;
   let cardStyle: React.CSSProperties;
   if (!rect) cardStyle = { left: '50%', top: '50%', transform: 'translate(-50%, -50%)' };
@@ -190,26 +129,13 @@ export function WelcomeTour(props: { airlineName: string; hubIata: string; sandb
           width: phone ? undefined : W,
           maxHeight: 'calc(100dvh - 24px)',
           overflowY: 'auto',
-          padding: '16px 18px 14px',
-          borderRadius: 16,
+          padding: '18px 18px 14px',
+          borderRadius: 18,
           boxShadow: '0 18px 50px rgba(0,0,0,.5)',
           ...cardStyle,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-          <Icon name="help" size={18} color={C.brand} />
-          <span className="num" style={{ fontSize: 12, color: C.muted }}>
-            {i + 1} of {list.length}
-          </span>
-          <button
-            type="button"
-            onClick={() => props.onClose(false)}
-            style={{ marginLeft: 'auto', background: 'none', border: 'none', color: C.muted, fontSize: 13, cursor: 'pointer', padding: '2px 4px' }}
-          >
-            Skip tour
-          </button>
-        </div>
-        <div style={{ fontFamily: DISPLAY, fontSize: 21, fontWeight: 700, color: C.text, marginBottom: 6 }}>{step.title}</div>
+        <div style={{ fontFamily: DISPLAY, fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 4 }}>{step.title}</div>
         {step.body.map((t, k) => (
           <p key={k} style={{ margin: '0 0 8px', fontSize: 14, lineHeight: 1.5, color: C.textSoft }}>
             {t}
@@ -218,7 +144,7 @@ export function WelcomeTour(props: { airlineName: string; hubIata: string; sandb
         {i === 0 && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: C.muted, margin: '2px 0 4px', cursor: 'pointer' }}>
             <input type="checkbox" checked={off} onChange={(e) => toggleOff(e.target.checked)} />
-            Don't show this when I start a new career
+            Don’t show this for new airlines
           </label>
         )}
         <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
@@ -228,9 +154,13 @@ export function WelcomeTour(props: { airlineName: string; hubIata: string; sandb
             ))}
           </div>
           <span style={{ flex: 1 }} />
-          {i > 0 && (
-            <Button size="sm" onClick={() => setI(i - 1)}>
+          {i > 0 ? (
+            <Button size="sm" variant="ghost" onClick={() => setI(i - 1)}>
               Back
+            </Button>
+          ) : (
+            <Button size="sm" variant="ghost" onClick={() => props.onClose(false)}>
+              Skip
             </Button>
           )}
           {last ? (
@@ -242,7 +172,7 @@ export function WelcomeTour(props: { airlineName: string; hubIata: string; sandb
                 props.onOpenBuy?.();
               }}
             >
-              Get my first aircraft
+              Buy an aircraft
             </Button>
           ) : (
             <Button size="sm" variant="primary" onClick={() => setI(i + 1)}>

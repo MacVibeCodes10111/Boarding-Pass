@@ -8,10 +8,12 @@ import { DAY_LETTERS } from '../game/time';
 import type { WeekDays } from '../game/types';
 import { Icon, type IconName } from './icons';
 import './fonts';
-import { DEFAULT_PALETTE, buildPalette, loadThemeSpec, saveThemeSpec, themeFromUrl, type Palette, type ThemeSpec } from './theme';
+import { DEFAULT_PALETTE, buildPalette, loadThemeSpec, mix, saveThemeSpec, themeFromUrl, type Palette, type ThemeSpec } from './theme';
+import { useLayout } from './layout';
 
-// Look (v2.35): a flight-tracker cockpit. Floating, see-through panels over the
-// map, a toolbar along the bottom, condensed sign-style headings and numbers.
+// Look (v3.1): calm glass over the map. Flat controls, one highlight colour,
+// lists divided by hairlines instead of boxes in boxes, and words only where a
+// control can't speak for itself.
 export const FONT = `'Barlow', 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif`;
 /** Headings, big numbers, toolbar labels */
 export const DISPLAY = `'Barlow Condensed', 'Barlow', 'Segoe UI', system-ui, sans-serif`;
@@ -20,9 +22,14 @@ export const glass = (alpha = 'e6'): React.CSSProperties => ({
   background: `${C.panel}${alpha}`,
   backdropFilter: 'blur(16px) saturate(1.2)',
   WebkitBackdropFilter: 'blur(16px) saturate(1.2)',
-  border: `1px solid ${C.border}aa`,
-  boxShadow: '0 10px 30px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.04)',
+  border: `1px solid ${C.border}80`,
+  boxShadow: '0 12px 36px rgba(0,0,0,0.34)',
 });
+
+/** Control faces worked out from the theme: a button's face, a pressed or chosen face, and a shallow well. */
+export const face = () => mix(C.raised, C.text, 0.05);
+export const faceHi = () => mix(C.raised, C.text, 0.13);
+export const well = () => `${C.text}0d`;
 
 export const C: Palette = { ...DEFAULT_PALETTE };
 /** The map's own colours (route lines, labels, halos): they suit the map styles, not the interface theme. */
@@ -122,11 +129,17 @@ export const globalCss = () => `
   .num, .bp-num { font-variant-numeric: tabular-nums; }
   h1, h2, h3, .bp-display { font-family: ${DISPLAY}; letter-spacing: 0.005em; }
   .bp-glass { background: ${C.panel}e6; backdrop-filter: blur(16px) saturate(1.2); -webkit-backdrop-filter: blur(16px) saturate(1.2);
-    border: 1px solid ${C.border}aa; box-shadow: 0 10px 30px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.04); }
+    border: 1px solid ${C.border}80; box-shadow: 0 12px 36px rgba(0,0,0,.34); }
   /* List rows are tiles */
-  .bp-row { border-radius: 8px; }
+  .bp-row { border-radius: 10px; }
   button { transition: background-color .12s, border-color .12s, color .12s, filter .12s; }
-  button:not(:disabled):hover { filter: brightness(1.12); }
+  button:not(:disabled):hover { filter: brightness(1.1); }
+  /* Quiet controls show a face only under the pointer */
+  .bp-btn-ghost:not(:disabled):hover, .bp-icon-btn:not(:disabled):hover, .bp-tab:not([aria-current]):hover { background: ${C.text}12 !important; filter: none; color: ${C.text} !important; }
+  .bp-list > * + * { border-top: 1px solid ${C.line}; }
+  /* A panel's own buttons drop under its tabs on a phone */
+  html[data-layout=phone] .bp-panel-actions { order: 3; flex-basis: 100%; justify-content: flex-end; }
+  html[data-layout=phone] .bp-panel-actions:empty { display: none; }
   button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid ${C.brand}; outline-offset: 1px; }
   input::placeholder { color: ${C.faint}; }
   input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
@@ -186,7 +199,7 @@ export const globalCss = () => `
   html[data-layout=tablet] .bp-hide-tablet { display: none !important; }
   html[data-layout=tablet] .bp-topcard-airline { padding: 0 6px !important; }
   html[data-layout=phone] .bp-topcard { background: none !important; border: none !important; box-shadow: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; padding: 0 !important; height: auto !important; }
-  html[data-layout=phone] .bp-panel-head { padding: 12px 14px 10px !important; }
+  html[data-layout=phone] .bp-panel-head { padding: 8px 6px 8px 8px !important; }
   html[data-layout=phone] .bp-panel-body { padding: 12px 12px 20px !important; }
   /* Grids inside panels and dialogs: stat rows become two columns, marked layouts stack */
   html[data-layout=phone] :is(.bp-panel-body, [role=dialog]) [style*="grid-template-columns: repeat("]:not(.bp-stack) { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
@@ -195,9 +208,6 @@ export const globalCss = () => `
   html[data-layout=phone] .bp-ap-row > :nth-child(2) { flex-basis: calc(100% - 52px) !important; }
   html[data-layout=phone] .bp-ap-row > :nth-child(3) { margin-left: 52px; }
   html[data-layout=phone] .bp-ap-row > :nth-child(4) { margin-left: auto; }
-  html[data-layout=phone] .bp-sched-row { grid-template-columns: minmax(0, 1fr) auto !important; gap: 6px 10px !important; align-items: start !important; }
-  html[data-layout=phone] .bp-sched-row > :first-child { grid-row: span 2; }
-  html[data-layout=phone] .bp-sched-row > :nth-child(3) { grid-column: 2; }
   html[data-layout=phone] :is(.bp-panel-body, [role=dialog]) .bp-model-grid { grid-template-columns: minmax(0, 1fr) !important; }
   html[data-layout=phone] .bp-wrap { display: flex !important; flex-wrap: wrap; row-gap: 6px !important; }
   html[data-layout=phone] .bp-wrap > * { min-width: 0; }
@@ -213,14 +223,6 @@ export const globalCss = () => `
   .bp-sheet-popup .maplibregl-popup-content { width: 100%; max-height: 46dvh; overflow-y: auto; overscroll-behavior: contain; }
   html[data-layout=phone] .bp-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   html[data-layout=phone] .bp-tiles > :first-child { grid-column: 1 / -1; }
-  html[data-layout=phone] .bp-fleet-row { grid-template-columns: 22px minmax(0, 1.15fr) minmax(0, 1fr) !important; row-gap: 4px !important; column-gap: 10px !important; }
-  html[data-layout=phone] .bp-fleet-row > :nth-child(1) { grid-column: 1; grid-row: 1 / 4; }
-  html[data-layout=phone] .bp-fleet-row > :nth-child(2) { grid-column: 2; grid-row: 1 / 4; align-self: center; }
-  html[data-layout=phone] .bp-fleet-row > :nth-child(3) { grid-column: 3; grid-row: 1; }
-  html[data-layout=phone] .bp-fleet-row > :nth-child(4) { grid-column: 3; grid-row: 2; }
-  html[data-layout=phone] .bp-fleet-row > :nth-child(5) { grid-column: 3; grid-row: 3; }
-  html[data-layout=phone] .bp-fleet-row > :nth-child(6) { grid-column: 2 / -1; grid-row: 4; margin-top: 6px; }
-  html[data-layout=phone] .bp-fleet-row > :nth-child(6) > * { flex: 1; }
   html[data-layout=phone] .bp-debt-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   html[data-layout=phone] .bp-debt-grid > :last-child { grid-column: 1 / -1; }
   html[data-layout=phone] .bp-goal { grid-template-columns: 22px minmax(0, 1fr) !important; }
@@ -231,10 +233,10 @@ export const globalCss = () => `
 
 export const inputStyle: React.CSSProperties = live(() => ({
   width: '100%',
-  padding: '8px 10px',
+  padding: '8px 11px',
   background: C.bg,
   border: `1px solid ${C.border}`,
-  borderRadius: 8,
+  borderRadius: 10,
   color: C.text,
   fontSize: 14,
 }));
@@ -249,15 +251,15 @@ export const labelStyle: React.CSSProperties = live(() => ({
 
 export const panelStyle: React.CSSProperties = live(() => ({
   background: C.panelAlt,
-  border: `1px solid ${C.line}`,
-  borderRadius: 12,
+  border: '1px solid transparent',
+  borderRadius: 14,
   padding: 16,
 }));
 
 export const cardStyle: React.CSSProperties = live(() => ({
   background: C.panelAlt,
-  border: `1px solid ${C.line}`,
-  borderRadius: 10,
+  border: '1px solid transparent',
+  borderRadius: 12,
   padding: '10px 12px',
 }));
 
@@ -267,14 +269,15 @@ export const cardStyle: React.CSSProperties = live(() => ({
 type ButtonVariant = 'primary' | 'success' | 'danger' | 'warning' | 'ghost' | 'subtle' | 'violet';
 
 const VARIANTS: Record<ButtonVariant, React.CSSProperties> = live(() => ({
-  primary: { background: C.brand, color: C.brandInk, border: `1px solid ${C.brand}`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,.28), 0 2px 0 rgba(0,0,0,.28)' },
-  success: { background: C.greenStrong, color: '#fff', border: `1px solid ${C.greenStrong}`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,.2), 0 2px 0 rgba(0,0,0,.28)' },
-  danger: { background: `${C.red}14`, color: C.red, border: `1px solid ${C.red}99`, boxShadow: '0 2px 0 rgba(0,0,0,.25)' },
-  warning: { background: `${C.amber}14`, color: C.amber, border: `1px solid ${C.amber}99`, boxShadow: '0 2px 0 rgba(0,0,0,.25)' },
-  violet: { background: C.accentStrong, color: '#fff', border: `1px solid ${C.accentStrong}`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,.18), 0 2px 0 rgba(0,0,0,.28)' },
-  // Every button reads as a button: a raised face, a lit edge and a shadow
-  subtle: { background: C.raised, color: C.text, border: `1px solid ${C.textDim}55`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,.09), 0 2px 0 rgba(0,0,0,.3)' },
-  ghost: { background: `${C.raised}99`, color: C.textSoft, border: `1px solid ${C.border}`, boxShadow: '0 1px 0 rgba(0,0,0,.25)' },
+  // Flat faces: the one filled with the highlight is the thing to do next
+  primary: { background: C.brand, color: C.brandInk, border: '1px solid transparent' },
+  success: { background: C.greenStrong, color: '#fff', border: '1px solid transparent' },
+  danger: { background: `${C.red}1c`, color: C.red, border: '1px solid transparent' },
+  warning: { background: `${C.amber}1c`, color: C.amber, border: '1px solid transparent' },
+  violet: { background: C.accentStrong, color: '#fff', border: '1px solid transparent' },
+  subtle: { background: face(), color: C.text, border: '1px solid transparent' },
+  // No face until the pointer is over it
+  ghost: { background: 'transparent', color: C.textDim, border: '1px solid transparent' },
 }));
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -284,16 +287,17 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 }
 
 export function Button({ variant = 'subtle', size = 'md', block, style, disabled, ...rest }: ButtonProps) {
-  const pad = size === 'sm' ? '5px 10px' : size === 'lg' ? '11px 18px' : '7px 14px';
+  const pad = size === 'sm' ? '5px 11px' : size === 'lg' ? '11px 18px' : '7px 14px';
   const fontSize = size === 'sm' ? 13 : size === 'lg' ? 15.5 : 14;
   return (
     <button
       type="button"
       disabled={disabled}
       {...rest}
+      className={[variant === 'ghost' ? 'bp-btn-ghost' : 'bp-btn', rest.className].filter(Boolean).join(' ')}
       style={{
         padding: pad,
-        borderRadius: 8,
+        borderRadius: size === 'lg' ? 12 : 10,
         fontWeight: 600,
         fontSize,
         lineHeight: 1.25,
@@ -305,7 +309,7 @@ export function Button({ variant = 'subtle', size = 'md', block, style, disabled
         gap: 6,
         whiteSpace: 'nowrap',
         ...VARIANTS[variant],
-        ...(disabled ? { background: C.raised, color: C.faint, border: `1px solid ${C.line}`, boxShadow: 'none' } : null),
+        ...(disabled ? { background: variant === 'ghost' ? 'transparent' : well(), color: C.faint, border: '1px solid transparent' } : null),
         ...style,
       }}
     />
@@ -335,11 +339,11 @@ export function Chip({
       style={{
         padding: '5px 12px',
         borderRadius: 999,
-        border: `1px solid ${active ? activeColor : C.border}`,
+        border: '1px solid transparent',
         fontSize: 13,
         fontWeight: 600,
         cursor: 'pointer',
-        background: active ? activeColor : 'transparent',
+        background: active ? activeColor : well(),
         color: active ? activeText : C.textDim,
         ...style,
       }}
@@ -365,7 +369,7 @@ export function Segmented<T extends string>({
   block?: boolean;
 }) {
   return (
-    <div style={{ display: block ? 'flex' : 'inline-flex', width: block ? '100%' : undefined, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 9, padding: 3, gap: 2 }}>
+    <div style={{ display: block ? 'flex' : 'inline-flex', width: block ? '100%' : undefined, background: well(), borderRadius: 10, padding: 3, gap: 2 }}>
       {options.map((o) => {
         const on = o.value === value;
         return (
@@ -377,15 +381,16 @@ export function Segmented<T extends string>({
             aria-pressed={on}
             style={{
               flex: block ? 1 : undefined,
-              padding: block ? '5px 2px' : size === 'sm' ? '4px 10px' : '6px 13px',
+              padding: block ? '5px 2px' : size === 'sm' ? '4px 11px' : '6px 14px',
               fontSize: size === 'sm' ? 13 : 14,
               fontWeight: 600,
-              borderRadius: 6,
+              borderRadius: 8,
               border: 'none',
               cursor: 'pointer',
-              background: on ? C.raised : 'transparent',
+              whiteSpace: 'nowrap',
+              background: on ? faceHi() : 'transparent',
               color: on ? C.text : C.muted,
-              boxShadow: on ? `inset 0 -2px 0 ${C.brand}, inset 0 0 0 1px ${C.border}` : 'none',
+              boxShadow: on ? '0 1px 2px rgba(0,0,0,.25)' : 'none',
             }}
           >
             {o.label}
@@ -402,11 +407,11 @@ export function Pill({ color, children, solid }: { color: string; children: Reac
     <span
       style={{
         fontSize: 12.5,
-        padding: '1px 7px',
-        borderRadius: 5,
-        background: solid ? `${color}26` : 'transparent',
+        padding: '1px 8px',
+        borderRadius: 999,
+        background: `${color}${solid ? '30' : '1f'}`,
         color,
-        border: `1px solid ${color}66`,
+        border: '1px solid transparent',
         fontFamily: DISPLAY,
         fontWeight: 700,
         letterSpacing: '0.02em',
@@ -488,7 +493,7 @@ export function Stepper({
     height: 30,
     display: 'grid',
     placeItems: 'center',
-    background: C.raised,
+    background: face(),
     border: `1px solid ${C.border}`,
     color: C.textSoft,
     cursor: 'pointer',
@@ -569,12 +574,12 @@ export function DayPicker({ days, onChange }: { days: WeekDays; onChange: (d: We
             flex: 1,
             padding: '7px 0',
             borderRadius: 8,
-            border: `1px solid ${days[idx] ? C.accentStrong : C.border}`,
+            border: '1px solid transparent',
             fontWeight: 600,
             fontSize: 12,
             cursor: 'pointer',
-            background: days[idx] ? C.accentStrong : 'transparent',
-            color: days[idx] ? '#fff' : C.faint,
+            background: days[idx] ? C.accentStrong : well(),
+            color: days[idx] ? '#fff' : C.muted,
           }}
         >
           {letter}
@@ -686,14 +691,14 @@ export function ModalShell({
         tabIndex={-1}
         style={{
           outline: 'none',
-          ...glass('f2'),
-          borderRadius: 16,
+          ...glass('f4'),
+          borderRadius: 18,
           width: '100%',
           maxWidth,
           maxHeight: 'calc(100dvh - 68px)',
           overflowY: 'auto',
           padding: 22,
-          boxShadow: '0 28px 70px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05)',
+          boxShadow: '0 28px 70px rgba(0,0,0,0.55)',
         }}
       >
         {onClose && closeButton && (
@@ -705,7 +710,7 @@ export function ModalShell({
               aria-label="Close"
               title="Close"
               onClick={onClose}
-              style={{ position: 'absolute', top: -12, right: -12, width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', background: C.raised, border: `1px solid ${C.border}`, color: C.textSoft, cursor: 'pointer', boxShadow: '0 2px 0 rgba(0,0,0,.25)' }}
+              style={{ position: 'absolute', top: -12, right: -12, width: 34, height: 34, borderRadius: 999, display: 'grid', placeItems: 'center', background: face(), border: 'none', color: C.textSoft, cursor: 'pointer' }}
             >
               <Icon name="close" size={14} />
             </button>
@@ -720,16 +725,17 @@ export function ModalShell({
 export const TOPBAR_H = 52;
 export const RAIL_W = 72;
 
-/** Panel that floats in on the left, over the map, between the top bar and the toolbar. */
 /**
- * Tabs across the top of a side panel, for panels grouped under one toolbar
- * button (My Airline: Overview, Fleet, Schedule; Buy: Aircraft, Airports).
- * App provides them; every SidePanel inside shows them.
+ * Tabs of a side panel, for panels grouped under one toolbar button
+ * (Airline: Overview, Fleet, Schedule; Buy: Aircraft, Airports).
+ * App provides them; every SidePanel inside shows them as its heading.
  */
 export interface PanelTab {
   id: string;
   label: string;
   icon?: IconName;
+  /** A small count beside the label (things waiting). */
+  badge?: number;
 }
 export interface PanelTabsValue {
   group: string;
@@ -739,42 +745,84 @@ export interface PanelTabsValue {
 }
 export const PanelTabsContext = React.createContext<PanelTabsValue | null>(null);
 
+/** A square button that is only an icon (close, delete, more): no face until the pointer is over it. */
+export function IconButton({
+  icon,
+  label,
+  size = 34,
+  iconSize = 16,
+  color,
+  style,
+  ...rest
+}: { icon: IconName; label: string; size?: number; iconSize?: number; color?: string } & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'children'>) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      {...rest}
+      className={['bp-icon-btn', rest.className].filter(Boolean).join(' ')}
+      style={{ width: size, height: size, flex: 'none', borderRadius: 10, display: 'grid', placeItems: 'center', padding: 0, background: 'transparent', border: 'none', color: color ?? C.textDim, cursor: rest.disabled ? 'not-allowed' : 'pointer', opacity: rest.disabled ? 0.4 : 1, ...style }}
+    >
+      <Icon name={icon} size={iconSize} />
+    </button>
+  );
+}
+
+/** A bare on/off switch; `label` is read out, not drawn. */
+export function Toggle({ on, onChange, label, disabled }: { on: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      className="bp-switch"
+      aria-checked={on}
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={() => onChange(!on)}
+      style={{ width: 36, height: 22, borderRadius: 999, border: 'none', padding: 2, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.45 : 1, background: on ? C.brand : C.border, display: 'flex', justifyContent: on ? 'flex-end' : 'flex-start', flex: 'none' }}
+    >
+      <span style={{ width: 18, height: 18, borderRadius: 999, background: on ? C.brandInk : C.textDim }} />
+    </button>
+  );
+}
+
+/** The tabs of a grouped panel: they are its heading. */
 function PanelTabsStrip({ v }: { v: PanelTabsValue }) {
   return (
-    <nav
-      aria-label={v.group}
-      className="bp-panel-tabs bp-scroll-x"
-      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px 0', overflowX: 'auto', flex: 'none' }}
-    >
-      <span style={{ fontFamily: DISPLAY, fontSize: 15, fontWeight: 700, color: C.muted, marginRight: 4, whiteSpace: 'nowrap' }}>{v.group}</span>
+    <nav aria-label={v.group} className="bp-panel-tabs bp-scroll-x" style={{ display: 'flex', alignItems: 'center', gap: 2, flex: '1 1 auto', minWidth: 0, overflowX: 'auto' }}>
       {v.tabs.map((t) => {
         const on = t.id === v.active;
         return (
           <button
             key={t.id}
             type="button"
+            className="bp-tab"
             aria-current={on ? 'page' : undefined}
             onClick={() => v.onPick(t.id)}
             style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 7,
-              height: 38,
-              padding: '0 14px',
+              flex: 'none',
+              height: 36,
+              padding: '0 13px',
               borderRadius: 10,
               whiteSpace: 'nowrap',
               cursor: 'pointer',
               fontFamily: DISPLAY,
-              fontSize: 16,
-              fontWeight: 600,
-              color: on ? C.brandInk : C.textSoft,
-              background: on ? C.brand : C.raised,
-              border: `1px solid ${on ? C.brand : C.border}`,
-              boxShadow: on ? 'inset 0 1px 0 rgba(255,255,255,.28), 0 2px 0 rgba(0,0,0,.3)' : 'inset 0 1px 0 rgba(255,255,255,.06), 0 2px 0 rgba(0,0,0,.25)',
+              fontSize: 18,
+              fontWeight: on ? 700 : 600,
+              letterSpacing: '0.01em',
+              color: on ? C.text : C.muted,
+              background: on ? faceHi() : 'transparent',
+              border: 'none',
             }}
           >
-            {t.icon && <Icon name={t.icon} size={17} />}
             {t.label}
+            {t.badge ? (
+              <span className="num" style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 999, background: C.brand, color: C.brandInk, fontFamily: FONT, fontSize: 11, fontWeight: 700, verticalAlign: 2 }}>
+                {t.badge}
+              </span>
+            ) : null}
           </button>
         );
       })}
@@ -789,8 +837,13 @@ export function SidePanel({
   actions,
   onClose,
   children,
+  tabs: ownTabs,
 }: {
+  /** The panel's name. Shown as its heading unless the panel has tabs (then the tabs are the heading). */
   title: string;
+  /** The panel's own tabs, shown as its heading (a panel with its own never shows its group's as well). */
+  tabs?: PanelTabsValue;
+  /** One quiet line under the heading, for a figure worth seeing at a glance. Not for explaining the panel. */
   subtitle?: React.ReactNode;
   width?: number;
   actions?: React.ReactNode;
@@ -803,7 +856,9 @@ export function SidePanel({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
-  const tabs = React.useContext(PanelTabsContext);
+  const groupTabs = React.useContext(PanelTabsContext);
+  const tabs = ownTabs ?? groupTabs;
+  const phone = useLayout() === 'phone';
 
   return (
     <section
@@ -815,8 +870,8 @@ export function SidePanel({
         left: 'var(--bp-gap)',
         bottom: 'var(--bp-bottom-h)',
         width: `min(${width}px, calc(100vw - 2 * var(--bp-gap) - 24px))`,
-        ...glass('ee'),
-        borderRadius: 16,
+        ...glass('f0'),
+        borderRadius: 18,
         overflow: 'hidden',
         zIndex: 40,
         display: 'flex',
@@ -824,22 +879,27 @@ export function SidePanel({
         animation: 'bp-panel-in .16s ease-out',
       }}
     >
-      {tabs && <PanelTabsStrip v={tabs} />}
-      <header className="bp-panel-head" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px 12px', borderBottom: `1px solid ${C.line}`, background: `linear-gradient(${C.raised}66, transparent)` }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <h2 style={{ margin: 0, fontSize: 25, fontWeight: 700, lineHeight: 1.1, color: C.text }}>{title}</h2>
-          {subtitle && <div style={{ fontSize: 13, color: C.muted, marginTop: 3 }}>{subtitle}</div>}
-        </div>
-        {actions}
-        <button
-          type="button"
-          aria-label="Close panel"
-          onClick={onClose}
-          style={{ background: C.raised, border: `1px solid ${C.border}`, color: C.textSoft, cursor: 'pointer', width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', padding: 0 }}
-        >
-          <Icon name="close" size={16} />
-        </button>
+      <header className="bp-panel-head" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: phone ? 8 : 10, padding: tabs ? '10px 10px 10px 12px' : '12px 10px 12px 18px', borderBottom: `1px solid ${C.line}`, flex: 'none' }}>
+        {tabs ? (
+          <PanelTabsStrip v={tabs} />
+        ) : (
+          <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, lineHeight: 1.15, color: C.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</h2>
+            {subtitle && <div style={{ fontSize: 12.5, color: C.muted, marginTop: 2 }}>{subtitle}</div>}
+          </div>
+        )}
+        {actions && (
+          <div className="bp-panel-actions" style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
+            {actions}
+          </div>
+        )}
+        <IconButton icon="close" label="Close" onClick={onClose} />
       </header>
+      {tabs && subtitle && (
+        <div className="num" style={{ flex: 'none', padding: phone ? '8px 12px 0' : '10px 18px 0', fontSize: 12.5, color: C.muted }}>
+          {subtitle}
+        </div>
+      )}
       <div className="bp-panel-body" style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '14px 18px 22px', overscrollBehavior: 'contain' }}>
         {children}
       </div>
@@ -850,7 +910,7 @@ export function SidePanel({
 export function SectionTitle({ children, color = C.textSoft, right }: { children: React.ReactNode; color?: string; right?: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '0 0 8px' }}>
-      <div style={{ fontFamily: DISPLAY, fontSize: 17, fontWeight: 700, letterSpacing: '0.01em', color }}>{children}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: color === C.textSoft ? C.muted : color }}>{children}</div>
       {right}
     </div>
   );
@@ -880,9 +940,9 @@ export function Stat({ label, value, sub }: { label: string; value: React.ReactN
 
 export function EmptyState({ title, body, action }: { title: string; body?: string; action?: React.ReactNode }) {
   return (
-    <div style={{ padding: '36px 20px', textAlign: 'center', border: `1px dashed ${C.border}`, borderRadius: 14, background: `${C.bg}66` }}>
-      <div style={{ fontFamily: DISPLAY, fontSize: 20, fontWeight: 700, color: C.textSoft }}>{title}</div>
-      {body && <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4, maxWidth: 420, marginInline: 'auto' }}>{body}</div>}
+    <div style={{ padding: '44px 20px', textAlign: 'center', borderRadius: 16, background: well() }}>
+      <div style={{ fontFamily: DISPLAY, fontSize: 21, fontWeight: 700, color: C.textSoft }}>{title}</div>
+      {body && <div style={{ fontSize: 13, color: C.muted, marginTop: 4, maxWidth: 380, marginInline: 'auto' }}>{body}</div>}
       {action && <div style={{ marginTop: 14 }}>{action}</div>}
     </div>
   );

@@ -50,7 +50,7 @@ import { mergeFriendAnswer, refreshFriendsMap } from '../game/friendsMap';
 import { buildSnapshot, type ScheduleSnapshot } from '../game/scheduleSnapshot';
 import type { Airport, SaveGameState } from '../game/types';
 import { Icon } from '../ui/icons';
-import { Button, C, DISPLAY, Segmented, inputStyle } from '../ui/kit';
+import { Button, C, DISPLAY, IconButton, Segmented, inputStyle } from '../ui/kit';
 import { RouteMap } from './FriendAirline';
 import { AirlineChip, AirlineName, AllianceTag, ConfirmButton, badgeFor } from './FriendsTab';
 import { ReportButton } from './ReportButton';
@@ -120,7 +120,8 @@ export function AlliancesTab(props: { me: MyAirline; busy: boolean; act: Act; ca
     </p>
   );
   const al = data.alliance;
-  const shown: Part = part ?? (al ? 'ours' : 'find');
+  const home: Part = al ? 'ours' : 'find';
+  const shown: Part = part && (part !== 'ours' || al) && (part !== 'start' || !al) ? part : home;
   const pick = (p: Part) => {
     setAnswer('');
     setEditing(false);
@@ -131,21 +132,20 @@ export function AlliancesTab(props: { me: MyAirline; busy: boolean; act: Act; ca
 
   return (
     <div style={{ display: 'grid', gap: 10 }}>
-      <Segmented<Part>
-        value={shown}
-        onChange={pick}
-        options={
-          al
-            ? [
-                { value: 'ours', label: waiting ? `${al.tag} · ${waiting} asking` : `Our alliance · ${al.tag}` },
-                { value: 'find', label: 'Find alliances' },
-              ]
-            : [
-                { value: 'find', label: data.invites.length ? `Find alliances · ${data.invites.length} invite${data.invites.length === 1 ? '' : 's'}` : 'Find alliances' },
-                { value: 'start', label: 'Start one' },
-              ]
-        }
-      />
+      {shown === home ? (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
+          {al && waiting > 0 && <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: C.amber }}>{waiting} asking to join</span>}
+          {!al && data.invites.length > 0 && <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: C.brand }}>{plural(data.invites.length, 'invite')}</span>}
+          <Button size="sm" onClick={() => pick(al ? 'find' : 'start')}>
+            {al ? 'Find alliances' : 'Start an alliance'}
+          </Button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <IconButton icon="chevron" label="Back" onClick={() => pick(home)} style={{ transform: 'rotate(180deg)' }} />
+          <span style={{ fontFamily: DISPLAY, fontSize: 19, fontWeight: 700 }}>{shown === 'find' ? 'Find alliances' : 'Start an alliance'}</span>
+        </div>
+      )}
       {shown === 'start' && !al && (
         <div style={{ display: 'grid', gap: 6 }}>
           {said}

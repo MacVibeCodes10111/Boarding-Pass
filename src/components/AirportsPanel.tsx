@@ -3,7 +3,7 @@ import { calcHubPurchasePriceUsd, calcHubSaleRefundUsd } from '../game/tiers';
 import { GATE_CODE_INFO, GATE_CODES, airportGateCode, type GateCode } from '../game/gateCode';
 import { formatMoneyM } from '../game/time';
 import type { Airport } from '../game/types';
-import { Button, C, SearchInput, Segmented, SidePanel } from '../ui/kit';
+import { Button, C, DISPLAY, Pill, SearchInput, SectionTitle, Segmented, SidePanel } from '../ui/kit';
 
 const CODES_DESC: GateCode[] = [...GATE_CODES].reverse();
 
@@ -43,71 +43,76 @@ export function AirportsPanel({
   }, [airports, hubs, search, show]);
 
   return (
-    <SidePanel
-      title="Airports"
-      subtitle={`${airports.length.toLocaleString()} airports with scheduled service, by the ICAO size code of the largest aircraft their gates take.`}
-      width={720}
-      onClose={onClose}
-    >
-      <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
-        <SearchInput value={search} onChange={setSearch} placeholder="Search code, city, name or country" style={{ flex: 1 }} />
+    <SidePanel title="Airports" width={720} onClose={onClose}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+        <SearchInput value={search} onChange={setSearch} placeholder="Search" style={{ flex: '1 1 180px' }} />
         <Segmented<'all' | 'hubs'>
           value={show}
           onChange={setShow}
           options={[
             { value: 'all', label: 'All' },
-            { value: 'hubs', label: `Your hubs (${hubs.length})` },
+            { value: 'hubs', label: `My hubs ${hubs.length}` },
           ]}
         />
       </div>
 
-      {groups.length === 0 && <div style={{ color: C.muted, fontSize: 12.5 }}>No airports match “{search}”.</div>}
+      {groups.length === 0 && <div style={{ color: C.muted, fontSize: 13 }}>Nothing matches.</div>}
 
       {groups.map(({ tier, info, list }) => (
         <section key={tier} style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 13, fontWeight: 650, color: C.textSoft, marginBottom: 6 }}>
-            Code {tier}: up to {info.examples} <span style={{ color: C.faint, fontWeight: 500 }}>{list.length}</span>
-          </div>
-          <div style={{ border: `1px solid ${C.line}`, borderRadius: 8, overflow: 'hidden' }}>
-            {list.slice(0, PER_GROUP).map((ap, i) => {
+          <SectionTitle right={<span className="num" style={{ fontSize: 12, color: C.faint }}>{list.length}</span>}>
+            {info.label} · Code {tier}
+          </SectionTitle>
+          <div className="bp-list">
+            {list.slice(0, PER_GROUP).map((ap) => {
               const owned = hubs.includes(ap.iata_code);
               return (
                 <div
                   key={ap.iata_code}
-                  className="bp-row bp-ap-row"
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px', borderTop: i ? `1px solid ${C.line}` : 'none' }}
+                  className="bp-row"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${ap.iata_code} ${ap.municipality}: show on the map`}
+                  onClick={() => onInspect(ap)}
+                  onKeyDown={(e) => e.key === 'Enter' && e.target === e.currentTarget && onInspect(ap)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px', cursor: 'pointer', borderRadius: 0 }}
                 >
-                  <span style={{ width: 40, fontWeight: 650, color: owned ? C.brand : C.text }}>{ap.iata_code}</span>
+                  <span style={{ width: 44, flex: 'none', fontFamily: DISPLAY, fontSize: 17, fontWeight: 700, color: owned ? C.brand : C.text }}>{ap.iata_code}</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <span style={{ display: 'block', fontSize: 13.5, fontWeight: 550, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {ap.municipality}, {ap.iso_country}
-                      {owned && <span style={{ color: C.brand, fontSize: 12 }}> your hub</span>}
                     </span>
-                    <span className="num" style={{ display: 'block', fontSize: 11.5, color: C.faint, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {ap.name}, {ap.max_runway_length_ft.toLocaleString()} ft runway
-                    </span>
+                    <span style={{ display: 'block', fontSize: 12, color: C.faint, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ap.name}</span>
                   </span>
-                  <Button size="sm" variant="ghost" onClick={() => onInspect(ap)}>
-                    Show on map
-                  </Button>
                   {!owned ? (
-                    <Button size="sm" onClick={() => onBuy(ap)} style={{ minWidth: 118 }}>
-                      Buy hub {formatMoneyM(calcHubPurchasePriceUsd(ap))}
+                    <Button
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onBuy(ap);
+                      }}
+                    >
+                      Buy {formatMoneyM(calcHubPurchasePriceUsd(ap))}
                     </Button>
                   ) : hubs.length > 1 ? (
-                    <Button size="sm" variant="ghost" onClick={() => onSell(ap)} style={{ minWidth: 118 }}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSell(ap);
+                      }}
+                    >
                       Sell +{formatMoneyM(calcHubSaleRefundUsd(ap))}
                     </Button>
                   ) : (
-                    <span style={{ minWidth: 118, fontSize: 12, color: C.faint, textAlign: 'center' }}>Home hub</span>
+                    <Pill color={C.brand}>Hub</Pill>
                   )}
                 </div>
               );
             })}
           </div>
-          {list.length > PER_GROUP && (
-            <div style={{ fontSize: 12, color: C.faint, padding: '6px 2px' }}>{list.length - PER_GROUP} more. Search to narrow the list.</div>
-          )}
+          {list.length > PER_GROUP && <div style={{ fontSize: 12, color: C.faint, padding: '8px' }}>+{list.length - PER_GROUP} more</div>}
         </section>
       ))}
     </SidePanel>

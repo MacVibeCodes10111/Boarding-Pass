@@ -46,7 +46,7 @@ export function RouteDemandBar({ origin, destination, distanceNm, playerHubs, al
   );
 
   return (
-    <div style={{ background: C.bg, border: `1px solid ${C.line}`, borderRadius: 8, padding: '10px 12px 4px', marginBottom: compact ? 12 : 14 }}>
+    <div style={{ borderTop: `1px solid ${C.line}`, padding: '10px 0 0', marginBottom: compact ? 4 : 14 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
         <span style={{ fontSize: 13, fontWeight: 600 }}>
           Demand {origin.iata_code} → {destination.iata_code}
@@ -61,13 +61,13 @@ export function RouteDemandBar({ origin, destination, distanceNm, playerHubs, al
       )}
       {demand.marketPax !== null && (
         <div className="bp-route-market" style={{ fontSize: 11.5, color: C.muted, margin: '-2px 0 8px', lineHeight: 1.45 }}>
-          About {demand.marketPax.toLocaleString()} people a day travel this way.{' '}
+          {demand.marketPax.toLocaleString()} travellers a day.{' '}
           {rivals.length > 0
-            ? `Flown today by ${rivals
+            ? `Flown by ${rivals
                 .slice(0, 4)
                 .map((c) => c.name)
                 .join(', ')}${rivals.length > 4 ? ` and ${rivals.length - 4} more` : ''}.`
-            : 'No airline flies it today.'}
+            : 'No airline flies it.'}
         </div>
       )}
       {!compact && (

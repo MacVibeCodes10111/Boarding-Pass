@@ -1,5 +1,5 @@
 // ============================================================================
-// BUY OR LEASE AIRCRAFT (reworked v2.58)
+// BUY OR LEASE AIRCRAFT (reworked v2.58, calmer in v3.1)
 //   Two simple steps instead of one long page:
 //     1. Browse: search, passenger or cargo, a row of makers, and families
 //        that open into cards (range, seats, price).
@@ -15,9 +15,9 @@ import { cabinSeatTotal, calculateCabinUsage, getDefaultCabinForModel } from '..
 import { getAircraftTierInfo } from '../game/tiers';
 import { formatMoneyM } from '../game/time';
 import type { AircraftModel, CabinConfig, GameMode } from '../game/types';
-import { DEFAULT_LEASE_WEEKS, DEPOSIT_WEEKS, LEASE_OPTIONS, leaseQuote } from '../game/leasing';
+import { DEFAULT_LEASE_WEEKS, LEASE_OPTIONS, leaseQuote } from '../game/leasing';
 import { Icon } from '../ui/icons';
-import { Button, C, Field, SearchInput, Segmented, SidePanel, Stepper, inputStyle } from '../ui/kit';
+import { Button, C, Chip, DISPLAY, Field, IconButton, SearchInput, Segmented, SidePanel, Stepper, inputStyle, well } from '../ui/kit';
 import { CabinEditor } from './CabinEditor';
 
 type Role = 'pax' | 'cargo';
@@ -52,20 +52,8 @@ export function BuyAircraftPanel(props: BuyAircraftPanelProps) {
     setView('model');
   };
   return (
-    <SidePanel
-      title={view === 'browse' ? 'Buy or lease aircraft' : shortName(props.selectedModel)}
-      subtitle={view === 'browse' ? `Delivered to ${props.hubIata}` : `${props.selectedModel.manufacturer}, ${familyLabel(props.selectedModel.manufacturer, props.selectedModel.family)}`}
-      width={820}
-      onClose={props.onClose}
-      actions={
-        view === 'model' ? (
-          <Button onClick={() => setView('browse')}>
-            <span aria-hidden="true">←</span> All aircraft
-          </Button>
-        ) : undefined
-      }
-    >
-      {view === 'browse' ? <Browse {...props} onOpen={open} /> : <ModelView {...props} />}
+    <SidePanel title={view === 'browse' ? 'Aircraft' : shortName(props.selectedModel)} width={820} onClose={props.onClose}>
+      {view === 'browse' ? <Browse {...props} onOpen={open} /> : <ModelView {...props} onBack={() => setView('browse')} />}
     </SidePanel>
   );
 }
@@ -74,7 +62,7 @@ export function BuyAircraftPanel(props: BuyAircraftPanelProps) {
 // Step 1: browse
 // ---------------------------------------------------------------------------
 function Browse(props: BuyAircraftPanelProps & { onOpen: (m: AircraftModel) => void }) {
-  const [showLivery, setShowLivery] = useBuyLivery();
+  const [showLivery] = useBuyLivery();
   const [search, setSearch] = useState('');
   const [role, setRole] = useState<Role>(props.selectedModel.is_cargo ? 'cargo' : 'pax');
   const [maker, setMaker] = useState('all');
@@ -115,39 +103,10 @@ function Browse(props: BuyAircraftPanelProps & { onOpen: (m: AircraftModel) => v
   const allOpen = search.trim() !== '' || groups.length <= 3;
   const toggle = (k: string) => setOpenFamilies((s) => (s.has(k) ? new Set([...s].filter((x) => x !== k)) : new Set([...s, k])));
 
-  const chip = (value: string, label: string) => (
-    <button
-      key={value}
-      type="button"
-      aria-pressed={maker === value}
-      onClick={() => setMaker(value)}
-      style={{
-        flex: 'none',
-        padding: '6px 12px',
-        borderRadius: 999,
-        fontSize: 13,
-        fontWeight: 600,
-        cursor: 'pointer',
-        whiteSpace: 'nowrap',
-        border: `1px solid ${maker === value ? C.brand : C.border}`,
-        background: maker === value ? C.brand : C.raised,
-        color: maker === value ? C.brandInk : C.textSoft,
-      }}
-    >
-      {label}
-    </button>
-  );
-
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ flex: '1 1 220px', minWidth: 0 }}>
-          <SearchInput value={search} onChange={setSearch} placeholder="Search, e.g. A320 or 787" />
-        </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: C.textSoft, whiteSpace: 'nowrap' }} title="Show the aircraft in your livery, or plain white">
-          <input type="checkbox" checked={showLivery} onChange={(e) => setShowLivery(e.target.checked)} />
-          My livery
-        </label>
+        <SearchInput value={search} onChange={setSearch} placeholder="Search" style={{ flex: '1 1 200px' }} />
         <Segmented<Role>
           value={role}
           onChange={setRole}
@@ -159,39 +118,44 @@ function Browse(props: BuyAircraftPanelProps & { onOpen: (m: AircraftModel) => v
       </div>
 
       <div role="group" aria-label="Manufacturer" className="bp-chips" style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'thin' }}>
-        {chip('all', 'All makers')}
-        {makers.map((b) => chip(b, b))}
+        <Chip active={maker === 'all'} onClick={() => setMaker('all')} style={{ flex: 'none', whiteSpace: 'nowrap' }}>
+          All
+        </Chip>
+        {makers.map((b) => (
+          <Chip key={b} active={maker === b} onClick={() => setMaker(b)} style={{ flex: 'none', whiteSpace: 'nowrap' }}>
+            {b}
+          </Chip>
+        ))}
       </div>
 
-      {groups.length === 0 && <div style={{ padding: 16, fontSize: 13, color: C.muted }}>No aircraft match. Clear the search or pick another maker.</div>}
+      {groups.length === 0 && <div style={{ padding: 16, fontSize: 13, color: C.muted }}>Nothing matches.</div>}
 
-      <div style={{ display: 'grid', gap: 8 }}>
+      <div className="bp-list">
         {groups.map((g) => {
           const isOpen = allOpen || openFamilies.has(g.key);
           const from = Math.min(...g.models.map((x) => x.base_price_usd));
           const seats = g.models.map((x) => (x.is_cargo ? x.cargo_cap_tons : x.typical_seats));
           const span = Math.min(...seats) === Math.max(...seats) ? `${Math.min(...seats)}` : `${Math.min(...seats)}–${Math.max(...seats)}`;
           return (
-            <section key={g.key} style={{ border: `1px solid ${C.line}`, borderRadius: 12, overflow: 'hidden', background: C.panel }}>
+            <section key={g.key}>
               <button
                 type="button"
+                className="bp-row"
                 aria-expanded={isOpen}
                 onClick={() => !allOpen && toggle(g.key)}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', background: 'transparent', border: 'none', color: C.text, cursor: allOpen ? 'default' : 'pointer', textAlign: 'left' }}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 8px', background: 'transparent', border: 'none', color: C.text, cursor: allOpen ? 'default' : 'pointer', textAlign: 'left', borderRadius: 0 }}
               >
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: 14.5, fontWeight: 650 }}>
-                    {maker === 'all' && <span style={{ color: C.muted, fontWeight: 500 }}>{g.maker} </span>}
-                    {g.family}
-                  </span>
-                  <span className="num" style={{ display: 'block', fontSize: 12, color: C.muted }}>
-                    {g.models.length} model{g.models.length > 1 ? 's' : ''} · {span} {role === 'cargo' ? 't' : 'seats'} · from {formatMoneyM(from)}
-                  </span>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 650, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {maker === 'all' && <span style={{ color: C.muted, fontWeight: 500 }}>{g.maker} </span>}
+                  {g.family}
                 </span>
-                {!allOpen && <Icon name="chevron" size={16} color={C.muted} style={{ transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />}
+                <span className="num" style={{ fontSize: 12.5, color: C.muted, whiteSpace: 'nowrap' }}>
+                  {span} {role === 'cargo' ? 't' : 'seats'} · from {formatMoneyM(from)}
+                </span>
+                {!allOpen && <Icon name="chevron" size={15} color={C.faint} style={{ transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />}
               </button>
               {isOpen && (
-                <div className="bp-model-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(210px, 100%), 1fr))', gap: 8, padding: '0 10px 10px' }}>
+                <div className="bp-model-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(210px, 100%), 1fr))', gap: 8, padding: '2px 0 14px' }}>
                   {g.models.map((x) => (
                     <button
                       key={x.id}
@@ -206,29 +170,25 @@ function Browse(props: BuyAircraftPanelProps & { onOpen: (m: AircraftModel) => v
                         gap: 6,
                         minWidth: 0,
                         padding: '10px 12px',
-                        borderRadius: 10,
+                        borderRadius: 12,
                         textAlign: 'left',
                         cursor: 'pointer',
                         color: C.text,
-                        background: C.raised,
-                        border: `1px solid ${x.id === props.selectedModel.id ? C.brand : C.line}`,
+                        background: well(),
+                        border: 'none',
                       }}
                     >
                       {hasAircraftPhoto(x) && <AircraftPhoto model={x} width="100%" paintWidth={220} plain={!showLivery} style={{ height: 58 }} />}
-                      <span style={{ display: 'flex', alignItems: 'flex-start', gap: 8, minWidth: 0 }}>
-                        {!hasAircraftPhoto(x) && <img src={props.iconForModel(x)} alt="" style={{ width: 22, height: 22, flex: 'none' }} />}
-                        <span style={{ flex: 1, minWidth: 0, fontWeight: 650, fontSize: 13.5, lineHeight: 1.3, overflowWrap: 'anywhere', paddingTop: 2 }}>{shortName(x)}</span>
-                        <span className="num" style={{ flex: 'none', marginTop: 2, fontSize: 10.5, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: C.bg, color: C.textDim }}>
-                          {x.icao_code}
+                      <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
+                        {!hasAircraftPhoto(x) && <img src={props.iconForModel(x)} alt="" style={{ width: 22, height: 22, flex: 'none', alignSelf: 'center' }} />}
+                        <span style={{ flex: 1, minWidth: 0, fontWeight: 650, fontSize: 14, lineHeight: 1.3, overflowWrap: 'anywhere' }}>{shortName(x)}</span>
+                        <span className="num" style={{ flex: 'none', fontSize: 13, fontWeight: 650 }}>
+                          {formatMoneyM(x.base_price_usd)}
                         </span>
                       </span>
-                      <span className="num" style={{ display: 'flex', justifyContent: 'space-between', gap: 6, fontSize: 12, color: C.muted }}>
-                        <span>{x.range_nm.toLocaleString()} nm</span>
-                        <span>
-                          {seatsOrLoad(x)}
-                          {x.is_cargo ? '' : ' seats'}
-                        </span>
-                        <span style={{ color: C.textSoft, fontWeight: 600 }}>{formatMoneyM(x.base_price_usd)}</span>
+                      <span className="num" style={{ fontSize: 12.5, color: C.muted }}>
+                        {seatsOrLoad(x)}
+                        {x.is_cargo ? '' : ' seats'} · {x.range_nm.toLocaleString()} nm
                       </span>
                     </button>
                   ))}
@@ -245,8 +205,8 @@ function Browse(props: BuyAircraftPanelProps & { onOpen: (m: AircraftModel) => v
 // ---------------------------------------------------------------------------
 // Step 2: the model, and buying or leasing it
 // ---------------------------------------------------------------------------
-function ModelView(props: BuyAircraftPanelProps) {
-  const [showLivery] = useBuyLivery();
+function ModelView(props: BuyAircraftPanelProps & { onBack: () => void }) {
+  const [showLivery, setShowLivery] = useBuyLivery();
   const { selectedModel: m, cabinDraft } = props;
   const tier = getAircraftTierInfo(m.tier);
   const usage = calculateCabinUsage(m, cabinDraft);
@@ -265,7 +225,7 @@ function ModelView(props: BuyAircraftPanelProps) {
   const cabinText = [
     cabinDraft.firstSeats && `${cabinDraft.firstSeats} first`,
     cabinDraft.busSeats && `${cabinDraft.busSeats} business`,
-    cabinDraft.premSeats && `${cabinDraft.premSeats} premium economy`,
+    cabinDraft.premSeats && `${cabinDraft.premSeats} premium`,
     cabinDraft.econSeats && `${cabinDraft.econSeats} economy`,
   ]
     .filter(Boolean)
@@ -273,39 +233,52 @@ function ModelView(props: BuyAircraftPanelProps) {
 
   const stat = (label: string, value: string) => (
     <div style={{ minWidth: 0 }}>
-      <div style={{ fontSize: 11.5, color: C.muted }}>{label}</div>
+      <div style={{ fontSize: 12, color: C.muted }}>{label}</div>
       <div className="num" style={{ fontSize: 18, fontWeight: 700 }}>
         {value}
       </div>
     </div>
   );
-  const box: React.CSSProperties = { padding: 14, border: `1px solid ${C.line}`, borderRadius: 12, background: C.panel };
+  const box: React.CSSProperties = { padding: 14, borderRadius: 14, background: well() };
+  const fold: React.CSSProperties = { padding: '12px 8px', borderTop: `1px solid ${C.line}` };
 
   return (
     <div ref={top} style={{ display: 'grid', gap: 14, scrollMarginTop: 8 }}>
-      {hasAircraftPhoto(m) && (
-        <div style={{ padding: '6px 4px 0', minWidth: 0 }}>
-          <AircraftPhoto model={m} width="100%" paintWidth={560} plain={!showLivery} style={{ maxWidth: 560, margin: '0 auto' }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <IconButton icon="chevron" label="All aircraft" onClick={props.onBack} style={{ transform: 'rotate(180deg)' }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h3 style={{ margin: 0, fontFamily: DISPLAY, fontSize: 24, fontWeight: 700, lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortName(m)}</h3>
+          <div style={{ fontSize: 12.5, color: C.muted }}>
+            {m.manufacturer} · {tier.sizeLabel}
+            {m.is_cargo ? ' freighter' : ''} · {m.icao_code}
+          </div>
         </div>
+        {hasAircraftPhoto(m) && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: C.textSoft, whiteSpace: 'nowrap' }}>
+            <input type="checkbox" checked={showLivery} onChange={(e) => setShowLivery(e.target.checked)} />
+            My livery
+          </label>
+        )}
+      </div>
+
+      {hasAircraftPhoto(m) ? (
+        <AircraftPhoto model={m} width="100%" paintWidth={560} plain={!showLivery} style={{ maxWidth: 560, margin: '0 auto' }} />
+      ) : (
+        <img src={props.iconForModel(m)} alt="" style={{ width: 44, height: 44 }} />
       )}
-      {!hasAircraftPhoto(m) && <img src={props.iconForModel(m)} alt="" style={{ width: 44, height: 44 }} />}
 
       {/* Key numbers */}
-      <div style={{ ...box, display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, padding: '0 8px' }}>
         {stat('Range', `${m.range_nm.toLocaleString()} nm`)}
-        {stat(m.is_cargo ? 'Payload' : 'Seats', m.is_cargo ? `${m.cargo_cap_tons} t` : `${seats} of ${m.max_exit_limit}`)}
+        {stat(m.is_cargo ? 'Payload' : 'Seats', m.is_cargo ? `${m.cargo_cap_tons} t` : `${seats}`)}
         {stat('Cruise', `${m.cruise_speed_kts} kt`)}
         {stat('Turnaround', `${m.turnaround_min} min`)}
-        {stat('Size', `${tier.sizeLabel}${m.is_cargo ? ' freighter' : ''}`)}
-        {stat('Type code', m.icao_code)}
-        {stat('ICAO size', `Code ${aircraftGateCode(m)}`)}
-        {stat('Wingspan', WINGSPAN_M[m.id] ? `${WINGSPAN_M[m.id]} m` : '—')}
       </div>
 
       {/* Order */}
       <div style={{ ...box, display: 'grid', gap: 12 }}>
         <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'end' }}>
-          <Field label={count > 1 ? 'First registration' : 'Registration'} hint={count > 1 ? 'The others count on from it' : undefined}>
+          <Field label={count > 1 ? 'First registration' : 'Registration'}>
             <input
               value={props.tailInput}
               maxLength={10}
@@ -322,13 +295,13 @@ function ModelView(props: BuyAircraftPanelProps) {
             <Button variant="primary" size="lg" block disabled={!usage.isValid || !canBuy} onClick={() => props.onAcquire('owned', weeks, count)}>
               Buy{count > 1 ? ` ${count}` : ''} · {formatMoneyM(m.base_price_usd * count)}
             </Button>
-            <div style={{ fontSize: 11.5, color: canBuy ? C.faint : C.red }}>{canBuy ? 'Sells later for 75% of the price.' : 'Not enough cash.'}</div>
+            {!canBuy && <div style={{ fontSize: 12, color: C.red }}>Not enough cash</div>}
           </div>
           <div style={{ display: 'grid', gap: 6, alignContent: 'start' }}>
             <Button size="lg" block disabled={!usage.isValid || !canLease} onClick={() => props.onAcquire('leased', weeks, count)}>
               Lease · ${quote.dailyRate.toLocaleString()}/day{count > 1 ? ' each' : ''}
             </Button>
-            <label className="num" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: canLease ? C.faint : C.red }}>
+            <label className="num" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: canLease ? C.muted : C.red }}>
               <select value={String(weeks)} onChange={(e) => setWeeks(Number(e.target.value))} aria-label="Lease term" style={{ ...inputStyle, width: 'auto', padding: '2px 6px', fontSize: 12 }}>
                 {LEASE_OPTIONS.map((o) => (
                   <option key={o.weeks} value={o.weeks}>
@@ -336,52 +309,53 @@ function ModelView(props: BuyAircraftPanelProps) {
                   </option>
                 ))}
               </select>
-              {canLease ? `${formatMoneyM(quote.deposit * count, 2)} deposit (${DEPOSIT_WEEKS} weeks), returned at the end` : 'Not enough cash for the deposit.'}
+              {canLease ? `${formatMoneyM(quote.deposit * count, 2)} deposit` : 'Not enough for the deposit'}
             </label>
           </div>
         </div>
-        {!usage.isValid && <div style={{ fontSize: 12, color: C.red }}>The cabin doesn’t fit. Open Cabin below to fix it.</div>}
+        {!usage.isValid && <div style={{ fontSize: 12.5, color: C.red }}>The cabin doesn’t fit.</div>}
       </div>
 
-      {/* Cabin, folded */}
-      {m.is_cargo ? (
-        <div style={{ fontSize: 13, color: C.textDim }}>Dedicated freighter: {m.cargo_cap_tons} t on the main deck, earning from freight demand between cities.</div>
-      ) : (
-        <details style={box}>
-          <summary style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, listStyle: 'none' }}>
-            <span style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ display: 'block', fontWeight: 650, fontSize: 14 }}>Cabin</span>
-              <span className="num" style={{ display: 'block', fontSize: 12.5, color: C.muted }}>
-                {cabinText || 'No seats'} ({seats} seats)
-              </span>
-            </span>
-            <span style={{ fontSize: 13, fontWeight: 600, color: C.accent }}>Change</span>
-          </summary>
-          <div style={{ marginTop: 12 }}>
-            <CabinEditor model={m} cabin={cabinDraft} onChange={props.onCabinDraftChange} />
-          </div>
-        </details>
-      )}
-
-      {/* Everything else */}
-      <details style={box}>
-        <summary style={{ cursor: 'pointer', fontWeight: 650, fontSize: 14, listStyle: 'none' }}>All specifications</summary>
-        <dl className="num" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px 16px', margin: '12px 0 0', fontSize: 13 }}>
-          {[
-            ['Fuel burn', `${m.fuel_burn_kg_hr.toLocaleString()} kg/h`],
-            ['Max takeoff', `${Math.round(m.mtow_kg / 1000)} t`],
-            ['Typical seats', m.is_cargo ? '—' : String(m.typical_seats)],
-            ['Seat limit', m.is_cargo ? '—' : String(m.max_exit_limit)],
-            ['Belly cargo', `${m.cargo_cap_tons} t`],
-            ['Lease, standard', `$${leaseQuote(m, DEFAULT_LEASE_WEEKS, props.econMin).dailyRate.toLocaleString()}/day`],
-          ].map(([k, v]) => (
-            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, borderBottom: `1px solid ${C.line}`, paddingBottom: 6 }}>
-              <dt style={{ color: C.muted }}>{k}</dt>
-              <dd style={{ margin: 0, fontWeight: 600 }}>{v}</dd>
+      <div>
+        {/* Cabin, folded */}
+        {!m.is_cargo && (
+          <details style={fold} open={!usage.isValid || undefined}>
+            <summary style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, listStyle: 'none' }}>
+              <span style={{ fontWeight: 650, fontSize: 14 }}>Cabin</span>
+              <span className="num" style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cabinText || 'No seats'}</span>
+              <Icon name="chevron" size={14} color={C.faint} />
+            </summary>
+            <div style={{ marginTop: 12 }}>
+              <CabinEditor model={m} cabin={cabinDraft} onChange={props.onCabinDraftChange} />
             </div>
-          ))}
-        </dl>
-      </details>
+          </details>
+        )}
+
+        {/* Everything else */}
+        <details style={fold}>
+          <summary style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, listStyle: 'none' }}>
+            <span style={{ flex: 1, fontWeight: 650, fontSize: 14 }}>Specifications</span>
+            <Icon name="chevron" size={14} color={C.faint} />
+          </summary>
+          <dl className="num" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px 24px', margin: '12px 0 0', fontSize: 13 }}>
+            {[
+              ['Size', `Code ${aircraftGateCode(m)}`],
+              ['Wingspan', WINGSPAN_M[m.id] ? `${WINGSPAN_M[m.id]} m` : '—'],
+              ['Fuel burn', `${m.fuel_burn_kg_hr.toLocaleString()} kg/h`],
+              ['Max takeoff', `${Math.round(m.mtow_kg / 1000)} t`],
+              ['Typical seats', m.is_cargo ? '—' : String(m.typical_seats)],
+              ['Seat limit', m.is_cargo ? '—' : String(m.max_exit_limit)],
+              [m.is_cargo ? 'Cargo' : 'Belly cargo', `${m.cargo_cap_tons} t`],
+              ['Resale', '75%'],
+            ].map(([k, v]) => (
+              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                <dt style={{ color: C.muted }}>{k}</dt>
+                <dd style={{ margin: 0, fontWeight: 600 }}>{v}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
+      </div>
     </div>
   );
 }

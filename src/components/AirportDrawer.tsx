@@ -19,10 +19,10 @@ import {
   type RoutingMode,
 } from '../game/scheduling';
 import { airportRestrictionFor, calcHubPurchasePriceUsd, calcHubSaleRefundUsd } from '../game/tiers';
-import { GATE_CODE_INFO, airportGateCode } from '../game/gateCode';
+import { airportGateCode } from '../game/gateCode';
 import { formatClockShort, formatDurationHm, formatMoneyM } from '../game/time';
 import type { AircraftModel, Airport, Fares, PlayerAircraft, ScheduledFlight, WeekDays } from '../game/types';
-import { Button, C, DayPicker, Pill, Segmented, Stepper, inputStyle, glass } from '../ui/kit';
+import { Button, C, DISPLAY, DayPicker, IconButton, Pill, Segmented, Stepper, face, inputStyle, glass, well } from '../ui/kit';
 import { ErrorBanner, FaresEditor } from './AircraftScheduleModal';
 import { RouteDemandBar } from './RouteDemandBar';
 import { getRouteDemandAndFares } from '../game/economics';
@@ -234,7 +234,7 @@ export function AirportDrawer({
     () => returnFlightNumber(schedule, airlineIata, draft.flightNumber.trim().toUpperCase() || suggestedNumber, distanceNm || undefined),
     [schedule, airlineIata, draft.flightNumber, suggestedNumber, distanceNm]
   );
-  const card: React.CSSProperties = { padding: 12, borderRadius: 12, border: `1px solid ${C.line}`, background: C.bg };
+  const card: React.CSSProperties = { padding: 12, borderRadius: 14, background: well() };
   const summaryStyle: React.CSSProperties = { cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, fontWeight: 650, listStyle: 'none' };
 
   const pickedRow = ranked.find((r) => r.ac.tailNumber === draft.tailNumber);
@@ -251,31 +251,28 @@ export function AirportDrawer({
         width: 'min(440px, calc(100vw - 2 * var(--bp-gap) - 24px))',
         overscrollBehavior: 'contain',
         ...glass('ee'),
-        borderRadius: 16,
+        borderRadius: 18,
         overflowY: 'auto',
         zIndex: 35,
         animation: 'bp-fade-in .14s ease-out',
       }}
     >
       {/* Header */}
-      <div style={{ padding: '16px 18px 12px', borderBottom: `1px solid ${C.line}` }}>
+      <div style={{ padding: '14px 12px 12px 18px' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-              <span style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em', color: isHub ? C.brand : C.text }}>{airport.iata_code}</span>
-              <span style={{ fontSize: 13, color: C.muted }}>{airport.icao_code}</span>
-              {isHub && <Pill color={C.brand}>Your hub</Pill>}
+              <span style={{ fontFamily: DISPLAY, fontSize: 28, fontWeight: 700, lineHeight: 1, color: isHub ? C.brand : C.text }}>{airport.iata_code}</span>
+              <span style={{ fontSize: 14.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {airport.municipality}, {airport.iso_country}
+              </span>
+              {isHub && <Pill color={C.brand}>Hub</Pill>}
             </div>
-            <div style={{ fontSize: 13.5, fontWeight: 600, marginTop: 2 }}>
-              {airport.municipality}, {airport.iso_country}
-            </div>
-            <div style={{ fontSize: 12, color: C.muted }}>
-              {airport.name}. Gates up to ICAO Code {gate} ({GATE_CODE_INFO[gate].examples}), {airport.max_runway_length_ft.toLocaleString()} ft runway.
+            <div className="num" style={{ fontSize: 12.5, color: C.muted, marginTop: 3 }}>
+              {airport.name} · Code {gate} · {airport.max_runway_length_ft.toLocaleString()} ft
             </div>
           </div>
-          <button type="button" aria-label="Close" onClick={onClose} style={{ background: C.raised, border: `1px solid ${C.border}`, color: C.textSoft, cursor: 'pointer', width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', padding: 0, flex: 'none' }}>
-            <Icon name="close" size={18} />
-          </button>
+          <IconButton icon="close" label="Close" onClick={onClose} />
         </div>
 
         {/* Weather, one line; details on demand */}
@@ -290,9 +287,9 @@ export function AirportDrawer({
             alignItems: 'center',
             gap: 8,
             padding: '7px 10px',
-            borderRadius: 8,
-            background: C.bg,
-            border: `1px solid ${C.line}`,
+            borderRadius: 10,
+            background: well(),
+            border: 'none',
             color: C.textDim,
             fontSize: 12.5,
             textAlign: 'left',
@@ -301,8 +298,8 @@ export function AirportDrawer({
         >
           <span style={{ fontWeight: 650, color: wx.categoryColor }}>{wx.categoryBadge}</span>
           <span style={{ flex: 1 }} className="num">
-            {wx.conditionLabel}, {wx.tempC}°C. Wind {String(wx.windDirDeg).padStart(3, '0')}° {wx.windSpeedKts} kt{wx.gustKts ? ` gusting ${wx.gustKts}` : ''}. Landing {landingRwys}
-            {takeoffRwys !== landingRwys ? `, taking off ${takeoffRwys}` : ''}.
+            {wx.conditionLabel} {wx.tempC}°C · {String(wx.windDirDeg).padStart(3, '0')}° {wx.windSpeedKts} kt{wx.gustKts ? ` G${wx.gustKts}` : ''} · Rwy {landingRwys}
+            {takeoffRwys !== landingRwys ? ` / ${takeoffRwys}` : ''}
           </span>
           <Icon name="chevron" size={14} style={{ transform: showWx ? 'rotate(90deg)' : 'none', transition: 'transform .12s' }} />
         </button>
@@ -324,18 +321,18 @@ export function AirportDrawer({
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
           {!isHub ? (
             <Button size="sm" onClick={() => onBuyHub(airport)}>
-              Buy as hub, {formatMoneyM(calcHubPurchasePriceUsd(airport))}
+              Buy hub · {formatMoneyM(calcHubPurchasePriceUsd(airport))}
             </Button>
           ) : (
             <>
               {draft.originIata !== airport.iata_code && (
                 <Button size="sm" onClick={() => updateDraft({ originIata: airport.iata_code })}>
-                  Plan routes from here
+                  Fly from here
                 </Button>
               )}
               {hubs.length > 1 && (
                 <Button size="sm" variant="ghost" onClick={() => onSellHub(airport)}>
-                  Sell hub, +{formatMoneyM(calcHubSaleRefundUsd(airport))}
+                  Sell hub · +{formatMoneyM(calcHubSaleRefundUsd(airport))}
                 </Button>
               )}
             </>
@@ -344,7 +341,7 @@ export function AirportDrawer({
       </div>
 
       {/* Route planner (reworked v2.58): route card, a flights table, the aircraft, extras folded, the button pinned */}
-      <div style={{ padding: '14px 16px 0' }}>
+      <div style={{ padding: '2px 14px 0' }}>
         {picking && bulk.length === 0 && fleet.length > 0 ? (
           <div style={{ paddingBottom: 16 }}>
             <AircraftPicker
@@ -361,8 +358,8 @@ export function AirportDrawer({
             />
           </div>
         ) : fleet.length === 0 ? (
-          <div style={{ fontSize: 13, color: C.muted, padding: 12, border: `1px dashed ${C.border}`, borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-            <span style={{ flex: 1 }}>Buy an aircraft to start flying routes.</span>
+          <div style={{ fontSize: 13.5, color: C.muted, padding: 12, background: well(), borderRadius: 14, display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+            <span style={{ flex: 1 }}>No aircraft yet</span>
             <Button size="sm" variant="primary" onClick={onBuyAircraft}>
               Buy aircraft
             </Button>
@@ -412,13 +409,12 @@ export function AirportDrawer({
                   </span>
                 )}
               </div>
-              {draft.mode === 'chain' && <div style={{ fontSize: 11.5, color: C.faint, marginTop: 6 }}>Continue from {airport.iata_code} next: +15% passengers on A→B→C chains.</div>}
               {origin && routeValid && (
                 <div style={{ marginTop: 10 }}>
                   <RouteDemandBar origin={origin} destination={airport} distanceNm={distanceNm} playerHubs={hubs} allSchedule={schedule} fleet={fleet} compact />
                 </div>
               )}
-              {!routeValid && <div style={{ fontSize: 12.5, color: C.muted, marginTop: 8 }}>Pick where to fly from, or tap another airport on the map.</div>}
+              {!routeValid && <div style={{ fontSize: 12.5, color: C.muted, marginTop: 8 }}>Pick where to fly from.</div>}
             </section>
 
             {/* Flights table */}
@@ -449,7 +445,7 @@ export function AirportDrawer({
                 />
                 {draft.mode === 'roundtrip' && (
                   <>
-                    <div className="num" style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '6px 12px', fontSize: 12, color: C.muted, background: C.bg }}>
+                    <div className="num" style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '6px 12px', fontSize: 12, color: C.muted }}>
                       <span>Turnaround at {airport.iata_code}</span>
                       <span>{legTimes.turnMin} min</span>
                     </div>
@@ -468,7 +464,6 @@ export function AirportDrawer({
                     />
                   </>
                 )}
-                <div style={{ fontSize: 11, color: C.faint, padding: '6px 12px 10px' }}>Times are UTC, local time underneath.</div>
               </section>
             )}
 
@@ -509,7 +504,7 @@ export function AirportDrawer({
                       setPicking(true);
                       (e.currentTarget.closest('aside') as HTMLElement | null)?.scrollTo({ top: 0 });
                     }}
-                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, border: `1px solid ${C.border}`, background: C.panel, color: C.text, cursor: 'pointer', textAlign: 'left' }}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, border: 'none', background: face(), color: C.text, cursor: 'pointer', textAlign: 'left' }}
                   >
                     {aircraft && <AircraftPhoto model={aircraft.model} width={68} fallback={iconForModel?.(aircraft.model)} tailNumber={aircraft.tailNumber} liveryIndex={aircraft.livery} />}
                     <span style={{ flex: 1, minWidth: 0 }}>
@@ -592,7 +587,6 @@ export function AirportDrawer({
                 </summary>
                 <div style={{ paddingTop: 10 }}>
                   <FaresEditor fares={draft.fares} onChange={(fares) => updateDraft({ fares })} cargoOnly={Boolean(aircraft?.model.is_cargo)} refFares={refFares ?? undefined} />
-                  <div style={{ fontSize: 11.5, color: C.faint, marginTop: 6 }}>Set to the market rate. Higher fares sell fewer seats; at three times the market rate nobody buys.</div>
                 </div>
               </details>
             )}
@@ -609,7 +603,7 @@ export function AirportDrawer({
             <span style={{ flex: 1, fontSize: 13 }}>
               {attachedRoutes.length} flight{attachedRoutes.length > 1 ? 's' : ''} at {airport.iata_code}
             </span>
-            <span style={{ fontSize: 12.5, color: C.accent, fontWeight: 600 }}>Open in Schedule</span>
+            <Icon name="chevron" size={14} color={C.faint} />
           </button>
         )}
       </div>

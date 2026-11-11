@@ -114,7 +114,7 @@ import type {
 } from './game/types';
 import { APP_VERSION } from './version';
 import { MainMenu } from './components/MainMenu';
-import { CloudHost, openCloud } from './components/CloudPanel';
+import { CloudHost } from './components/CloudPanel';
 import { OnlineHost, OnlineSidePanel, onOpenOnline, openOnline, type OnlineTab } from './components/OnlinePanel';
 import type { MarketHooks } from './components/MarketTab';
 import { applyMarket, cancelListing, claimMarket, listAircraft, loadMarketMine, marketActions, marketAnswer, normaliseMarket, withApplied, type MarketMine, type MarketSave } from './game/market';
@@ -324,9 +324,11 @@ export default function App() {
   const mapClock = useMemo(() => getMapClock(), [mapNowMs, mapSpeed, getMapClock]);
 
   const [airports, setAirports] = useState<Airport[]>(BUILTIN_AIRPORTS);
-  const [navaidsCount, setNavaidsCount] = useState(31);
+  const [, setNavaidsCount] = useState(31);
   const [navaidsVersion, setNavaidsVersion] = useState(0);
-  const [dataStatus, setDataStatus] = useState('Loading airport data…');
+  const [, setDataStatus] = useState('Loading airport data…');
+  /** The airports and routes are loaded (or couldn't be): see whenWorldLoaded. */
+  const [worldLoaded, setWorldLoaded] = useState(false);
   const [fleet, setFleet] = useState<PlayerAircraft[]>([]);
   const [schedule, setSchedule] = useState<ScheduledFlight[]>([]);
 
@@ -548,6 +550,25 @@ export default function App() {
   // full airport list can arrive meanwhile: flights linked to the small built-in list had no runways)
   const airportByIataRef = useRef(airportByIata);
   airportByIataRef.current = airportByIata;
+  // A career opens only once the world's airports and routes are in (or couldn't be had). Before
+  // that the game runs on a small built-in list and a rough guess at how many people fly a route
+  // (up to 30 times the real figure on thin routes), and the earnings for the time away were
+  // worked out from that guess when Continue was tapped while the files were still downloading.
+  const worldLoadedRef = useRef(false);
+  const worldWaiters = useRef<(() => void)[]>([]);
+  useEffect(() => {
+    if (!worldLoaded) return;
+    worldLoadedRef.current = true;
+    worldWaiters.current.splice(0).forEach((go) => go());
+  }, [worldLoaded]);
+  /** Resolves once the airports and routes are loaded and on screen; gives up after `maxMs` (the game still plays without them). */
+  const whenWorldLoaded = (maxMs = 20_000) =>
+    worldLoadedRef.current
+      ? Promise.resolve()
+      : new Promise<void>((resolve) => {
+          worldWaiters.current.push(resolve);
+          window.setTimeout(resolve, maxMs);
+        });
   const mapTraffic = useMemo(() => (shownAiTraffic && friendsFlag && friendsLayer ? withFriends(shownAiTraffic, friendAirlines, airportByIata) : shownAiTraffic), [shownAiTraffic, friendsFlag, friendsLayer, friendAirlines, airportByIata]);
   const econById = useMemo(() => computeNetworkEconomics({ hubs, schedule, fleet }), [hubs, schedule, fleet]);
   const canAfford = (cost: number) => gameMode === 'sandbox' || cash >= cost;
@@ -649,6 +670,7 @@ export default function App() {
           notes.push(`${parsed.length.toLocaleString()} airports${rwyText ? ' with runways' : ' (runways.csv missing)'}`);
         }
       }
+      setWorldLoaded(true);
       // Other airlines' traffic (cosmetic): the real network, or the old OpenFlights files
       const [ofAirports, ofRoutes, ofPlanes] = network
         ? [null, null, null]
@@ -1076,8 +1098,10 @@ export default function App() {
   const resumeCareer = async (sv: SaveGameState) => {
     if (checkingCloud.current) return;
     checkingCloud.current = true;
-    const newer = await newerCloudCopy(sv);
+    if (!worldLoadedRef.current) flashToast('Loading the world’s airports and routes…', 20_000);
+    const [newer] = await Promise.all([newerCloudCopy(sv), whenWorldLoaded()]);
     checkingCloud.current = false;
+    setToast((t) => (t === 'Loading the world’s airports and routes…' ? null : t));
     if (!newer) {
       loadCareer(sv);
       return;
@@ -1118,9 +1142,9 @@ export default function App() {
     if (!target) return;
     setGameAlert({
       title: `Delete ${target.airlineName}?`,
-      message: 'This save is removed from this computer. Export it first if you want to keep a copy.',
+      message: 'It’s removed from this device and from the cloud.',
       severity: 'error',
-      confirmLabel: 'Delete save',
+      confirmLabel: 'Delete',
       onConfirm: () => {
         const next = readSaveSlots().filter((s) => s.saveId !== saveId);
         setSavedGames(next);
@@ -1447,7 +1471,10 @@ export default function App() {
   // openOnline() from anywhere in a career opens the panel
   useEffect(() => {
     if (screen !== 'dashboard') return;
-    return onOpenOnline(() => setPanel('online'));
+    return onOpenOnline((tab) => {
+      if (tab) setOnlineStart({ tab });
+      setPanel('online');
+    });
   }, [screen]);
   useEffect(() => {
     if (panel !== 'online') setOnlineStart({});
@@ -1684,13 +1711,22 @@ export default function App() {
       if (blocker) showAlert('Loan not available', blocker, undefined, 'warning');
       return;
     }
-    const { loan, career: next } = drawLoan(careerRef.current, product, amount, econRef.current.min, airlineName);
+    const { loan: offer } = drawLoan(careerRef.current, product, amount, econRef.current.min, airlineName);
     setGameAlert({
       title: `Borrow ${usdShort(amount)} (${product.name})?`,
-      message: `${product.termWeeks} weekly instalments of ${usdShort(loan.weeklyPayment)} at ${loan.ratePct}% a year, ${usdShort(loan.totalRepayable)} in total. Instalments are taken automatically and you can repay early at no charge.`,
+      message: `${product.termWeeks} weekly instalments of ${usdShort(offer.weeklyPayment)} at ${offer.ratePct}% a year, ${usdShort(offer.totalRepayable)} in total. Instalments are taken automatically and you can repay early at no charge.`,
       severity: 'info',
       confirmLabel: 'Sign agreement',
       onConfirm: () => {
+        // The game runs on while the question is open: sign against the account as it is now.
+        // (Putting back the career from when the question was asked undid the instalments paid
+        // and the letters that arrived in between.)
+        const stillBlocked = borrowBlocker(careerRef.current, fleet, cashRef.current, amount, econRef.current.min);
+        if (stillBlocked) {
+          flashToast(`Loan not available: ${stillBlocked}`, 6000);
+          return;
+        }
+        const { loan, career: next } = drawLoan(careerRef.current, product, amount, econRef.current.min, airlineName);
         setCareer(next);
         bookCash('loan', loan.principal);
         flashToast(`${usdShort(loan.principal)} from ${BANK.name} paid into your account (${loan.ref})`, 4500);
@@ -1711,9 +1747,16 @@ export default function App() {
       severity: 'info',
       confirmLabel: 'Repay loan',
       onConfirm: () => {
-        setCareer(r.career);
-        bookCash('repay', -r.amount);
-        flashToast(`Loan settled. ${usdShort(r.amount)} paid to ${BANK.name}`);
+        // What is owed now: instalments were paid while the question was open
+        const now = repayLoanEarly(careerRef.current, loanId, econRef.current.min, airlineName);
+        if (!now) return; // its last instalment was paid meanwhile
+        if (cashRef.current < now.amount) {
+          flashToast(`Not enough cash: settling this loan needs ${usdShort(now.amount)}.`, 5000);
+          return;
+        }
+        setCareer(now.career);
+        bookCash('repay', -now.amount);
+        flashToast(`Loan settled. ${usdShort(now.amount)} paid to ${BANK.name}`);
       },
     });
   };
@@ -1798,6 +1841,18 @@ export default function App() {
     flashToast(`${usdShort(letter.reward)} paid into your account`);
   };
 
+  /** Every payment that is waiting, in one go. */
+  const collectAllLetters = () => {
+    const c = careerRef.current;
+    const due = gameMode === 'standard' ? uncollected(c) : [];
+    if (!due.length) return;
+    const ids = new Set(due.map((l) => l.id));
+    const total = due.reduce((s, l) => s + (l.reward ?? 0), 0);
+    setCareer({ ...c, letters: c.letters.map((l) => (ids.has(l.id) ? { ...l, collected: true, read: true } : l)) });
+    bookCash('grant', total);
+    flashToast(`${usdShort(total)} paid into your account`);
+  };
+
   const markLetterRead = useCallback(
     (letterId: string) => {
       const c = careerRef.current;
@@ -1856,10 +1911,9 @@ export default function App() {
     return (
       <>
         <CloudHost openSaveId={null} onSlotsChanged={() => setSavedGames(readSaveSlots())} toast={flashToast} />
-        <OnlineHost airports={airportByIata} mapStyle={mapStyle} />
+        <OnlineHost airports={airportByIata} mapStyle={mapStyle} onSlotsChanged={() => setSavedGames(readSaveSlots())} />
         <HomeScreen
-          onCloud={openCloud}
-          onOnline={openOnline}
+          onAccount={() => openOnline('account')}
           onCloudDownloaded={() => setSavedGames(readSaveSlots())}
           toast={flashToast}
           airlineName={airlineName}
@@ -1876,9 +1930,6 @@ export default function App() {
           }}
           airports={airports}
           airportByIata={airportByIata}
-          navaidsCount={navaidsCount}
-          aircraftCount={BUILTIN_AIRCRAFT.length}
-          dataStatus={`${dataStatus}\n${aiStatus}`}
           savedGames={savedGames}
           onLaunch={requestLaunch}
           onResume={(sv) => void resumeCareer(sv)}
@@ -2003,13 +2054,10 @@ export default function App() {
 
       <NavRail
         activePanel={panel}
-        fleetCount={fleet.length}
         bankBadge={bankBadge}
         onOpen={setPanel}
         onOpenGroup={openGroup}
-        onSave={saveCareer}
         onMenu={() => setMenuOpen(true)}
-        version={APP_VERSION}
       />
       <CloudHost openSaveId={activeSaveId} onSlotsChanged={() => setSavedGames(readSaveSlots())} toast={flashToast} />
       <FriendAirlineHost airports={airportByIata} mapStyle={mapStyle} />
@@ -2035,9 +2083,9 @@ export default function App() {
       )}
       {menuOpen && (
         <MainMenu
-          onCloud={() => {
+          onAccount={() => {
             setMenuOpen(false);
-            openCloud();
+            openOnline('account');
           }}
           airlineCallsign={airlineCallsign}
           hasLivery={liveries.length > 0}
@@ -2207,6 +2255,15 @@ export default function App() {
           mapStyle={mapStyle}
           market={marketHooks}
           startTab={onlineStart.tab}
+          onSlotsChanged={() => setSavedGames(readSaveSlots())}
+          onPlay={(sv) => {
+            // Another of the player's airlines: save this one, then open that one
+            persistCareer(true);
+            resetTransientUi();
+            setSavedGames(readSaveSlots());
+            setScreen('home');
+            void resumeCareer(sv);
+          }}
           onClose={closePanel}
         />
       )}
@@ -2226,6 +2283,7 @@ export default function App() {
           onRepayPart={repayLoanPartNow}
           onOpenSettlement={() => setShowSettlement(true)}
           onCollect={collectLetter}
+          onCollectAll={collectAllLetters}
           onRead={markLetterRead}
           onClose={closePanel}
         />
@@ -2241,7 +2299,7 @@ export default function App() {
           onHide={() => {
             setHideMilestoneCard(true);
             writePrefs({ hideMilestoneCard: true });
-            flashToast('Milestone card hidden. Your progress is always in the Bank panel.');
+            flashToast('Hidden. Milestones are in the Bank.');
           }}
         />
       )}

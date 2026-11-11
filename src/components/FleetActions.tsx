@@ -10,7 +10,7 @@ import { calcAircraftResaleUsd } from '../game/tiers';
 import { formatMoneyM } from '../game/time';
 import type { AircraftModel, CabinConfig, PlayerAircraft, ScheduledFlight } from '../game/types';
 import { reRegisterSequence, validRegistration } from '../game/registrations';
-import { Button, C, Field, ModalShell, Segmented, inputStyle } from '../ui/kit';
+import { Button, C, Field, ModalShell, Segmented, inputStyle, well } from '../ui/kit';
 import { CabinEditor } from './CabinEditor';
 
 const money = (v: number) => formatMoneyM(v, 2);
@@ -49,12 +49,12 @@ export function ManageAircraftModal(props: {
   const rt = returnTerms(ac, econMin);
   return (
     <ModalShell onClose={props.onClose} maxWidth={520}>
-      <div style={{ fontSize: 18, fontWeight: 700 }}>{ac.tailNumber}</div>
-      <div style={{ fontSize: 12.5, color: C.muted, margin: '2px 0 16px' }}>
-        {ac.model.name}, based at {ac.hubIata}. {props.flights ? `${props.flights} flights scheduled.` : 'No flights yet.'}
+      <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>{ac.tailNumber}</h2>
+      <div className="num" style={{ fontSize: 13, color: C.muted, margin: '2px 0 16px' }}>
+        {ac.model.name} · {ac.hubIata} · {props.flights ? `${props.flights} flights` : 'no flights'}
       </div>
 
-      <Field label="Registration" hint="Letters, digits and dashes. Its flights keep their numbers." style={{ marginBottom: 16 }}>
+      <Field label="Registration" style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', gap: 8 }}>
           <input
             aria-label="Registration"
@@ -74,44 +74,43 @@ export function ManageAircraftModal(props: {
         {err && <div style={{ color: C.red, fontSize: 12, marginTop: 6 }}>{err}</div>}
       </Field>
 
-      <div style={{ border: `1px solid ${C.line}`, borderRadius: 10, padding: '10px 12px', marginBottom: 14 }}>
-        <div style={{ fontSize: 13, fontWeight: 650, marginBottom: 4 }}>{leased ? 'Lease' : 'Owned'}</div>
+      <div style={{ borderRadius: 14, background: well(), padding: '10px 14px', marginBottom: 16 }}>
         {leased ? (
           ac.lease ? (
             <>
-              <Row k="Lease payment" v={`$${ac.lease.dailyRate.toLocaleString()} a day`} />
+              <Row k="Lease" v={`$${ac.lease.dailyRate.toLocaleString()} a day`} />
               <Row k="Term" v={`${ac.lease.termWeeks} weeks, ${weeksText(st.weeksLeft)}`} />
-              <Row k="Deposit paid" v={money(ac.lease.deposit)} />
-              <Row k={rt.early ? 'Returned now, you get back' : 'Returned now, deposit back'} v={money(rt.refund)} strong />
-              {rt.early && <Row k="Kept by the lessor for ending early" v={money(rt.forfeit)} />}
-              <Row k="Buy-out price (deposit refunded too)" v={money(buyoutPrice(ac, econMin))} strong />
+              <Row k="Deposit" v={money(ac.lease.deposit)} />
+              <Row k="Back if returned now" v={money(rt.refund)} strong />
+              {rt.early && <Row k="Kept for ending early" v={money(rt.forfeit)} />}
+              <Row k="Buy-out" v={money(buyoutPrice(ac, econMin))} strong />
             </>
           ) : (
             <>
-              <Row k="Lease payment" v={`$${ac.model.daily_lease_usd.toLocaleString()} a day, week to week`} />
-              <Row k="Buy-out price" v={money(buyoutPrice(ac, econMin))} strong />
+              <Row k="Lease" v={`$${ac.model.daily_lease_usd.toLocaleString()} a day`} />
+              <Row k="Buy-out" v={money(buyoutPrice(ac, econMin))} strong />
             </>
           )
         ) : (
-          <Row k="Resale value (75% of list)" v={money(calcAircraftResaleUsd(ac.model))} strong />
+          <Row k="Owned · sells for" v={money(calcAircraftResaleUsd(ac.model))} strong />
         )}
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         <Button onClick={props.onSchedule}>Schedule</Button>
         {!ac.model.is_cargo && <Button onClick={props.onCabin}>Cabin</Button>}
-        <Button onClick={props.onReplace}>Replace with another type</Button>
+        <Button onClick={props.onReplace}>Replace</Button>
         {leased && (
           <Button variant="primary" onClick={props.onBuyOut}>
             Buy out
           </Button>
         )}
         <span style={{ flex: 1 }} />
-        <Button variant="ghost" disabled={!leased && props.flights > 0} title={!leased && props.flights > 0 ? 'Remove its flights first' : undefined} onClick={props.onSellOrReturn}>
+        <Button variant="danger" disabled={!leased && props.flights > 0} title={!leased && props.flights > 0 ? 'Remove its flights first' : undefined} onClick={props.onSellOrReturn}>
           {leased ? (rt.early ? 'Return early' : 'Return') : 'Sell'}
         </Button>
-        {!leased && props.flights > 0 && <span style={{ flexBasis: '100%', fontSize: 12, color: C.muted, textAlign: 'right' }}>Only aircraft with no flights can be sold.</span>}
       </div>
+      {!leased && props.flights > 0 && <div style={{ fontSize: 12, color: C.faint, textAlign: 'right', marginTop: 8 }}>Remove its flights to sell it.</div>}
     </ModalShell>
   );
 }
@@ -151,13 +150,10 @@ export function ReplaceAircraftModal(props: {
   const affordable = props.sandbox || props.cash >= net;
   return (
     <ModalShell onClose={props.onClose} maxWidth={640}>
-      <div style={{ fontSize: 18, fontWeight: 700 }}>Replace {list.length === 1 ? list[0].tailNumber : `${list.length} aircraft`}</div>
-      <div style={{ fontSize: 12.5, color: C.muted, margin: '2px 0 14px', lineHeight: 1.45 }}>
-        {sameType ? `${list[0].model.name}. ` : ''}Each new aircraft takes over its flights, re-timed for the new type's speed and turnaround. Flights it can't fly are dropped. The old
-        aircraft {list.every((a) => a.acquisition === 'owned') ? 'are sold' : 'are sold or returned'}.
-      </div>
+      <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>Replace {list.length === 1 ? list[0].tailNumber : `${list.length} aircraft`}</h2>
+      <div style={{ fontSize: 13, color: C.muted, margin: '2px 0 14px' }}>{sameType ? `${list[0].model.name} · ` : ''}flights carry over</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8, marginBottom: 12 }}>
-        <input aria-label="Search aircraft types" placeholder="Search aircraft types" value={search} onChange={(e) => setSearch(e.target.value)} style={{ ...inputStyle }} />
+        <input aria-label="Search aircraft types" placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} style={{ ...inputStyle }} />
         <select aria-label="New aircraft type" value={model.id} onChange={(e) => setModelId(e.target.value)} style={{ ...inputStyle, fontWeight: 600 }} size={Math.min(7, Math.max(3, shown.length))}>
           {shown.map((m) => (
             <option key={m.id} value={m.id}>
@@ -171,7 +167,7 @@ export function ReplaceAircraftModal(props: {
           value={mode}
           onChange={setMode}
           options={[
-            { value: 'owned', label: `Buy, ${money(model.base_price_usd)}` },
+            { value: 'owned', label: `Buy · ${money(model.base_price_usd)}` },
             { value: 'leased', label: 'Lease' },
           ]}
         />
@@ -184,9 +180,9 @@ export function ReplaceAircraftModal(props: {
           />
         )}
       </div>
-      <div style={{ border: `1px solid ${C.line}`, borderRadius: 10, overflow: 'hidden', marginBottom: 12, maxHeight: 220, overflowY: 'auto' }}>
-        {checks.map(({ ac, c }, i) => (
-          <details key={ac.tailNumber} style={{ borderTop: i ? `1px solid ${C.line}` : 'none', padding: '8px 12px' }}>
+      <div className="bp-list" style={{ marginBottom: 12, maxHeight: 220, overflowY: 'auto' }}>
+        {checks.map(({ ac, c }) => (
+          <details key={ac.tailNumber} style={{ padding: '8px 4px' }}>
             <summary style={{ cursor: 'pointer', fontSize: 12.5, display: 'flex', gap: 8 }}>
               <b>{ac.tailNumber}</b>
               <span style={{ flex: 1, color: c.clashes.length ? C.amber : c.dropped.length ? C.amber : C.muted }}>{replacementSummary(c)}</span>
@@ -208,19 +204,19 @@ export function ReplaceAircraftModal(props: {
       {anyClash && (
         <label style={{ display: 'flex', gap: 8, fontSize: 12.5, color: C.textDim, marginBottom: 12, alignItems: 'center' }}>
           <input type="checkbox" checked={drop} onChange={(e) => setDrop(e.target.checked)} />
-          Drop flights that no longer fit{blocked ? ` (otherwise ${blocked} ${blocked === 1 ? 'aircraft is' : 'aircraft are'} left as they are)` : ''}
+          Drop flights that no longer fit{blocked ? ` (or ${blocked} stay as they are)` : ''}
         </label>
       )}
-      <div style={{ border: `1px solid ${C.line}`, borderRadius: 10, padding: '8px 12px', marginBottom: 14 }}>
-        <Row k={`${list.length - blocked} new ${model.name}`} v={money(each * (list.length - blocked))} />
-        <Row k="The old aircraft bring in" v={money(incoming)} />
-        {forfeit > 0 && <Row k="Deposit kept for ending leases early" v={money(forfeit)} />}
+      <div style={{ borderRadius: 14, background: well(), padding: '8px 14px', marginBottom: 14 }}>
+        <Row k={`${list.length - blocked} × ${model.name}`} v={money(each * (list.length - blocked))} />
+        <Row k="Old aircraft" v={`−${money(incoming)}`} />
+        {forfeit > 0 && <Row k="Kept for ending leases early" v={money(forfeit)} />}
         <Row k={net >= 0 ? 'You pay' : 'You get'} v={money(Math.abs(net))} strong />
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <Button onClick={props.onClose}>Cancel</Button>
         <Button variant="primary" disabled={!affordable || blocked === list.length} onClick={() => props.onReplace(model, mode, weeks, drop)}>
-          {affordable ? `Replace ${list.length - blocked === 1 ? 'aircraft' : `${list.length - blocked} aircraft`}` : 'Not enough cash'}
+          {affordable ? 'Replace' : 'Not enough cash'}
         </Button>
       </div>
     </ModalShell>
@@ -236,12 +232,8 @@ export function BulkCabinModal(props: { aircraft: PlayerAircraft[]; onRefit: (fi
   const [cabin, setCabin] = useState<CabinConfig>(() => ({ ...(list[0]?.cabin ?? props.aircraft[0].cabin) }));
   return (
     <ModalShell onClose={props.onClose} maxWidth={560}>
-      <div style={{ fontSize: 17, fontWeight: 650 }}>Cabins for {list.length === 1 ? list[0].tailNumber : `${list.length} aircraft`}</div>
-      <div style={{ fontSize: 12.5, color: C.muted, margin: '2px 0 16px' }}>
-        {sameType
-          ? `${list[0].model.name}. The same cabin goes into every one, and applies to their flights straight away.`
-          : 'These are different types, so pick a layout style: each aircraft gets that style sized for its own cabin.'}
-      </div>
+      <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>Cabin · {list.length === 1 ? list[0].tailNumber : `${list.length} aircraft`}</h2>
+      <div style={{ fontSize: 13, color: C.muted, margin: '2px 0 16px' }}>{sameType ? list[0].model.name : 'Different types: pick a style'}</div>
       {list.length === 0 ? (
         <div style={{ fontSize: 12.5, color: C.muted }}>Freighters have no cabin.</div>
       ) : sameType ? (
@@ -250,7 +242,7 @@ export function BulkCabinModal(props: { aircraft: PlayerAircraft[]; onRefit: (fi
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
             <Button onClick={props.onClose}>Cancel</Button>
             <Button variant="primary" disabled={!calculateCabinUsage(list[0].model, cabin).isValid} onClick={() => props.onRefit({ cabin })}>
-              Fit to {list.length === 1 ? 'it' : `all ${list.length}`} ({cabinSeatTotal(cabin)} seats)
+              Fit · {cabinSeatTotal(cabin)} seats
             </Button>
           </div>
         </>
@@ -283,11 +275,8 @@ export function ReRegisterModal(props: { aircraft: PlayerAircraft[]; fleet: stri
   const apply = () => setErr(props.onApply(start));
   return (
     <ModalShell onClose={props.onClose} maxWidth={520} label="Re-register aircraft">
-      <h2 style={{ margin: '0 0 4px', fontSize: 20 }}>Re-register {ordered.length} aircraft</h2>
-      <p style={{ margin: '0 0 12px', fontSize: 13, color: C.muted }}>
-        Type the first new registration. The rest count on from it, in fleet order, skipping ones other aircraft already use. Their flights keep flying.
-      </p>
-      <Field label="First registration" hint="The last digits count up (N401JT, N402JT), or the letters after the dash (P4-AAA, P4-AAB).">
+      <h2 style={{ margin: '0 0 14px', fontSize: 22, fontWeight: 700 }}>Re-register {ordered.length} aircraft</h2>
+      <Field label="First registration" hint="The rest count up from it.">
         <input
           value={start}
           onChange={(e) => {

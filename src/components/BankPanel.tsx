@@ -2,7 +2,6 @@ import type React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import {
   BANK,
-  GOALS,
   LOAN_PRODUCTS,
   MAX_ACTIVE_LOANS,
   MIN_LOAN,
@@ -32,20 +31,17 @@ import {
   partRepaymentPreview,
   productById,
   standingIndex,
-  totalOutstanding,
   uncollected,
   goalsWaiting,
   usdFull,
   usdShort,
-  weeklyInstalments,
   type CareerMetrics,
   type GoalDef,
 } from '../game/career';
 import { OVERDRAFT_RATE_PCT, econWeekOf, type WeekLedger } from '../game/clock';
-import { MIN_PER_WEEK } from '../game/time';
 import type { BankLetter, CareerState, GameMode, PlayerAircraft } from '../game/types';
 import { Icon } from '../ui/icons';
-import { Button, C, EmptyState, Meter, Segmented, SidePanel, Stat, inputStyle, glass } from '../ui/kit';
+import { Button, C, EmptyState, IconButton, Meter, SectionTitle, SidePanel, Stat, inputStyle, glass, well } from '../ui/kit';
 
 type Tab = 'programme' | 'loans' | 'letters';
 
@@ -64,6 +60,8 @@ export interface BankPanelProps {
   onRepayPart: (loanId: string, amount: number) => void;
   onOpenSettlement: () => void;
   onCollect: (letterId: string) => void;
+  /** Collect every payment that is waiting. */
+  onCollectAll: () => void;
   onRead: (letterId: string) => void;
   onClose: () => void;
 }
@@ -76,67 +74,31 @@ const RULE = '#c9d1de';
 const SERIF = "'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif";
 
 export function BankPanel(props: BankPanelProps) {
-  const { career, metrics, fleet, cash, gameMode, econMin } = props;
+  const { career, gameMode } = props;
   const [tab, setTab] = useState<Tab>(props.initialTab ?? 'programme');
   const career_ = gameMode === 'standard';
-  const standing = STANDINGS[standingIndex(career)];
-  const line = creditLine(career, fleet);
-  const owed = totalOutstanding(career);
-  const toCollect = uncollected(career).length;
+  const toCollect = career_ ? uncollected(career).length : 0;
   const unreadCount = career.letters.filter((l) => !l.read).length;
 
   return (
     <SidePanel
-      title={BANK.name}
-      subtitle={career_ ? `${BANK.division}. Your standing: ${standing.label}` : `${BANK.programme}. Grants and loans are part of Career mode.`}
+      title="Bank"
       width={840}
       onClose={props.onClose}
+      tabs={{
+        group: 'Bank',
+        active: tab,
+        onPick: (id) => setTab(id as Tab),
+        tabs: [
+          { id: 'programme', label: 'Milestones', badge: toCollect },
+          { id: 'loans', label: 'Loans' },
+          { id: 'letters', label: 'Letters', badge: unreadCount },
+        ],
+      }}
     >
-      {career_ && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(5, 1fr)',
-            gap: 12,
-            padding: '12px 14px',
-            border: `1px solid ${C.line}`,
-            borderRadius: 8,
-            marginBottom: 14,
-            background: C.panelAlt,
-          }}
-        >
-          <Stat label="Standing" value={standing.label} sub={`Rates from ${standing.ratePct}%`} />
-          <Stat label="Credit line" value={usdShort(line)} />
-          <Stat label="Borrowed" value={usdShort(owed)} sub={`${activeLoans(career).length} of ${MAX_ACTIVE_LOANS} loans`} />
-          <Stat label="Available" value={usdShort(availableCredit(career, fleet))} />
-          <Stat label="Instalments" value={`${usdShort(weeklyInstalments(career))}`} sub="per week" />
-        </div>
-      )}
-
-      <div style={{ marginBottom: 14 }}>
-        <Segmented<Tab>
-          value={tab}
-          onChange={setTab}
-          options={[
-            { value: 'programme', label: toCollect ? `Milestones (${toCollect} to collect)` : 'Milestones' },
-            { value: 'loans', label: 'Loans' },
-            { value: 'letters', label: unreadCount ? `Letters (${unreadCount} new)` : 'Letters' },
-          ]}
-        />
-      </div>
-
       {tab === 'programme' && <Programme {...props} />}
-      {tab === 'loans' &&
-        (career_ ? (
-          <Loans {...props} />
-        ) : (
-          <EmptyState title="Loans are for Career airlines" body="Sandbox airlines have unlimited money, so the bank has nothing to lend. Start a Career airline to borrow." />
-        ))}
+      {tab === 'loans' && (career_ ? <Loans {...props} /> : <EmptyState title="Career only" body="Sandbox airlines have unlimited money." />)}
       {tab === 'letters' && <Letters {...props} />}
-      <div style={{ fontSize: 11.5, color: C.faint, marginTop: 16 }}>
-        {career_ ? `Cash ${usdShort(cash)}. ${econDateText(econMin)}.` : `Progress is tracked here for fun. ${GOALS.length} milestones in ${STAGES.length} stages.`}
-        {metrics.aircraft === 0 && career_ ? ' Start with the first milestone: buy an aircraft.' : ''}
-      </div>
     </SidePanel>
   );
 }
@@ -144,51 +106,47 @@ export function BankPanel(props: BankPanelProps) {
 // ---------------------------------------------------------------------------
 // Milestones
 // ---------------------------------------------------------------------------
-function Programme({ career, metrics, gameMode, onCollect, econMin }: BankPanelProps) {
+function Programme({ career, metrics, gameMode, onCollect, onCollectAll, econMin }: BankPanelProps) {
   const waiting = goalsWaiting(career, econMin);
   const open = currentStage(career);
   const [toggled, setToggled] = useState<Record<number, boolean>>({});
   const letterFor = (pred: (l: BankLetter) => boolean) => career.letters.find(pred);
+  const ready = gameMode === 'standard' ? uncollected(career) : [];
 
   return (
     <div>
+      {ready.length > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 10px 10px 14px', borderRadius: 12, background: `${C.brand}1c`, marginBottom: 14 }}>
+          <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600 }}>{ready.length} payments ready</span>
+          <Button size="sm" variant="primary" onClick={onCollectAll}>
+            Collect {usdShort(ready.reduce((s, l) => s + (l.reward ?? 0), 0))}
+          </Button>
+        </div>
+      )}
       {STAGES.map((st) => {
         const goals = goalsOfStage(st.stage);
         const met = goals.filter((g) => career.goalsMet.includes(g.id)).length;
         const done = career.stagesMet.includes(st.stage);
         const isOpen = open?.stage === st.stage;
         const locked = !done && !isOpen && (open ? st.stage > open.stage : false);
-        const show = toggled[st.stage] ?? Boolean(isOpen || (open && st.stage === open.stage + 1));
+        const show = toggled[st.stage] ?? Boolean(isOpen);
         const stageLetter = letterFor((l) => l.kind === 'standing' && l.stage === st.stage);
         return (
-          <section key={st.stage} style={{ marginBottom: 14 }}>
+          <section key={st.stage} style={{ marginBottom: show ? 16 : 2 }}>
             <button
               type="button"
+              className="bp-group-toggle"
               onClick={() => setToggled((t) => ({ ...t, [st.stage]: !show }))}
               aria-expanded={Boolean(show)}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '8px 2px',
-                background: 'none',
-                border: 'none',
-                color: C.text,
-                cursor: 'pointer',
-                textAlign: 'left',
-              }}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 2px', background: 'none', border: 'none', color: locked ? C.faint : C.muted, cursor: 'pointer', textAlign: 'left' }}
             >
-              <Icon name="chevron" size={14} color={C.muted} style={{ transform: show ? 'rotate(90deg)' : 'none', transition: 'transform .12s' }} />
-              <span style={{ fontSize: 14, fontWeight: 650, color: locked ? C.muted : C.text }}>
-                Stage {st.stage}: {st.name}
+              <Icon name="chevron" size={13} style={{ transform: show ? 'rotate(90deg)' : 'none', transition: 'transform .12s' }} />
+              <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {st.stage} · {st.name}
               </span>
-              {done && <Icon name="check" size={15} color={C.green} />}
+              {done && <Icon name="check" size={14} color={C.green} />}
               <span style={{ flex: 1 }} />
-              <span className="num" style={{ fontSize: 12, color: C.muted }}>
-                {met} of {goals.length} met. Stage bonus {usdShort(st.bonus)}
-              </span>
-              {stageLetter && !stageLetter.collected && gameMode === 'standard' && (
+              {stageLetter && !stageLetter.collected && gameMode === 'standard' ? (
                 <Button
                   size="sm"
                   variant="primary"
@@ -199,26 +157,25 @@ function Programme({ career, metrics, gameMode, onCollect, econMin }: BankPanelP
                 >
                   Collect {usdShort(st.bonus)}
                 </Button>
+              ) : (
+                <span className="num" style={{ fontSize: 12, color: C.faint, whiteSpace: 'nowrap' }}>
+                  {met}/{goals.length} · bonus {usdShort(st.bonus)}
+                </span>
               )}
             </button>
-            {locked && !show && (
-              <div style={{ fontSize: 12, color: C.faint, padding: '0 0 0 26px' }}>
-                Opens when stage {st.stage - 1} is complete. Progress already counts.
-              </div>
-            )}
             {show && (
-              <div style={{ border: `1px solid ${C.line}`, borderRadius: 8, overflow: 'hidden' }}>
-                {goals.map((g, i) => (
+              <div className="bp-list">
+                {goals.map((g) => (
                   <GoalRow
                     key={g.id}
                     goal={g}
                     metrics={metrics}
-                    first={i === 0}
                     met={career.goalsMet.includes(g.id)}
                     letter={letterFor((l) => l.goalId === g.id)}
                     canCollect={gameMode === 'standard'}
                     onCollect={onCollect}
-                    waitMin={waiting.get(g.id)}
+                    waitMin={locked ? undefined : waiting.get(g.id)}
+                    locked={locked}
                   />
                 ))}
               </div>
@@ -233,37 +190,28 @@ function Programme({ career, metrics, gameMode, onCollect, econMin }: BankPanelP
 function GoalRow({
   goal,
   metrics,
-  first,
   met,
   letter,
   canCollect,
   onCollect,
   waitMin,
+  locked,
 }: {
   goal: GoalDef;
   metrics: CareerMetrics;
-  first: boolean;
   met: boolean;
   letter?: BankLetter;
   canCollect: boolean;
   onCollect: (id: string) => void;
   /** Met, but waiting out its game day: game minutes left. */
   waitMin?: number;
+  /** Its stage isn't open yet: met milestones pay once it is. */
+  locked?: boolean;
 }) {
   const doneNow = met || goalDone(goal, metrics);
   const pct = Math.max(0, Math.min(100, (goalValue(goal, metrics) / goal.target) * 100));
   return (
-    <div
-      className="bp-row bp-goal"
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '22px 1fr 170px 120px',
-        alignItems: 'center',
-        gap: 12,
-        padding: '10px 12px',
-        borderTop: first ? 'none' : `1px solid ${C.line}`,
-      }}
-    >
+    <div className="bp-goal" style={{ display: 'grid', gridTemplateColumns: '22px 1fr 150px 110px', alignItems: 'center', gap: 12, padding: '10px 8px' }}>
       <span
         style={{
           width: 18,
@@ -278,14 +226,18 @@ function GoalRow({
         {doneNow && <Icon name="check" size={12} color={C.green} />}
       </span>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 13.5, fontWeight: 600, color: doneNow ? C.textSoft : C.text }}>{goal.title}</div>
-        <div style={{ fontSize: 12, color: C.muted, marginTop: 1 }}>{goal.hint}</div>
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: doneNow ? C.textDim : C.text }}>{goal.title}</div>
+        {!doneNow && <div style={{ fontSize: 12, color: C.muted, marginTop: 1 }}>{goal.hint}</div>}
       </div>
       <div>
-        <div className="num" style={{ fontSize: 11.5, color: C.muted, marginBottom: 4 }}>
-          {goalProgressText(goal, metrics)}
-        </div>
-        <Meter pct={met ? 100 : pct} gradient={met ? C.green : C.accent} height={4} />
+        {!met && (
+          <>
+            <div className="num" style={{ fontSize: 11.5, color: C.muted, marginBottom: 4 }}>
+              {goalProgressText(goal, metrics)}
+            </div>
+            <Meter pct={pct} gradient={doneNow ? C.green : C.accent} height={4} />
+          </>
+        )}
       </div>
       <div style={{ textAlign: 'right' }}>
         {letter && !letter.collected && canCollect ? (
@@ -293,12 +245,16 @@ function GoalRow({
             Collect {usdShort(goal.reward)}
           </Button>
         ) : letter?.collected ? (
-          <span className="num" style={{ fontSize: 12, color: C.green }}>
-            {usdShort(goal.reward)} collected
+          <span className="num" style={{ fontSize: 12.5, color: C.faint }}>
+            {usdShort(goal.reward)} paid
           </span>
         ) : waitMin !== undefined && goalDone(goal, metrics) ? (
-          <span className="num" title="Milestones pay once they have stayed met for a game day" style={{ fontSize: 12, color: C.amber }}>
-            {usdShort(goal.reward)} in {Math.max(1, Math.ceil(waitMin / 60))} game h
+          <span className="num" title="Pays after staying met for a game day" style={{ fontSize: 12, color: C.amber }}>
+            {usdShort(goal.reward)} in {Math.max(1, Math.ceil(waitMin / 60))} h
+          </span>
+        ) : locked && goalDone(goal, metrics) ? (
+          <span className="num" title="Pays when this stage opens" style={{ fontSize: 12, color: C.amber }}>
+            {usdShort(goal.reward)} later
           </span>
         ) : (
           <span className="num" style={{ fontSize: 13, fontWeight: 600, color: C.textDim }}>
@@ -309,6 +265,7 @@ function GoalRow({
     </div>
   );
 }
+
 
 // ---------------------------------------------------------------------------
 // Loans
@@ -331,16 +288,16 @@ function Loans(props: BankPanelProps) {
       <DebtTracker {...props} />
       {loans.length > 0 && (
         <section style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 14, fontWeight: 650, marginBottom: 8 }}>Your loans</div>
-          <div style={{ border: `1px solid ${C.line}`, borderRadius: 8, overflow: 'hidden' }}>
-            {loans.map((l, i) => (
-              <LoanRow key={l.id} loan={l} first={i === 0} cash={cash} econMin={econMin} onRepay={props.onRepay} onRepayPart={props.onRepayPart} />
+          <SectionTitle>Loans</SectionTitle>
+          <div className="bp-list">
+            {loans.map((l) => (
+              <LoanRow key={l.id} loan={l} cash={cash} onRepay={props.onRepay} onRepayPart={props.onRepayPart} />
             ))}
           </div>
         </section>
       )}
 
-      <div style={{ fontSize: 14, fontWeight: 650, marginBottom: 8 }}>Apply for a loan</div>
+      <SectionTitle>New loan</SectionTitle>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 14 }}>
         {LOAN_PRODUCTS.map((p) => {
           const on = p.id === productId;
@@ -353,26 +310,25 @@ function Loans(props: BankPanelProps) {
               style={{
                 textAlign: 'left',
                 padding: '10px 12px',
-                borderRadius: 8,
+                borderRadius: 12,
                 cursor: 'pointer',
-                background: on ? C.raised : 'transparent',
-                border: `1px solid ${on ? C.brand : C.line}`,
+                background: on ? `${C.brand}24` : well(),
+                border: 'none',
                 color: C.text,
               }}
             >
               <div style={{ fontSize: 13, fontWeight: 650 }}>{p.name}</div>
-              <div className="num" style={{ fontSize: 12, color: C.textDim, margin: '2px 0 4px' }}>
-                {p.termWeeks} weeks, {loanRatePct(career, p, econMin)}%
+              <div className="num" style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+                {p.termWeeks} weeks · {loanRatePct(career, p, econMin)}%
               </div>
-              <div style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.35 }}>{p.blurb}</div>
             </button>
           );
         })}
       </div>
 
-      <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, padding: 14, border: `1px solid ${C.line}`, borderRadius: 8 }}>
+      <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, padding: 14, borderRadius: 14, background: well() }}>
         <div>
-          <div style={{ fontSize: 12, color: C.muted, marginBottom: 6 }}>Amount (you can borrow up to {usdShort(avail)})</div>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 6 }}>Amount · up to {usdShort(avail)}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ color: C.muted }}>$</span>
             <input
@@ -389,39 +345,34 @@ function Loans(props: BankPanelProps) {
           <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
             {[0.25, 0.5, 1].map((f) => (
               <Button key={f} size="sm" variant="ghost" disabled={avail < MIN_LOAN} onClick={() => setAmountM(Math.max(5, Math.floor((avail * f) / 1e6)))}>
-                {f === 1 ? 'Maximum' : `${f * 100}%`}
+                {f === 1 ? 'Max' : `${f * 100}%`}
               </Button>
             ))}
           </div>
         </div>
         <div className="num" style={{ fontSize: 12.5, color: C.textDim, lineHeight: 1.7 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Weekly instalment</span>
+            <span>A week</span>
             <b style={{ color: C.text }}>{usdFull(terms.weeklyPayment)}</b>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Interest over {product.termWeeks} weeks</span>
+            <span>Interest</span>
             <span>{usdFull(terms.interest)}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Total repayable</span>
+            <span>Total</span>
             <span>{usdFull(terms.totalRepayable)}</span>
           </div>
           {week <= career.surchargeUntilWeek && (
-            <div style={{ color: C.amber, fontSize: 11.5 }}>Includes a 2% overdraft surcharge until week {career.surchargeUntilWeek}.</div>
+            <div style={{ color: C.amber, fontSize: 11.5 }}>+2% overdraft surcharge until week {career.surchargeUntilWeek}</div>
           )}
         </div>
         <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 12 }}>
           <Button variant="primary" disabled={Boolean(blocker)} onClick={() => onTakeLoan(product.id, amount)}>
             Borrow {usdShort(amount)}
           </Button>
-          <span style={{ fontSize: 12, color: blocker ? C.amber : C.faint }}>
-            {blocker ?? 'Paid into your account straight away. Instalments come out as the week runs.'}
-          </span>
+          {blocker && <span style={{ fontSize: 12.5, color: C.amber }}>{blocker}</span>}
         </div>
-      </div>
-      <div style={{ fontSize: 11.5, color: C.faint, marginTop: 10, lineHeight: 1.5 }}>
-        Your credit line grows as your standing rises and with the aircraft you own outright. If a week closes with your account below zero, new borrowing stops until you are back in credit, the overdraft is charged {OVERDRAFT_RATE_PCT}% a year and new loans cost 2% more for four weeks. If {INSOLVENCY_WEEKS} weeks in a row close overdrawn, the bank declares your airline insolvent.
       </div>
     </div>
   );
@@ -430,7 +381,8 @@ function Loans(props: BankPanelProps) {
 // ---------------------------------------------------------------------------
 // Debt tracker: everything owed, what it costs, when it's gone
 // ---------------------------------------------------------------------------
-function DebtTracker({ career, cash, econMin, ledgerHistory, onOpenSettlement }: BankPanelProps) {
+function DebtTracker({ career, fleet, cash, econMin, ledgerHistory, onOpenSettlement }: BankPanelProps) {
+  const standing = STANDINGS[standingIndex(career)];
   const d = debtSummary(career, cash, econMin);
   const overdrawn = career.overdrawnWeeks ?? 0;
   const week = econWeekOf(econMin);
@@ -438,51 +390,36 @@ function DebtTracker({ career, cash, econMin, ledgerHistory, onOpenSettlement }:
     <section style={{ marginBottom: 20 }}>
       {career.insolvent ? (
         <Banner tone="red" title="Your airline is insolvent">
-          The account closed {INSOLVENCY_WEEKS} weeks in a row overdrawn. Settle with the bank to clear your debts and borrow again.
+          Overdrawn {INSOLVENCY_WEEKS} weeks in a row. Settle with the bank to borrow again.
           <div style={{ marginTop: 8 }}>
             <Button size="sm" variant="primary" onClick={onOpenSettlement}>
-              See the settlement
+              Settle
             </Button>
           </div>
         </Banner>
       ) : d.overdraft > 0 ? (
         <Banner tone="amber" title={`Overdrawn by ${usdShort(d.overdraft)}`}>
-          Charged {OVERDRAFT_RATE_PCT}% a year ({usdShort(d.overdraftWeekly)} a week) and no new loans until you're back in credit.{' '}
-          {overdrawn >= 1
-            ? `Last week also closed overdrawn: if this week (week ${week}) closes overdrawn too, the bank declares your airline insolvent.`
-            : `If ${INSOLVENCY_WEEKS} weeks in a row close overdrawn, the bank declares your airline insolvent.`}
+          {usdShort(d.overdraftWeekly)} a week in interest ({OVERDRAFT_RATE_PCT}%), and no new loans.{' '}
+          {overdrawn >= 1 ? 'End this week overdrawn and the airline is insolvent.' : `${INSOLVENCY_WEEKS} overdrawn weeks in a row means insolvency.`}
         </Banner>
       ) : null}
-      <div style={{ fontSize: 14, fontWeight: 650, margin: '0 0 8px' }}>Your debt</div>
-      <div
-        className="bp-debt-grid"
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(5, 1fr) 1.6fr',
-          gap: 12,
-          padding: '12px 14px',
-          border: `1px solid ${C.line}`,
-          borderRadius: 8,
-          alignItems: 'center',
-        }}
-      >
-        <Stat label="Total owed" value={usdShort(d.total)} sub={d.overdraft ? `${usdShort(d.principal)} loans + ${usdShort(d.overdraft)} overdraft` : `${d.loans} ${d.loans === 1 ? 'loan' : 'loans'}`} />
-        <Stat label="Interest still due" value={usdShort(d.interestLeft)} sub="if loans run to term" />
-        <Stat label="Instalments" value={usdShort(d.weekly)} sub="per week" />
-        <Stat label="Debt-free" value={d.debtFreeWeek ? `Week ${d.debtFreeWeek}` : d.overdraft ? 'Overdrawn' : 'Now'} sub={d.debtFreeWeek ? `${Math.max(0, d.debtFreeWeek - week)} weeks from now` : undefined} />
-        <Stat label="Repaid early" value={usdShort(loansRepaidEarly(career))} sub="on current loans" />
+      <div className="bp-debt-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr) 1.4fr', gap: 12, padding: '14px 16px', borderRadius: 14, background: well(), alignItems: 'start' }}>
+        <Stat label="Standing" value={standing.label} sub={`from ${standing.ratePct}%`} />
+        <Stat label="Credit line" value={usdShort(creditLine(career, fleet))} sub={`${usdShort(availableCredit(career, fleet))} free`} />
+        <Stat label="Owed" value={usdShort(d.total)} sub={d.overdraft ? `${usdShort(d.overdraft)} overdraft` : `${d.loans} of ${MAX_ACTIVE_LOANS} loans`} />
+        <Stat label="A week" value={usdShort(d.weekly)} />
+        <Stat label="Debt-free" value={d.debtFreeWeek ? `Week ${d.debtFreeWeek}` : d.overdraft ? 'Overdrawn' : 'Now'} sub={d.debtFreeWeek ? `in ${Math.max(0, d.debtFreeWeek - week)} weeks` : undefined} />
         <DebtChart history={ledgerHistory} now={d.total} week={week} />
       </div>
     </section>
   );
 }
 
-const loansRepaidEarly = (c: CareerState) => activeLoans(c).reduce((s, l) => s + (l.extraRepaid ?? 0), 0);
 
 function Banner({ tone, title, children }: { tone: 'red' | 'amber'; title: string; children: React.ReactNode }) {
   const col = tone === 'red' ? C.red : C.amber;
   return (
-    <div role="alert" style={{ border: `1px solid ${col}`, background: tone === 'red' ? 'rgba(239,68,68,0.10)' : 'rgba(232,176,75,0.10)', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
+    <div role="alert" style={{ background: `${col}1c`, borderRadius: 12, padding: '10px 14px', marginBottom: 12 }}>
       <div style={{ fontSize: 13.5, fontWeight: 650, color: col }}>{title}</div>
       <div style={{ fontSize: 12.5, color: C.textDim, marginTop: 3, lineHeight: 1.45 }}>{children}</div>
     </div>
@@ -492,11 +429,12 @@ function Banner({ tone, title, children }: { tone: 'red' | 'amber'; title: strin
 /** Debt at the end of each closed week, and now. */
 function DebtChart({ history, now, week }: { history: WeekLedger[]; now: number; week: number }) {
   const pts = [...history.filter((w) => w.debtEnd !== undefined).map((w) => ({ week: w.week, v: w.debtEnd! + Math.max(0, -(w.cashEnd ?? 0)), now: false })), { week, v: now, now: true }];
+  // Never in debt: nothing to draw
+  if (pts.every((p) => p.v <= 0)) return null;
   const max = Math.max(1, ...pts.map((p) => p.v));
   const H = 46;
   return (
     <div aria-label="Debt at the end of each week" style={{ minWidth: 0 }}>
-      <div style={{ fontSize: 11, color: C.faint, marginBottom: 4 }}>{pts.length > 1 ? 'Debt at the end of each week' : 'Debt by week (builds up as weeks close)'}</div>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: H }}>
         {pts.map((p) => (
           <div
@@ -520,22 +458,17 @@ function DebtChart({ history, now, week }: { history: WeekLedger[]; now: number;
 
 function LoanRow({
   loan: l,
-  first,
   cash,
-  econMin,
   onRepay,
   onRepayPart,
 }: {
   loan: ReturnType<typeof activeLoans>[number];
-  first: boolean;
   cash: number;
-  econMin: number;
   onRepay: (id: string) => void;
   onRepayPart: (id: string, amount: number) => void;
 }) {
   const owed = loanOutstanding(l);
   const weeksLeft = loanWeeksLeft(l);
-  const endWeek = econWeekOf(econMin + weeksLeft * MIN_PER_WEEK);
   const start = loanStartPrincipal(l);
   const [open, setOpen] = useState(false);
   const maxM = Math.max(1, Math.floor(Math.min(owed, Math.max(0, cash)) / 1e6));
@@ -546,37 +479,33 @@ function LoanRow({
   const short = cash < pay;
   const wl = Math.ceil(weeksLeft - 1e-6);
   return (
-    <div className="bp-loan" style={{ padding: '11px 12px', borderTop: first ? 'none' : `1px solid ${C.line}` }}>
+    <div className="bp-loan" style={{ padding: '11px 8px' }}>
       <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 200px auto', gap: 14, alignItems: 'center' }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 13.5, fontWeight: 600 }}>
             {productById(l.product).name} <span style={{ color: C.muted, fontWeight: 500 }}>{l.ref}</span>
           </div>
           <div className="num" style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
-            Borrowed {usdShort(start)} at {l.ratePct}%. {usdShort(l.weeklyPayment)} a week, {wl} {wl === 1 ? 'week' : 'weeks'} left (ends week {endWeek}).
-          </div>
-          <div className="num" style={{ fontSize: 12, color: C.textDim, marginTop: 2 }}>
-            Owed now <b style={{ color: C.text }}>{usdShort(owed)}</b>, interest still due {usdShort(loanInterestLeft(l))}
-            {l.extraRepaid ? `, ${usdShort(l.extraRepaid)} paid early` : ''}
+            {usdShort(owed)} of {usdShort(start)} · {l.ratePct}% · {usdShort(l.weeklyPayment)} a week · {wl} {wl === 1 ? 'week' : 'weeks'} left
           </div>
         </div>
         <div>
           <div className="num" style={{ fontSize: 11.5, color: C.muted, marginBottom: 4 }}>
-            {Math.round(loanRepaidShare(l) * 100)}% paid off
+            {Math.round(loanRepaidShare(l) * 100)}% paid
           </div>
           <Meter pct={loanRepaidShare(l) * 100} gradient={C.accent} height={5} />
         </div>
         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-          <Button size="sm" variant="ghost" aria-expanded={open} disabled={cash < MIN_PART_REPAYMENT} title={cash < MIN_PART_REPAYMENT ? 'Not enough cash for a part repayment' : 'Pay some of it off now'} onClick={() => setOpen((o) => !o)}>
-            Pay off part
+          <Button size="sm" variant="ghost" aria-expanded={open} disabled={cash < MIN_PART_REPAYMENT} onClick={() => setOpen((o) => !o)}>
+            Pay part
           </Button>
-          <Button size="sm" disabled={cash < owed} title={cash < owed ? 'Not enough cash to settle now' : 'No charge for early repayment'} onClick={() => onRepay(l.id)}>
+          <Button size="sm" disabled={cash < owed} onClick={() => onRepay(l.id)}>
             Repay {usdShort(owed)}
           </Button>
         </div>
       </div>
       {open && (
-        <div className="bp-part" style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8, background: C.panelAlt, border: `1px solid ${C.line}` }}>
+        <div className="bp-part" style={{ marginTop: 10, padding: '10px 12px', borderRadius: 12, background: well() }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 12.5, color: C.textDim }}>Pay</span>
             <span style={{ color: C.muted }}>$</span>
@@ -596,21 +525,21 @@ function LoanRow({
               </Button>
             ))}
             <Button size="sm" variant="ghost" onClick={() => setPayM(Math.max(1, maxM))}>
-              {owed <= cash ? 'All of it' : 'All I can'}
+              Max
             </Button>
             <span style={{ flex: 1 }} />
             <Button size="sm" variant="primary" disabled={tooLittle || short || pay <= 0} onClick={() => onRepayPart(l.id, pay)}>
-              {pv.settles ? `Repay ${usdShort(pay)} and settle` : `Pay ${usdShort(pay)}`}
+              Pay {usdShort(pay)}
             </Button>
           </div>
           <div className="num" style={{ fontSize: 12, color: short || tooLittle ? C.amber : C.muted, marginTop: 7 }}>
             {short
               ? `You have ${usdShort(cash)}.`
               : tooLittle
-                ? `The smallest part repayment is ${usdShort(MIN_PART_REPAYMENT)}.`
+                ? `Minimum ${usdShort(MIN_PART_REPAYMENT)}.`
                 : pv.settles
-                  ? `Settles the loan: no more instalments, ${usdShort(loanInterestLeft(l))} less interest.`
-                  : `Leaves ${usdShort(pv.principalAfter)} owed. Instalments fall from ${usdShort(l.weeklyPayment)} to ${usdShort(pv.weeklyAfter)} a week, still ending in week ${endWeek}, and you pay ${usdShort(pv.interestSaved)} less interest.`}
+                  ? `Settles the loan. Saves ${usdShort(loanInterestLeft(l))} interest.`
+                  : `Leaves ${usdShort(pv.principalAfter)} · ${usdShort(pv.weeklyAfter)} a week · saves ${usdShort(pv.interestSaved)} interest`}
           </div>
         </div>
       )}
@@ -634,7 +563,6 @@ function Letters({ career, gameMode, onCollect, onRead }: BankPanelProps) {
     return (
       <EmptyState
         title="No letters yet"
-        body={gameMode === 'standard' ? 'Letters from the bank arrive here when you meet a milestone or take out a loan.' : 'The bank writes to Career airlines only.'}
       />
     );
   }
@@ -642,8 +570,8 @@ function Letters({ career, gameMode, onCollect, onRead }: BankPanelProps) {
 
   return (
     <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 14, alignItems: 'start' }}>
-      <div style={{ border: `1px solid ${C.line}`, borderRadius: 8, overflow: 'hidden', maxHeight: 560, overflowY: 'auto' }}>
-        {career.letters.map((l, i) => {
+      <div className="bp-list" style={{ maxHeight: 560, overflowY: 'auto' }}>
+        {career.letters.map((l) => {
           const sel = l.id === letter?.id;
           return (
             <button
@@ -654,11 +582,10 @@ function Letters({ career, gameMode, onCollect, onRead }: BankPanelProps) {
               style={{
                 width: '100%',
                 textAlign: 'left',
-                padding: '9px 12px',
+                padding: '9px 10px',
                 border: 'none',
-                borderTop: i ? `1px solid ${C.line}` : 'none',
-                borderLeft: `3px solid ${sel ? C.brand : 'transparent'}`,
-                background: sel ? C.raised : 'transparent',
+                borderRadius: 0,
+                background: sel ? `${C.brand}1c` : 'transparent',
                 color: C.text,
                 cursor: 'pointer',
               }}
@@ -669,7 +596,7 @@ function Letters({ career, gameMode, onCollect, onRead }: BankPanelProps) {
               </div>
               <div className="num" style={{ fontSize: 11.5, color: C.faint, marginTop: 2 }}>
                 {econDateText(l.econMin)}
-                {l.reward ? (l.collected ? `, ${usdShort(l.reward)} collected` : `, ${usdShort(l.reward)} to collect`) : ''}
+                {l.reward ? (l.collected ? ` · ${usdShort(l.reward)} paid` : ` · ${usdShort(l.reward)} to collect`) : ''}
               </div>
             </button>
           );
@@ -686,7 +613,7 @@ function LetterSheet({ letter, canCollect, onCollect }: { letter: BankLetter; ca
       style={{
         background: PAPER,
         color: INK,
-        borderRadius: 4,
+        borderRadius: 10,
         padding: '26px 30px 24px',
         fontFamily: SERIF,
         fontSize: 14.5,
@@ -762,34 +689,31 @@ export function MilestoneCard({
         position: 'absolute',
         left: 'max(8px, calc(var(--bp-gap) + 2px))',
         bottom: 'calc(var(--bp-bottom-h) + 8px - var(--bp-gap))',
-        width: 'min(300px, calc(100vw - 24px))',
+        width: 'min(280px, calc(100vw - 24px))',
         ...glass(),
-        borderRadius: 14,
-        padding: '10px 12px 12px',
+        borderRadius: 16,
+        padding: '10px 8px 12px 14px',
         zIndex: 30,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <Icon name="flag" size={15} color={C.brand} />
-        <span style={{ fontSize: 12, color: C.muted, flex: 1 }}>{goal ? `Stage ${goal.stage}: ${STAGES[goal.stage - 1].name}` : 'All milestones met'}</span>
-        <button type="button" aria-label="Hide milestone card" onClick={onHide} style={{ background: 'none', border: 'none', color: C.faint, cursor: 'pointer', padding: 2 }}>
-          <Icon name="close" size={14} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button type="button" onClick={onOpen} style={{ all: 'unset', cursor: 'pointer', flex: 1, minWidth: 0, fontSize: 14, fontWeight: 650, color: C.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {goal ? goal.title : 'All milestones met'}
         </button>
+        <IconButton icon="close" label="Hide" size={26} iconSize={13} color={C.faint} onClick={onHide} />
       </div>
       {goal && (
-        <button type="button" onClick={onOpen} style={{ all: 'unset', cursor: 'pointer', display: 'block', width: '100%' }}>
-          <div style={{ fontSize: 13.5, fontWeight: 650, color: C.text }}>{goal.title}</div>
-          <div style={{ fontSize: 12, color: C.muted, margin: '2px 0 8px' }}>{goal.hint}</div>
+        <button type="button" aria-label="Open milestones" onClick={onOpen} style={{ all: 'unset', cursor: 'pointer', display: 'block', width: 'calc(100% - 6px)', marginTop: 6 }}>
           <Meter pct={pct} gradient={C.brand} height={4} />
-          <div className="num" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: C.muted, marginTop: 5 }}>
+          <div className="num" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: C.muted, marginTop: 6 }}>
             <span>{goalProgressText(goal, metrics)}</span>
-            <span>Grant {usdShort(goal.reward)}</span>
+            <span>{usdShort(goal.reward)}</span>
           </div>
         </button>
       )}
       {ready.length > 0 && (
-        <Button size="sm" variant="primary" block onClick={onOpen} style={{ marginTop: 10 }}>
-          {ready.length === 1 ? `Collect ${usdShort(ready[0].reward!)} from the bank` : `${ready.length} payments ready to collect`}
+        <Button size="sm" variant="primary" block onClick={onOpen} style={{ marginTop: 10, width: 'calc(100% - 6px)' }}>
+          Collect {usdShort(ready.reduce((s, l) => s + (l.reward ?? 0), 0))}
         </Button>
       )}
     </div>

@@ -4,7 +4,7 @@ import { calcAircraftScheduleUsage, getAircraftCircuitStatus, type AircraftCircu
 import { daysOrAll, formatClockShort } from '../game/time';
 import type { Airport, PlayerAircraft, ScheduledFlight } from '../game/types';
 import { Icon } from '../ui/icons';
-import { Button, C, EmptyState, Pill, SearchInput, Segmented, SidePanel, inputStyle } from '../ui/kit';
+import { Button, C, EmptyState, IconButton, Pill, SearchInput, Segmented, SidePanel, inputStyle } from '../ui/kit';
 import { legLocalText } from '../game/localTime';
 
 export interface ScheduleTabProps {
@@ -154,169 +154,138 @@ export function SchedulePanel({ schedule, fleet, hubs, primaryHub, airportByIata
       .sort((a, b) => a.used - b.used || a.key.localeCompare(b.key));
   }, [schedule, fleet, hubs, primaryHub, airportByIata, search, tailFilter, groupBy]);
   const visibleGroups = groups.filter((g) => g.rotations.length > 0);
-  const allCollapsed = visibleGroups.length > 0 && visibleGroups.every((g) => collapsed.has(g.key));
 
   const weeklyProfit = useMemo(
     () => schedule.reduce((sum, fl) => sum + (econById.get(fl.id)?.profit ?? 0) * daysOrAll(fl.daysOfWeek).filter(Boolean).length, 0),
     [schedule, econById]
   );
 
+  const usd = (v: number) => `${v >= 0 ? '+' : '−'}$${Math.abs(Math.round(v)).toLocaleString()}`;
+
   return (
     <SidePanel
       title="Schedule"
       subtitle={
-        schedule.length === 0 ? (
-          'Nothing scheduled yet'
-        ) : (
+        schedule.length === 0 ? undefined : (
           <>
-            {schedule.length} flights. Estimated{' '}
-            <span className="num" style={{ color: weeklyProfit >= 0 ? C.green : C.red }}>
-              {weeklyProfit >= 0 ? '+' : '−'}${Math.abs(weeklyProfit).toLocaleString()}
-            </span>{' '}
-            per week before leases
+            {schedule.length} flights ·{' '}
+            <span style={{ color: weeklyProfit >= 0 ? C.green : C.red, fontWeight: 600 }}>{usd(weeklyProfit)}</span> a week
           </>
         )
       }
-      width={860}
+      width={760}
       onClose={onClose}
     >
       {schedule.length === 0 ? (
-        <EmptyState title="No flights yet" body="Click any airport on the map to open the route planner, pick an aircraft and dispatch your first route." />
+        <EmptyState title="No flights yet" body="Tap an airport on the map to plan one." />
       ) : (
         <>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-            <SearchInput value={search} onChange={setSearch} placeholder="Search tail number, aircraft type, flight or airport" style={{ flex: 1 }} />
-            <select
-              aria-label="Aircraft"
-              value={tailFilter}
-              onChange={(e) => setTailFilter(e.target.value)}
-              style={{ ...inputStyle, width: 250, padding: '6px 8px' }}
-            >
-              <option value="">All aircraft ({scheduledFleet.length})</option>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+            <SearchInput value={search} onChange={setSearch} placeholder="Search" style={{ flex: '1 1 160px' }} />
+            <select aria-label="Aircraft" value={tailFilter} onChange={(e) => setTailFilter(e.target.value)} style={{ ...inputStyle, width: 'auto', maxWidth: 190, padding: '6px 8px' }}>
+              <option value="">All aircraft</option>
               {scheduledFleet.map(({ ac, usage }) => (
                 <option key={ac.tailNumber} value={ac.tailNumber}>
-                  {ac.tailNumber}, {ac.model.name}, {usage.usedPct}% used
+                  {ac.tailNumber} · {ac.model.icao_code} · {usage.usedPct}%
                 </option>
               ))}
             </select>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.muted, marginBottom: 14 }}>
-            Group by
             <Segmented<GroupBy>
               size="sm"
               value={groupBy}
               onChange={setGroupBy}
               options={[
-                { value: 'hub', label: 'Hub' },
-                { value: 'aircraft', label: 'Aircraft' },
+                { value: 'hub', label: 'By hub' },
+                { value: 'aircraft', label: 'By aircraft' },
               ]}
             />
-            {tailFilter && (
-              <Button size="sm" variant="ghost" onClick={() => setTailFilter('')}>
-                Show all aircraft
-              </Button>
-            )}
-            <span style={{ flex: 1 }} />
-            {visibleGroups.length > 1 && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setCollapsed(allCollapsed ? new Set([...collapsed].filter((k) => !visibleGroups.some((g) => g.key === k))) : new Set([...collapsed, ...visibleGroups.map((g) => g.key)]))}
-              >
-                {allCollapsed ? 'Expand all' : 'Collapse all'}
-              </Button>
-            )}
           </div>
           {visibleGroups.map((group) => {
             const open = !collapsed.has(group.key) || Boolean(search.trim()) || Boolean(tailFilter);
             return (
-              <section key={group.key} style={{ marginBottom: open ? 20 : 8 }}>
+              <section key={group.key} style={{ marginBottom: open ? 18 : 4 }}>
                 <button
                   type="button"
                   className="bp-group-toggle"
                   aria-expanded={open}
                   onClick={() => toggleGroup(group.key)}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 2px', background: 'none', border: 'none', color: C.textSoft, cursor: 'pointer', textAlign: 'left' }}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 2px', background: 'none', border: 'none', color: C.muted, cursor: 'pointer', textAlign: 'left' }}
                 >
-                  <Icon name="chevron" size={14} style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .12s', color: C.muted }} />
-                  <span style={{ fontSize: 14, fontWeight: 650, flex: 1 }}>{group.title}</span>
-                  <span className="num" style={{ fontSize: 12, color: C.muted }}>
-                    {group.rotations.length} {group.rotations.length === 1 ? 'route' : 'routes'}, {group.meta}
+                  <Icon name="chevron" size={13} style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .12s' }} />
+                  <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.title}</span>
+                  <span className="num" style={{ fontSize: 12, color: C.faint, whiteSpace: 'nowrap' }}>
+                    {groupBy === 'hub' ? group.rotations.length : group.meta}
                   </span>
                 </button>
                 {open && (
-                <div style={{ border: `1px solid ${C.line}`, borderRadius: 8, overflow: 'hidden' }}>
-                  {group.rotations.slice(0, limits[group.key] ?? ROW_PAGE).map(({ outbound, returnLeg, chainSummary }, i) => {
-                    const ac = fleetByTail.get(outbound.tailNumber);
-                    const econOut = econById.get(outbound.id);
-                    const profit = (econOut?.profit ?? 0) + (returnLeg ? econById.get(returnLeg.id)?.profit ?? 0 : 0);
-                    return (
-                      <div
-                        key={outbound.id}
-                        className="bp-row bp-sched-row"
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'minmax(0, 1fr) auto auto',
-                          alignItems: 'center',
-                          gap: 14,
-                          padding: '10px 12px',
-                          borderTop: i ? `1px solid ${C.line}` : 'none',
-                        }}
-                      >
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <span style={{ fontWeight: 650, fontSize: 13.5 }}>
-                              {outbound.origin.iata_code} {returnLeg ? '⇄' : '→'} {outbound.destination.iata_code}
-                            </span>
-                            <span className="num" style={{ fontSize: 12.5, color: C.brand }}>
-                              {outbound.flightNumber}
-                              {returnLeg ? ` / ${returnLeg.flightNumber}` : ''}
-                            </span>
-                            {econOut?.isThroughFlight && <Pill color={C.accent}>Through passengers +15%</Pill>}
+                  <div className="bp-list">
+                    {group.rotations.slice(0, limits[group.key] ?? ROW_PAGE).map(({ outbound, returnLeg, chainSummary }) => {
+                      const ac = fleetByTail.get(outbound.tailNumber);
+                      const econOut = econById.get(outbound.id);
+                      const profit = (econOut?.profit ?? 0) + (returnLeg ? econById.get(returnLeg.id)?.profit ?? 0 : 0);
+                      const local = [
+                        legLocalText(outbound.depTimeMin, outbound.arrTimeMin, outbound.origin.iata_code, outbound.destination.iata_code),
+                        returnLeg ? legLocalText(returnLeg.depTimeMin, returnLeg.arrTimeMin, returnLeg.origin.iata_code, returnLeg.destination.iata_code) : '',
+                      ]
+                        .filter(Boolean)
+                        .join('; ');
+                      return (
+                        <div
+                          key={outbound.id}
+                          className="bp-row bp-sched-row"
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`${outbound.flightNumber} ${outbound.origin.iata_code} to ${outbound.destination.iata_code}: edit`}
+                          onClick={() => onEdit(outbound.tailNumber, outbound.id)}
+                          onKeyDown={(e) => e.key === 'Enter' && e.target === e.currentTarget && onEdit(outbound.tailNumber, outbound.id)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 8px', cursor: 'pointer', borderRadius: 0 }}
+                        >
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                              <span style={{ fontWeight: 650, fontSize: 14 }}>
+                                {outbound.origin.iata_code} {returnLeg ? '⇄' : '→'} {outbound.destination.iata_code}
+                              </span>
+                              <span className="num" style={{ fontSize: 12.5, color: C.brand }}>
+                                {outbound.flightNumber}
+                                {returnLeg ? ` / ${returnLeg.flightNumber}` : ''}
+                              </span>
+                              {econOut?.isThroughFlight && <Pill color={C.accent}>+15% connecting</Pill>}
+                            </div>
+                            <div className="num" title={local || undefined} style={{ fontSize: 12.5, color: C.muted, marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {groupBy === 'hub' ? `${outbound.tailNumber} · ${ac?.model.icao_code ?? '?'} · ` : ''}
+                              {formatClockShort(outbound.depTimeMin)}–{formatClockShort(outbound.arrTimeMin)}
+                              {returnLeg ? `, back ${formatClockShort(returnLeg.depTimeMin)}–${formatClockShort(returnLeg.arrTimeMin)}` : ''} UTC
+                              {chainSummary ? ` · ${chainSummary.replace(/^(Open chain|Chain): /, '')}` : ''}
+                            </div>
                           </div>
-                          <div className="num" style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
-                            {outbound.tailNumber}, {ac?.model.name ?? 'unknown aircraft'}. Out {formatClockShort(outbound.depTimeMin)}–{formatClockShort(outbound.arrTimeMin)}
-                            {returnLeg ? `, back ${formatClockShort(returnLeg.depTimeMin)}–${formatClockShort(returnLeg.arrTimeMin)}` : ''} UTC
-                            {chainSummary ? `. ${chainSummary}` : ''}
+                          <div className="num" style={{ flex: 'none', fontSize: 14, fontWeight: 600, color: profit >= 0 ? C.green : C.red, textAlign: 'right' }}>
+                            {usd(profit)}
                           </div>
-                          {(() => {
-                            const out = legLocalText(outbound.depTimeMin, outbound.arrTimeMin, outbound.origin.iata_code, outbound.destination.iata_code);
-                            const back = returnLeg ? legLocalText(returnLeg.depTimeMin, returnLeg.arrTimeMin, returnLeg.origin.iata_code, returnLeg.destination.iata_code) : '';
-                            return out || back ? (
-                              <div className="num" style={{ fontSize: 11.5, color: C.faint, marginTop: 1 }}>
-                                {[out, back].filter(Boolean).join('; ')}
-                              </div>
-                            ) : null;
-                          })()}
+                          <IconButton
+                            icon="trash"
+                            label={returnLeg ? 'Delete both flights' : 'Delete flight'}
+                            size={32}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDelete(outbound.id);
+                            }}
+                          />
                         </div>
-                        <div className="num" style={{ fontSize: 13, fontWeight: 600, color: profit >= 0 ? C.green : C.red, textAlign: 'right' }}>
-                          {profit >= 0 ? '+' : '−'}${Math.abs(profit).toLocaleString()}
-                          <div style={{ fontSize: 11, color: C.faint, fontWeight: 500 }}>per {returnLeg ? 'round trip' : 'flight'}</div>
-                        </div>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <Button size="sm" onClick={() => onEdit(outbound.tailNumber, outbound.id)}>
-                            Edit
-                          </Button>
-                          <Button size="sm" variant="danger" onClick={() => onDelete(outbound.id)} title={returnLeg ? 'Delete both legs' : 'Delete this flight'}>
-                            Delete
-                          </Button>
-                        </div>
+                      );
+                    })}
+                    {group.rotations.length > (limits[group.key] ?? ROW_PAGE) && (
+                      <div style={{ padding: 8, display: 'flex', justifyContent: 'center' }}>
+                        <Button size="sm" onClick={() => setLimits((l) => ({ ...l, [group.key]: (l[group.key] ?? ROW_PAGE) + ROW_PAGE * 2 }))}>
+                          Show {(group.rotations.length - (limits[group.key] ?? ROW_PAGE)).toLocaleString()} more
+                        </Button>
                       </div>
-                    );
-                  })}
-                  {group.rotations.length > (limits[group.key] ?? ROW_PAGE) && (
-                    <div style={{ padding: 8, borderTop: `1px solid ${C.line}`, display: 'flex', justifyContent: 'center' }}>
-                      <Button size="sm" onClick={() => setLimits((l) => ({ ...l, [group.key]: (l[group.key] ?? ROW_PAGE) + ROW_PAGE * 2 }))}>
-                        Show more ({(group.rotations.length - (limits[group.key] ?? ROW_PAGE)).toLocaleString()} left)
-                      </Button>
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
                 )}
               </section>
             );
           })}
-          {groups.every((g) => g.rotations.length === 0) && <div style={{ color: C.muted, fontSize: 12.5 }}>No flights match these filters.</div>}
+          {groups.every((g) => g.rotations.length === 0) && <div style={{ color: C.muted, fontSize: 13 }}>Nothing matches.</div>}
         </>
       )}
     </SidePanel>

@@ -1,10 +1,14 @@
 import { useMemo, useRef, useState } from 'react';
+import { AIRCRAFT_BY_ID } from '../game/aircraftCatalog';
+import { AIRCRAFT_PHOTOS } from '../game/aircraftPhotos';
+import { normaliseAirlineColours, normaliseLiveries, normaliseLogo, standardLivery } from '../game/livery';
 import { moderate } from '../game/moderation';
-import { airportGateCode } from '../game/gateCode';
+import { formatMoneyM } from '../game/time';
 import type { Airport, GameMode, SaveGameState } from '../game/types';
+import { AircraftHero, LiveryContext } from './AircraftPhoto';
 import { CloudCareersOnHome, SaveLocation } from './CloudPanel';
 import { Icon } from '../ui/icons';
-import { Button, C, Field, SearchInput, Segmented, inputStyle, glass } from '../ui/kit';
+import { Button, C, DISPLAY, Field, IconButton, SearchInput, Segmented, faceHi, inputStyle, glass } from '../ui/kit';
 import { useLayout } from '../ui/layout';
 import { APP_VERSION } from '../version';
 import { CreditsModal } from './Credits';
@@ -14,6 +18,7 @@ import { inDesktopApp } from './UpdateBanner';
 
 /** The Boarding Pass website (the game itself is on play.boardingpass.my). */
 const WEBSITE = 'https://boardingpass.my';
+const NEW = 'new';
 
 export interface HomeScreenProps {
   airlineName: string;
@@ -24,46 +29,214 @@ export interface HomeScreenProps {
   onChange: (patch: Partial<{ airlineName: string; airlineIata: string; airlineCallsign: string; hubIata: string; gameMode: GameMode }>) => void;
   airports: Airport[];
   airportByIata: Map<string, Airport>;
-  navaidsCount: number;
-  aircraftCount: number;
-  dataStatus: string;
   savedGames: SaveGameState[];
   onLaunch: () => void;
   onResume: (save: SaveGameState) => void;
   onDeleteSave: (saveId: string) => void;
   onImportFile: (file: File) => void;
-  onCloud: () => void;
-  onOnline: () => void;
-  /** A career was downloaded from the cloud: re-read the save slots. */
+  /** Opens the account: sign in, and the player's airlines. */
+  onAccount: () => void;
+  /** An airline was downloaded from the cloud: re-read the save slots. */
   onCloudDownloaded: () => void;
   toast: (message: string) => void;
 }
 
+/** One of the player's airlines: its aircraft in its livery, a few figures, and Play. */
+function AirlineCard({ sv, onPlay, onDelete }: { sv: SaveGameState; onPlay: () => void; onDelete: () => void }) {
+  // Straight from a save: everything goes through its normaliser before it's drawn
+  const livery = useMemo(() => {
+    try {
+      const liveries = sv.liveries === undefined && !sv.livery ? [standardLivery(normaliseAirlineColours(sv.airlineColours))] : normaliseLiveries(sv.liveries, sv.livery);
+      return { liveries, name: sv.airlineName, logo: normaliseLogo(sv.airlineLogo) };
+    } catch {
+      return null;
+    }
+  }, [sv]);
+  // Its most common aircraft type that has a picture
+  const pick = useMemo(() => {
+    const n = new Map<string, { tail: string; livery?: number; k: number }>();
+    for (const a of sv.fleet ?? []) {
+      const id = a?.model?.id;
+      if (id && AIRCRAFT_PHOTOS[id] && AIRCRAFT_BY_ID.has(id)) n.set(id, { tail: a.tailNumber, livery: a.livery, k: (n.get(id)?.k ?? 0) + 1 });
+    }
+    const [best] = [...n.entries()].sort((a, b) => b[1].k - a[1].k);
+    return best ? { model: AIRCRAFT_BY_ID.get(best[0])!, tail: best[1].tail, livery: best[1].livery } : null;
+  }, [sv]);
+  const model = pick?.model ?? AIRCRAFT_BY_ID.get('a320neo');
+  const hubs = sv.hubs ?? [sv.hubIata];
+  const sandbox = sv.gameMode === 'sandbox';
+  const stat = (label: string, value: string) => (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: 12, color: C.muted }}>{label}</div>
+      <div className="num" style={{ fontFamily: DISPLAY, fontSize: 21, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {value}
+      </div>
+    </div>
+  );
+  return (
+    <div>
+      {model && livery && (
+        <LiveryContext.Provider value={livery}>
+          <AircraftHero model={model} tailNumber={pick?.tail ?? ''} liveryIndex={pick?.livery} style={{ borderRadius: 14, marginBottom: 18 }} />
+        </LiveryContext.Provider>
+      )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h2 style={{ margin: 0, fontSize: 28, fontWeight: 700, lineHeight: 1.1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sv.airlineName}</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: C.muted, marginTop: 3 }}>
+            <span>
+              {sv.airlineIata} · {sandbox ? 'Sandbox' : 'Career'}
+              {sv.econPaused ? ' · Paused' : ''}
+            </span>
+            <SaveLocation save={sv} />
+          </div>
+        </div>
+        <IconButton icon="trash" label={`Delete ${sv.airlineName}`} color={C.faint} onClick={onDelete} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, marginBottom: 20 }}>
+        {stat('Aircraft', (sv.fleet?.length ?? 0).toLocaleString())}
+        {stat(hubs.length === 1 ? 'Hub' : 'Hubs', hubs.length <= 3 ? hubs.join(' ') : `${hubs.length}`)}
+        {stat('Cash', sandbox ? '∞' : formatMoneyM(sv.cash))}
+      </div>
+      <Button variant="primary" size="lg" block onClick={onPlay}>
+        <Icon name="play" size={18} />
+        Play
+      </Button>
+    </div>
+  );
+}
+
 export function HomeScreen(props: HomeScreenProps) {
-  const link: React.CSSProperties = { font: 'inherit', fontSize: 13, fontWeight: 500, background: 'none', border: 'none', color: C.accent, cursor: 'pointer', padding: '6px 0', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', minHeight: 32 };
+  const link: React.CSSProperties = { font: 'inherit', fontSize: 13, fontWeight: 500, background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: '6px 0', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', minHeight: 32 };
   const { airlineName, airlineIata, airlineCallsign, hubIata, gameMode, onChange, airports, airportByIata, savedGames } = props;
   const [hubSearch, setHubSearch] = useState('');
   const [showCredits, setShowCredits] = useState(false);
+  const [picked, setPicked] = useState<string | null>(null);
   const phone = useLayout() === 'phone';
   const importRef = useRef<HTMLInputElement | null>(null);
   const currentHub = airportByIata.get(hubIata);
   const nameProblem = moderate(airlineName) ?? moderate(airlineCallsign) ?? moderate(airlineIata);
   const canLaunch = Boolean(currentHub) && airlineName.trim() !== '' && /^[A-Z0-9]{2,3}$/.test(airlineIata) && !nameProblem;
 
+  // The tab: the airline picked, or the one played last, or the new-airline form when there are none
+  const tab = picked === NEW ? NEW : savedGames.find((s) => s.saveId === picked)?.saveId ?? savedGames[0]?.saveId ?? NEW;
+  const airline = savedGames.find((s) => s.saveId === tab);
+
   const matches = useMemo(() => {
     const q = hubSearch.trim().toLowerCase();
     const pool = q
       ? airports.filter((a) => [a.iata_code, a.municipality, a.name, a.iso_country].some((s) => (s || '').toLowerCase().includes(q)))
       : airports;
+    // The exact code first when searching; the airport already picked first when not
+    const first = q || hubIata.toLowerCase();
     return [...pool]
-      .sort((a, b) => Number(b.iata_code.toLowerCase() === q) - Number(a.iata_code.toLowerCase() === q) || b.demand_weight - a.demand_weight)
-      .slice(0, 6);
-  }, [airports, hubSearch]);
+      .sort((a, b) => Number(b.iata_code.toLowerCase() === first) - Number(a.iata_code.toLowerCase() === first) || b.demand_weight - a.demand_weight)
+      .slice(0, 5);
+  }, [airports, hubSearch, hubIata]);
 
   // Behind everything: every airport in the game as a faint dot, like a departures map
   const dots = useMemo(
     () => airports.map((a) => `M${(((a.longitude_deg + 180) / 360) * 1600).toFixed(1)} ${(((90 - a.latitude_deg) / 180) * 800).toFixed(1)}h0`).join(''),
     [airports]
+  );
+
+  const tabButton = (id: string, label: React.ReactNode, title: string) => {
+    const on = tab === id;
+    return (
+      <button
+        key={id}
+        type="button"
+        className="bp-tab"
+        role="tab"
+        aria-selected={on}
+        aria-current={on ? 'page' : undefined}
+        title={title}
+        onClick={() => setPicked(id)}
+        style={{ flex: 'none', height: 38, padding: '0 14px', borderRadius: 10, whiteSpace: 'nowrap', cursor: 'pointer', fontFamily: DISPLAY, fontSize: 17, fontWeight: on ? 700 : 600, color: on ? C.text : C.muted, background: on ? faceHi() : 'transparent', border: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: 220 }}
+      >
+        {label}
+      </button>
+    );
+  };
+
+  const newAirline = (
+    <div>
+      <div className="bp-home-names" style={{ display: 'grid', gridTemplateColumns: phone ? '1fr 80px' : '1fr 84px 1fr', gap: 12, marginBottom: 16 }}>
+        <Field label="Name">
+          <input value={airlineName} onChange={(e) => onChange({ airlineName: e.target.value })} style={{ ...inputStyle, fontWeight: 600 }} />
+        </Field>
+        <Field label="Code">
+          <input
+            maxLength={3}
+            value={airlineIata}
+            onChange={(e) => onChange({ airlineIata: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })}
+            style={{ ...inputStyle, fontWeight: 650, color: C.brand, textAlign: 'center' }}
+          />
+        </Field>
+        <Field label="Callsign">
+          <input value={airlineCallsign} onChange={(e) => onChange({ airlineCallsign: e.target.value.toUpperCase() })} style={{ ...inputStyle }} />
+        </Field>
+      </div>
+
+      <Field label="Home airport" style={{ marginBottom: 16 }}>
+        <SearchInput value={hubSearch} onChange={setHubSearch} placeholder="City or code" />
+        <div style={{ marginTop: 6 }}>
+          {matches.map((ap) => {
+            const sel = ap.iata_code === hubIata;
+            return (
+              <button
+                key={ap.iata_code}
+                type="button"
+                className="bp-row"
+                aria-pressed={sel}
+                onClick={() => onChange({ hubIata: ap.iata_code })}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '8px 10px', textAlign: 'left', border: 'none', background: sel ? `${C.brand}24` : 'transparent', color: C.text, cursor: 'pointer' }}
+              >
+                <span style={{ width: 40, fontFamily: DISPLAY, fontSize: 17, fontWeight: 700, color: sel ? C.brand : C.text }}>{ap.iata_code}</span>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {ap.municipality}, {ap.iso_country} <span style={{ color: C.faint }}>{ap.name}</span>
+                </span>
+                {sel && <Icon name="check" size={16} color={C.brand} />}
+              </button>
+            );
+          })}
+          {matches.length === 0 && <div style={{ padding: 10, fontSize: 13, color: C.muted }}>No airport found.</div>}
+        </div>
+      </Field>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
+        <Segmented<GameMode>
+          value={gameMode}
+          onChange={(m) => onChange({ gameMode: m })}
+          options={[
+            { value: 'standard', label: 'Career' },
+            { value: 'sandbox', label: 'Sandbox' },
+          ]}
+        />
+        <span style={{ fontSize: 13, color: C.muted }}>{gameMode === 'standard' ? 'Start with $150M' : 'Unlimited money'}</span>
+      </div>
+
+      <Button variant="primary" size="lg" block disabled={!canLaunch} onClick={props.onLaunch}>
+        {currentHub ? `Start at ${currentHub.iata_code}` : 'Pick a home airport'}
+      </Button>
+      {!canLaunch && currentHub && <div style={{ fontSize: 12.5, color: C.amber, marginTop: 8 }}>{nameProblem ?? 'Add a name and a 2 or 3 character code.'}</div>}
+      <div style={{ textAlign: 'center', marginTop: 10 }}>
+        <button type="button" onClick={() => importRef.current?.click()} style={{ ...link, fontSize: 12.5 }}>
+          Open a save file
+        </button>
+        <input
+          ref={importRef}
+          type="file"
+          accept=".boardingpass,.json,application/json,application/octet-stream"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) props.onImportFile(file);
+            e.target.value = ''; // allow re-importing the same file
+          }}
+          style={{ display: 'none' }}
+        />
+      </div>
+    </div>
   );
 
   return (
@@ -84,209 +257,71 @@ export function HomeScreen(props: HomeScreenProps) {
       <svg aria-hidden viewBox="0 0 1600 800" preserveAspectRatio="xMidYMid slice" style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
         <path d={dots} stroke={C.border} strokeWidth={2.4} strokeLinecap="round" opacity={0.75} />
       </svg>
-      <div className="bp-stack" style={{ position: 'relative', width: '100%', maxWidth: 1040, display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 28, margin: 'auto 0' }}>
-        {/* New career */}
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 26 }}>
-            <div style={{ width: 56, height: 56, borderRadius: 14, background: C.brand, color: C.brandInk, display: 'grid', placeItems: 'center', flex: 'none', boxShadow: 'inset 0 1px 0 rgba(255,255,255,.3), 0 3px 0 rgba(0,0,0,.3)' }}>
-              <Icon name="fleet" size={32} />
-            </div>
-            <div>
-              <h1 style={{ margin: 0, fontSize: 44, fontWeight: 700, lineHeight: 1, display: 'flex', alignItems: 'center', gap: 12 }}>
-                Boarding Pass <DevTag big />
-              </h1>
-              <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>
-                Version {APP_VERSION}. {airports.length.toLocaleString()} airports, {props.aircraftCount} aircraft types.
-              </div>
-              {/* Links on their own row, each a comfortable tap */}
-              <div className="bp-home-links" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 16, rowGap: 0, marginTop: 2 }}>
-                <button type="button" onClick={() => setShowCredits(true)} style={link}>
-                  Credits and licences
-                </button>
-                <button type="button" onClick={openAppearance} style={link}>
-                  Appearance
-                </button>
-                {!inDesktopApp() && (
-                  <>
-                    <a href={WEBSITE} style={link}>
-                      boardingpass.my
-                    </a>
-                    <a href={`${WEBSITE}/#download`} style={link}>
-                      Get the app
-                    </a>
-                  </>
-                )}
-              </div>
-            </div>
+      <div style={{ position: 'relative', width: '100%', maxWidth: 580, margin: 'auto 0' }}>
+        <header style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: phone ? 16 : 22 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: C.brand, color: C.brandInk, display: 'grid', placeItems: 'center', flex: 'none' }}>
+            <Icon name="fleet" size={26} />
           </div>
+          <h1 style={{ flex: 1, minWidth: 0, margin: 0, fontSize: phone ? 28 : 34, fontWeight: 700, lineHeight: 1, display: 'flex', alignItems: 'center', gap: 12 }}>
+            Boarding Pass <DevTag big />
+          </h1>
+          <Button onClick={props.onAccount}>
+            <Icon name="globe" size={16} />
+            Account
+          </Button>
+        </header>
 
-          <div style={{ ...glass('e8'), borderRadius: 16, padding: 22 }}>
-            <h2 style={{ margin: '0 0 16px', fontSize: 24, fontWeight: 700 }}>Start a new airline</h2>
+        <CloudCareersOnHome onDownloaded={props.onCloudDownloaded} toast={props.toast} />
 
-            <div className="bp-home-names" style={{ display: 'grid', gridTemplateColumns: phone ? '1fr 80px' : '1fr 90px 1fr', gap: 12, marginBottom: 16 }}>
-              <Field label="Airline name">
-                <input value={airlineName} onChange={(e) => onChange({ airlineName: e.target.value })} style={{ ...inputStyle, fontWeight: 600 }} />
-              </Field>
-              <Field label="Code">
-                <input
-                  maxLength={3}
-                  value={airlineIata}
-                  onChange={(e) => onChange({ airlineIata: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })}
-                  style={{ ...inputStyle, fontWeight: 650, color: C.brand, textAlign: 'center' }}
-                />
-              </Field>
-              <Field label="Radio callsign">
-                <input value={airlineCallsign} onChange={(e) => onChange({ airlineCallsign: e.target.value.toUpperCase() })} style={{ ...inputStyle }} />
-              </Field>
-            </div>
-
-            <Field label="Home hub" style={{ marginBottom: 16 }}>
-              <SearchInput value={hubSearch} onChange={setHubSearch} placeholder="Search by airport code or city, e.g. BOS or Boston" />
-              <div style={{ marginTop: 8, border: `1px solid ${C.line}`, borderRadius: 8, overflow: 'hidden' }}>
-                {matches.map((ap, i) => {
-                  const sel = ap.iata_code === hubIata;
-                  return (
-                    <button
-                      key={ap.iata_code}
-                      type="button"
-                      className="bp-row"
-                      onClick={() => onChange({ hubIata: ap.iata_code })}
-                      style={{
-                        width: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        padding: '8px 12px',
-                        textAlign: 'left',
-                        border: 'none',
-                        borderTop: i ? `1px solid ${C.line}` : 'none',
-                        borderLeft: `3px solid ${sel ? C.brand : 'transparent'}`,
-                        background: sel ? C.raised : 'transparent',
-                        color: C.text,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <span style={{ width: 38, fontWeight: 650, color: sel ? C.brand : C.text }}>{ap.iata_code}</span>
-                      <span style={{ flex: 1, minWidth: 0 }}>
-                        <span style={{ display: 'block', fontSize: 13 }}>
-                          {ap.municipality}, {ap.iso_country}
-                        </span>
-                        <span style={{ display: 'block', fontSize: 11.5, color: C.faint, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ap.name}</span>
-                      </span>
-                      <span style={{ fontSize: 12, color: C.muted }}>up to Code {airportGateCode(ap)}</span>
-                    </button>
-                  );
-                })}
-                {matches.length === 0 && <div style={{ padding: 12, fontSize: 12.5, color: C.muted }}>No airport matches “{hubSearch}”.</div>}
-              </div>
-            </Field>
-
-            <Field label="Mode" style={{ marginBottom: 20 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <Segmented<GameMode>
-                  value={gameMode}
-                  onChange={(m) => onChange({ gameMode: m })}
-                  options={[
-                    { value: 'standard', label: 'Career' },
-                    { value: 'sandbox', label: 'Sandbox' },
-                  ]}
-                />
-                <span style={{ fontSize: 12.5, color: C.muted }}>
-                  {gameMode === 'standard' ? 'Start with $150M and grow from there.' : 'Unlimited money to try anything.'}
-                </span>
-              </div>
-            </Field>
-
-            <Button variant="primary" size="lg" block disabled={!canLaunch} onClick={props.onLaunch}>
-              {currentHub ? `Start at ${currentHub.iata_code}, ${currentHub.municipality}` : 'Pick a home hub'}
-            </Button>
-            {!canLaunch && currentHub && <div style={{ fontSize: 12, color: C.amber, marginTop: 8 }}>{nameProblem ?? 'Enter an airline name and a 2–3 character code.'}</div>}
+        <section aria-label="Your airlines" style={{ ...glass('e8'), borderRadius: 20, overflow: 'hidden' }}>
+          {/* One tab per airline, then a new one */}
+          <div role="tablist" aria-label="Airlines" className="bp-scroll-x" style={{ display: 'flex', alignItems: 'center', gap: 2, padding: 10, overflowX: 'auto', borderBottom: `1px solid ${C.line}` }}>
+            {savedGames.map((sv) =>
+              tabButton(
+                sv.saveId,
+                <>
+                  <span style={{ color: tab === sv.saveId ? C.brand : C.faint }}>{sv.airlineIata}</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{sv.airlineName}</span>
+                </>,
+                sv.airlineName
+              )
+            )}
+            {tabButton(
+              NEW,
+              <>
+                <Icon name="plus" size={15} />
+                New
+              </>,
+              'New airline'
+            )}
           </div>
-          <div style={{ fontSize: 11.5, color: C.faint, marginTop: 12, whiteSpace: 'pre-line' }}>{props.dataStatus}</div>
-        </div>
-
-        {/* Saved careers */}
-        <div style={{ ...glass('e0'), borderRadius: 16, padding: 22, marginTop: phone ? 0 : 82, alignSelf: 'start' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-            <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>Continue</h2>
-            <span style={{ flex: 1 }} />
-            <Button size="sm" variant="ghost" onClick={props.onCloud}>
-              <Icon name="swap" size={14} />
-              Cloud saves
-            </Button>
-            <Button size="sm" variant="ghost" onClick={props.onOnline}>
-              <Icon name="globe" size={14} />
-              Online
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => importRef.current?.click()}>
-              <Icon name="upload" size={14} />
-              Import old save file
-            </Button>
-            <input
-              ref={importRef}
-              type="file"
-              accept=".boardingpass,.json,application/json,application/octet-stream"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) props.onImportFile(file);
-                e.target.value = ''; // allow re-importing the same file
-              }}
-              style={{ display: 'none' }}
-            />
+          <div role="tabpanel" style={{ padding: phone ? 16 : 24 }}>
+            {airline ? <AirlineCard key={airline.saveId} sv={airline} onPlay={() => props.onResume(airline)} onDelete={() => props.onDeleteSave(airline.saveId)} /> : newAirline}
           </div>
+        </section>
 
-          <CloudCareersOnHome onDownloaded={props.onCloudDownloaded} toast={props.toast} />
-          {savedGames.length === 0 ? (
-            <div style={{ border: `1px dashed ${C.border}`, borderRadius: 12, padding: '30px 20px', textAlign: 'center', color: C.muted, fontSize: 13 }}>
-              No saved airlines yet. Your career saves itself every minute once you start.
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gap: 10, maxHeight: 520, overflowY: 'auto' }}>
-              {savedGames.map((sv) => (
-                <div key={sv.saveId} style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 10, padding: 14, display: 'flex', alignItems: 'center', gap: 14 }}>
-                  <div
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 8,
-                      background: C.raised,
-                      color: C.brand,
-                      display: 'grid',
-                      placeItems: 'center',
-                      fontWeight: 750,
-                      fontSize: 13,
-                    }}
-                  >
-                    {sv.airlineIata}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 650, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sv.airlineName}</div>
-                    <div className="num" style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
-                      {(sv.hubs ?? [sv.hubIata]).join(', ')}. {sv.fleet?.length ?? 0} aircraft, {sv.schedule?.length ?? 0} flights
-                      {sv.econPaused ? ', paused' : ''}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: C.faint }}>
-                      {sv.isAutosave ? 'Autosaved' : 'Saved'} {sv.savedAt}
-                    </div>
-                    <SaveLocation save={sv} />
-                  </div>
-                  <Button variant="primary" onClick={() => props.onResume(sv)}>
-                    Continue
-                  </Button>
-                  <button
-                    type="button"
-                    aria-label={`Delete ${sv.airlineName}`}
-                    title="Delete save"
-                    onClick={() => props.onDeleteSave(sv.saveId)}
-                    style={{ background: 'none', border: 'none', color: C.faint, cursor: 'pointer', padding: 6 }}
-                  >
-                    <Icon name="trash" size={16} />
-                  </button>
-                </div>
-              ))}
-            </div>
+        <footer className="bp-home-links" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 18, marginTop: 12, padding: '0 4px' }}>
+          <button type="button" onClick={openAppearance} style={link}>
+            Appearance
+          </button>
+          <button type="button" onClick={() => setShowCredits(true)} style={link}>
+            Credits
+          </button>
+          {!inDesktopApp() && (
+            <>
+              <a href={WEBSITE} style={link}>
+                Website
+              </a>
+              <a href={`${WEBSITE}/#download`} style={link}>
+                Get the app
+              </a>
+            </>
           )}
-        </div>
+          <span style={{ flex: 1 }} />
+          <span className="num" style={{ fontSize: 12.5, color: C.faint }}>
+            {APP_VERSION}
+          </span>
+        </footer>
       </div>
       {showCredits && <CreditsModal onClose={() => setShowCredits(false)} />}
     </div>
