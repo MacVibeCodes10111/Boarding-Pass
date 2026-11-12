@@ -115,8 +115,9 @@ export const DAYLIGHT_PALETTE: Palette = {
   scheme: 'light',
 };
 
-/** How panels are drawn: 'glass' is the liquid glass look (clearer, brighter edges); missing is the standard one. */
-export type ThemeFinish = 'glass';
+/** How panels are drawn: 'glass' is the clear glass look (clearer, brighter edges, the default since v3.1);
+ *  'standard' is the frosted one. Missing (looks saved before glass was the default) means standard. */
+export type ThemeFinish = 'glass' | 'standard';
 
 export interface ThemeSpec {
   /** Preset id, or 'custom' once a colour has been changed. */
@@ -127,7 +128,7 @@ export interface ThemeSpec {
   fleet: string | null;
   /** Friends' aircraft. Missing or null: the theme's own (themes saved before there was a choice have none). */
   friends?: string | null;
-  /** Liquid glass panels. Any theme can have it. */
+  /** Glass or standard panels. Any theme can have either. */
   finish?: ThemeFinish;
 }
 
@@ -153,7 +154,7 @@ export const friendsColourOf = (spec: ThemeSpec): string =>
 /** Quick picks next to the colour picker. */
 export const POP_COLOURS = ['#ff3b30', '#ff4f1f', '#ff9500', '#ffd21f', '#34c759', '#00c7be', '#0a84ff', '#2f54ff', '#5e5ce6', '#bf5af2', '#ff2d92', '#ffffff', '#000000'];
 
-export const DEFAULT_THEME: ThemeSpec = { preset: 'daylight', base: DAYLIGHT_PALETTE.bg, accent: DAYLIGHT_PALETTE.brand, fleet: DAYLIGHT_PALETTE.fleet, friends: DAYLIGHT_PALETTE.friends };
+export const DEFAULT_THEME: ThemeSpec = { preset: 'daylight', base: DAYLIGHT_PALETTE.bg, accent: DAYLIGHT_PALETTE.brand, fleet: DAYLIGHT_PALETTE.fleet, friends: DAYLIGHT_PALETTE.friends, finish: 'glass' };
 
 // ---------------------------------------------------------------------------
 // Colour maths (sRGB hex, HSL and HSV, WCAG contrast)
@@ -304,7 +305,7 @@ export function loadThemeSpec(): ThemeSpec {
     const v = JSON.parse(localStorage.getItem(THEME_KEY) ?? 'null');
     if (v && typeof v.base === 'string' && typeof v.accent === 'string' && normHex(v.base) && normHex(v.accent)) {
       const friends = typeof v.friends === 'string' ? normHex(v.friends) : null;
-      return { preset: typeof v.preset === 'string' ? v.preset : 'custom', base: normHex(v.base)!, accent: normHex(v.accent)!, fleet: v.fleet && normHex(v.fleet) ? normHex(v.fleet) : null, friends, ...(v.finish === 'glass' ? { finish: 'glass' as const } : {}) };
+      return { preset: typeof v.preset === 'string' ? v.preset : 'custom', base: normHex(v.base)!, accent: normHex(v.accent)!, fleet: v.fleet && normHex(v.fleet) ? normHex(v.fleet) : null, friends, finish: v.finish === 'glass' ? 'glass' : 'standard' };
     }
   } catch {
     /* storage off: the default look */
@@ -329,7 +330,7 @@ export function hasSavedTheme(): boolean {
   }
 }
 
-/** A theme passed in the address (from the website): ?theme=studio-black or ?bg=000000&hl=ff4f1f&ac=ff4f1f (&glass=1 for liquid glass) */
+/** A theme passed in the address (from the website): ?theme=studio-black or ?bg=000000&hl=ff4f1f&ac=ff4f1f (glass panels unless &glass=0) */
 export function themeFromUrl(search: string): ThemeSpec | null {
   try {
     const q = new URLSearchParams(search);
@@ -337,7 +338,7 @@ export function themeFromUrl(search: string): ThemeSpec | null {
     const bg = q.get('bg') && normHex(q.get('bg')!);
     const hl = q.get('hl') && normHex(q.get('hl')!);
     const ac = q.get('ac') && normHex(q.get('ac')!);
-    const finish = q.get('glass') === '1' ? { finish: 'glass' as const } : {};
+    const finish = { finish: q.get('glass') === '0' ? ('standard' as const) : ('glass' as const) };
     if (bg && hl) return { preset: preset?.preset ?? 'custom', base: bg, accent: hl, fleet: ac || null, ...finish };
     if (preset) return { preset: preset.preset, base: preset.base, accent: preset.accent, fleet: preset.fleet, friends: preset.friends, ...finish };
   } catch {

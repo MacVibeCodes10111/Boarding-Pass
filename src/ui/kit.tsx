@@ -17,14 +17,14 @@ import { useLayout } from './layout';
 export const FONT = `'Barlow', 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif`;
 /** Headings, big numbers, toolbar labels */
 export const DISPLAY = `'Barlow Condensed', 'Barlow', 'Segoe UI', system-ui, sans-serif`;
-/** True with the liquid glass finish (Appearance): panels are clearer, with bright edges. */
+/** True with the glass finish (Appearance): panels are clearer, with bright edges. */
 export const isGlass = () => themeSpec.finish === 'glass';
 const hex2 = (v: number) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, '0');
 /** Drop shadows are lighter on light themes. */
 const shade = (dark: number) => `rgba(${C.scheme === 'light' ? '30,45,80' : '0,0,0'},${C.scheme === 'light' ? (dark * 0.42).toFixed(3) : dark})`;
 const BLUR = 'blur(16px) saturate(1.2)';
 const GLASS_BLUR = 'blur(28px) saturate(1.9)';
-/** Liquid glass: how see-through a surface is, its sheen, and the light caught on its edges. */
+/** Glass finish: how see-through a surface is, its sheen, and the light caught on its edges. */
 const glassAlpha = (alpha: string) => hex2(parseInt(alpha, 16) * (C.scheme === 'light' ? 0.68 : 0.6));
 const glassSheen = () => `linear-gradient(180deg, #ffffff${C.scheme === 'light' ? '80' : '1c'} 0%, #ffffff${C.scheme === 'light' ? '26' : '08'} 34%, #ffffff00 100%)`;
 const glassEdge = () => (C.scheme === 'light' ? '#ffffffcc' : '#ffffff38');
@@ -196,12 +196,13 @@ export const globalCss = () => `
   /* The close button sits in the top corner: the first line of a popup keeps clear of it */
   .bp-pop-head { padding-right: 26px; }
   html[data-input=touch] .bp-pop-head { padding-right: 40px; }
-  /* A flight's info sheet covers the bottom of the map: the map buttons step aside until it closes */
-  html:has(.bp-sheet-popup) .bp-layers-fab, html:has(.bp-sheet-popup) .bp-zoom, html:has(.bp-sheet-popup) .bp-camera-alt { visibility: hidden; }
+  /* Phones: a flight's info sheet can reach up to the map buttons, so they step aside until it closes */
+  html[data-layout=phone]:has(.bp-sheet-popup) :is(.bp-layers-fab, .bp-zoom, .bp-camera-alt) { visibility: hidden; }
   .bp-camera-alt { color: ${C.textDim}; background: ${C.panel}b8; }
-  /* Room the camera box takes under the zoom buttons in 3D (a narrow column on phones) */
-  :root { --bp-cam-space: 40px; }
-  html[data-layout=phone] { --bp-cam-space: 82px; }
+  /* The map buttons (layers, zoom, then the 3D camera box) stack down from the top right: level with the airline bubble on
+     bigger screens, under the top bar on phones. The camera box is a narrow column on phones. */
+  :root { --bp-ctl-top: 10px; }
+  html[data-layout=phone] { --bp-ctl-top: calc(var(--bp-top-h) + 8px); }
   html[data-layout=phone] .bp-camera-alt { flex-direction: column; padding: 3px !important; gap: 4px !important; }
   html[data-layout=phone] .bp-cam-text { display: none; }
   .bp-cam-btn { border: 1px solid ${C.border}; background: ${C.raised}; color: ${C.text}; }
@@ -210,7 +211,7 @@ export const globalCss = () => `
   .bp-zoom-btn + .bp-zoom-btn { border-top: 1px solid ${C.border} !important; }
   .bp-zoom-btn:hover { background: ${C.raised}; }
 
-  /* Liquid glass (Appearance): clearer surfaces that catch the light on their edges, and rounder controls */
+  /* Glass finish (Appearance): clearer surfaces that catch the light on their edges, and rounder controls */
   html[data-finish=glass] .bp-glass, html[data-finish=glass] .maplibregl-popup-content, html[data-finish=glass] .bp-zoom, html[data-finish=glass] .bp-camera-alt {
     background: ${glassSheen()}, ${C.panel}${glassAlpha('e6')} !important; backdrop-filter: ${GLASS_BLUR}; -webkit-backdrop-filter: ${GLASS_BLUR};
     border: 1px solid ${glassEdge()} !important; box-shadow: ${glassRim()}, 0 16px 44px ${shade(0.36)} !important; }

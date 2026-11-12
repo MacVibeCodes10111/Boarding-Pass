@@ -1,6 +1,6 @@
 // ============================================================================
 // APPEARANCE
-//   Theme presets, the finish (standard or liquid glass) and a colour picker
+//   Theme presets, the finish (glass or standard) and a colour picker
 //   for the colours a theme is made of (background, highlight, your aircraft,
 //   friends' aircraft). Changes apply straight away and are kept on this
 //   device. Opened from the top bar, the Map menu, the main menu and the home
@@ -320,10 +320,10 @@ function AppearanceModal({ onClose, mapStyle, onMapStyle }: { onClose: () => voi
           <Segmented<'standard' | 'glass'>
             size="sm"
             value={live.finish === 'glass' ? 'glass' : 'standard'}
-            onChange={(v) => apply({ ...live, finish: v === 'glass' ? 'glass' : undefined })}
+            onChange={(v) => apply({ ...live, finish: v })}
             options={[
-              { value: 'standard', label: 'Standard' },
-              { value: 'glass', label: 'Liquid glass' },
+              { value: 'glass', label: 'Glass' },
+              { value: 'standard', label: 'Frosted' },
             ]}
           />
         </div>

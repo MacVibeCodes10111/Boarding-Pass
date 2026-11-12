@@ -161,6 +161,8 @@ function ClockButton(props: {
   wide?: boolean;
   /** Sits in its own bubble: no outline of its own unless it's open or paused. */
   bare?: boolean;
+  /** At the bottom of the screen: the panel opens upwards, from the bottom left. */
+  up?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
@@ -192,7 +194,7 @@ function ClockButton(props: {
           display: 'flex',
           alignItems: 'center',
           gap: 7,
-          height: 40,
+          height: props.up ? 48 : 40,
           padding: '0 9px 0 8px',
           borderRadius: 10,
           cursor: 'pointer',
@@ -217,7 +219,7 @@ function ClockButton(props: {
             )}
           </span>
         </span>
-        {props.wide && <span style={{ display: 'inline-flex', transform: `rotate(${open ? -90 : 90}deg)`, transition: 'transform .15s' }}><Icon name="chevron" size={12} color={C.muted} /></span>}
+        {props.wide && <span style={{ display: 'inline-flex', transform: `rotate(${(open ? -90 : 90) * (props.up ? -1 : 1)}deg)`, transition: 'transform .15s' }}><Icon name="chevron" size={12} color={C.muted} /></span>}
       </button>
       {open && (
         <div
@@ -226,8 +228,7 @@ function ClockButton(props: {
           style={{
             ...glass('f0'),
             position: 'fixed',
-            top: props.wide ? 72 : 'calc(var(--bp-top-h) + 8px)',
-            right: props.wide ? 12 : 8,
+            ...(props.up ? { bottom: 'calc(12px + 64px + 8px)', left: 10 } : { top: 'calc(var(--bp-top-h) + 8px)', right: 8 }),
             width: 'min(330px, calc(100vw - 16px))',
             borderRadius: 16,
             padding: '14px 16px 16px',
@@ -300,7 +301,7 @@ export function TopBar(props: {
   const layout = useLayout();
   const phone = layout === 'phone';
   const width = useWindowWidth();
-  const wideClock = !(phone || (layout === 'tablet' && width < 960));
+  const wideClock = !(phone || (layout === 'tablet' && width < 1000));
   const [moneyOpen, setMoneyOpen] = useState(false);
   const moneyRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -318,10 +319,25 @@ export function TopBar(props: {
   const w = props.weekSoFar;
   const career = props.gameMode !== 'sandbox';
   const { rate, debt } = props.money;
-  // Desktop and tablet: two floating bubbles (airline and money; look and clock), the map showing between them
+  // Desktop and tablet: the airline and money float top left; the clock sits bottom left, level with the dock
   const bubble = (children: React.ReactNode, extra?: React.CSSProperties) =>
     phone ? children : <div className="bp-topbubble" style={{ ...glass(), display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, borderRadius: 18, pointerEvents: 'auto', ...extra }}>{children}</div>;
+  // Both clocks live behind one button
+  const clock = (
+    <ClockButton
+      bare={!phone}
+      up={!phone}
+      econMin={props.econMin}
+      econSpeed={props.econSpeed}
+      onEconSpeed={props.onEconSpeed}
+      mapClock={props.mapClock}
+      mapSpeed={props.mapSpeed}
+      onMapSpeed={props.onMapSpeed}
+      wide={wideClock}
+    />
+  );
   return (
+    <>
     <header
       className={phone ? 'bp-topbar bp-glass' : 'bp-topbar'}
       data-tour="topbar"
@@ -466,21 +482,18 @@ export function TopBar(props: {
 
       </div>
       </>, { padding: '0 10px 0 4px' })}
-      {bubble(<>
-      {!phone && <IconButton icon="palette" label="Appearance" size={38} iconSize={19} onClick={openAppearance} />}
-      {/* Both clocks live behind one button */}
-      <ClockButton
-        bare={!phone}
-        econMin={props.econMin}
-        econSpeed={props.econSpeed}
-        onEconSpeed={props.onEconSpeed}
-        mapClock={props.mapClock}
-        mapSpeed={props.mapSpeed}
-        onMapSpeed={props.onMapSpeed}
-        wide={wideClock}
-      />
-      </>, { flex: 'none', padding: '0 7px', gap: 4 })}
+      {phone && clock}
     </header>
+    {!phone && (
+      <div
+        className="bp-clockbubble"
+        style={{ ...glass(), position: 'absolute', left: 10, bottom: 12, height: 64, display: 'flex', alignItems: 'center', gap: 2, padding: '0 7px', borderRadius: 18, zIndex: 45 }}
+      >
+        {layout === 'desktop' && <IconButton icon="palette" label="Appearance" size={40} iconSize={19} onClick={openAppearance} />}
+        {clock}
+      </div>
+    )}
+    </>
   );
 }
 
@@ -716,7 +729,6 @@ export function LayersMenu(props: {
   onPlaneIconScale: (v: number) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const phone = useLayout() === 'phone';
   const [credits, setCredits] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -731,8 +743,8 @@ export function LayersMenu(props: {
     };
   }, [open]);
 
-  // The round button sits above the zoom buttons (higher in 3D, where the camera box is under them)
-  const fabBottom = props.threeD ? 'calc(var(--bp-bottom-h) + 38px + var(--bp-cam-space) + 80px)' : 'calc(var(--bp-bottom-h) + 38px + 80px)';
+  // Top right, with the zoom buttons and the 3D camera box under it (--bp-ctl-top in the theme CSS)
+  const below = 'calc(var(--bp-ctl-top) + 52px)';
   const note: React.CSSProperties = { fontSize: 12, color: C.muted, lineHeight: 1.4 };
   const link: React.CSSProperties = { background: 'none', border: 'none', color: C.accent, fontSize: 12, cursor: 'pointer', padding: 0, whiteSpace: 'nowrap' };
   return (
@@ -746,21 +758,20 @@ export function LayersMenu(props: {
         data-tour="layers"
         onClick={() => setOpen((v) => !v)}
         style={{
+          ...glass(),
           position: 'absolute',
           right: 10,
-          bottom: fabBottom,
+          top: 'var(--bp-ctl-top)',
           zIndex: 30,
           width: 44,
           height: 44,
-          borderRadius: '50%',
+          borderRadius: 14,
           display: 'grid',
           placeItems: 'center',
           cursor: 'pointer',
           padding: 0,
-          background: open ? C.brand : `${C.panel}f0`,
           color: open ? C.brandInk : C.text,
-          border: `1px solid ${open ? C.brand : C.border}`,
-          boxShadow: '0 6px 18px rgba(0,0,0,.35)',
+          ...(open ? { background: C.brand, border: `1px solid ${C.brand}` } : {}),
         }}
       >
         <Icon name="layers" size={20} />
@@ -773,10 +784,10 @@ export function LayersMenu(props: {
           style={{
             position: 'fixed',
             right: 10,
-            bottom: phone ? 'calc(var(--bp-bottom-h) + 10px)' : fabBottom,
+            top: below,
             width: 'min(320px, calc(100vw - 20px))',
-            // Never taller than the space between the bars: the rest scrolls
-            maxHeight: phone ? 'calc(100dvh - var(--bp-top-h) - var(--bp-bottom-h) - 20px)' : `calc(100dvh - var(--bp-top-h) - 30px - (${fabBottom}))`,
+            // Never past the dock or tab bar: the rest scrolls
+            maxHeight: `calc(100dvh - ${below} - var(--bp-bottom-h) - 10px)`,
             overscrollBehavior: 'contain',
             overflowY: 'auto',
             ...glass('f2'),

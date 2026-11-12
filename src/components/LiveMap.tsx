@@ -1683,7 +1683,7 @@ export function LiveMap(props: LiveMapProps) {
           const camEl = document.createElement('div');
           camEl.className = 'bp-camera-alt';
           camEl.title = CAMERA_READOUT_TITLE;
-          camEl.style.cssText = `position:absolute;right:10px;bottom:calc(38px + var(--bp-bottom-h));z-index:2;font-size:11.5px;padding:2px 4px 2px 8px;border-radius:8px;pointer-events:auto;font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:6px;`; // colours: .bp-camera-alt in the theme CSS
+          camEl.style.cssText = `position:absolute;right:10px;top:calc(var(--bp-ctl-top) + 52px + 88px);z-index:2;font-size:11.5px;padding:2px 4px 2px 8px;border-radius:8px;pointer-events:auto;font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:6px;`; // colours: .bp-camera-alt in the theme CSS
           const camText = document.createElement('span');
           camText.className = 'bp-cam-text';
           camEl.appendChild(camText);
@@ -1719,7 +1719,7 @@ export function LiveMap(props: LiveMapProps) {
           // Zoom buttons, always there (above the camera box)
           const zoomEl = document.createElement('div');
           zoomEl.className = 'bp-zoom';
-          zoomEl.style.cssText = `position:absolute;right:10px;bottom:calc(38px + var(--bp-cam-space) + var(--bp-bottom-h));z-index:2;display:flex;flex-direction:column;gap:0;border-radius:10px;overflow:hidden;pointer-events:auto;`;
+          zoomEl.style.cssText = `position:absolute;right:10px;top:calc(var(--bp-ctl-top) + 52px);z-index:2;display:flex;flex-direction:column;gap:0;border-radius:14px;overflow:hidden;pointer-events:auto;`;
           const zoomBtn = (label: string, aria: string, dz: number) => {
             const b = document.createElement('button');
             b.type = 'button';
@@ -1727,7 +1727,7 @@ export function LiveMap(props: LiveMapProps) {
             b.textContent = label;
             b.setAttribute('aria-label', aria);
             b.title = aria;
-            b.style.cssText = `width:36px;height:34px;font-size:19px;line-height:1;cursor:pointer;padding:0;border:none;`;
+            b.style.cssText = `width:44px;height:40px;font-size:19px;line-height:1;cursor:pointer;padding:0;border:none;`;
             b.addEventListener('click', (e) => {
               e.stopPropagation();
               userMoveAt.current = performance.now();
@@ -1747,7 +1747,6 @@ export function LiveMap(props: LiveMapProps) {
           showCam();
           if (!latest.current.threeD) {
             camEl.style.display = 'none';
-            zoomEl.style.bottom = 'calc(38px + var(--bp-bottom-h))';
           }
           map.on('move', showCam);
 
@@ -1809,8 +1808,6 @@ export function LiveMap(props: LiveMapProps) {
     // Tilt, turn and camera height belong to the 3D view; the flat map stays flat and north-up
     const camEl = map.getContainer?.()?.querySelector?.('.bp-camera-alt') as HTMLElement | null;
     if (camEl) camEl.style.display = threeD ? 'flex' : 'none';
-    const zoomEl = map.getContainer?.()?.querySelector?.('.bp-zoom') as HTMLElement | null;
-    if (zoomEl) zoomEl.style.bottom = threeD ? 'calc(38px + var(--bp-cam-space) + var(--bp-bottom-h))' : 'calc(38px + var(--bp-bottom-h))';
     const rotation = (on: boolean) => {
       try {
         if (on) {
