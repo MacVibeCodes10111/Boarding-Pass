@@ -59,7 +59,7 @@ function capFares(fl: ScheduledFlight): ScheduledFlight['fares'] {
   const ref = getRouteDemandAndFares(fl.origin, fl.destination, fl.distanceNm).refFares;
   const old = fl.fares ?? ({} as Partial<ScheduledFlight['fares']>);
   const c = (v: number | undefined, r: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(v, Math.round(r * MAX_FARE_MULT))) : r);
-  return { ...old, econ: c(old.econ, ref.econ), prem: c(old.prem, ref.prem), bus: c(old.bus, ref.bus), first: c(old.first, ref.first), cargoPerTon: old.cargoPerTon === undefined ? undefined : c(old.cargoPerTon, ref.cargoPerTon) };
+  return { ...old, econ: c(old.econ, ref.econ), prem: c(old.prem, ref.prem), bus: c(old.bus, ref.bus), first: c(old.first, ref.first), cargoPerTon: old.cargoPerTon === undefined ? undefined : c(old.cargoPerTon, ref.cargoPerTon), parcelPerTon: old.parcelPerTon === undefined ? undefined : c(old.parcelPerTon, ref.parcelPerTon) };
 }
 
 const CABIN_KEYS = ['econSeats', 'premSeats', 'busSeats', 'firstSeats', 'econPitchIn', 'premPitchIn', 'busPitchIn', 'firstPitchIn'] as const;

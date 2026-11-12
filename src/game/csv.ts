@@ -118,40 +118,115 @@ function parseRunways(runwaysCsvText: string): Map<number, RunwaySummary> {
     if (!leIdent || leLat === null || leLon === null || heLat === null || heLon === null) continue;
     if (summary.pairs.length >= 8) continue;
 
-    // The runway's direction comes from its two ends: the listed headings are often
-    // a few degrees out (and sometimes far out), which put approaches and landing
-    // rolls beside the runway. Ends whose coordinates are the wrong way round for
-    // the runway number (e.g. "18" pointing north) are swapped back.
-    let ends = { leLat, leLon, heLat, heLon };
-    let leHdg = bearingDeg(leLat, leLon, heLat, heLon);
-    const identHdg = headingFromRunwayIdent(leIdent);
-    if (identHdg !== null && angleDiff(leHdg, identHdg) > 90) {
-      ends = { leLat: heLat, leLon: heLon, heLat: leLat, heLon: leLon };
-      leHdg = (leHdg + 180) % 360;
-    }
-    if (!Number.isFinite(leHdg) || (ends.leLat === ends.heLat && ends.leLon === ends.heLon)) {
-      leHdg = num(r[c.leHdg]) ?? identHdg ?? 90;
-    }
-    const heHdg = (leHdg + 180) % 360;
     const disp = (v: string | undefined) => {
       const d = num(v);
       return d && d > 0 && d < lenFt * 0.5 ? d : undefined;
     };
-    summary.pairs.push({
-      le_ident: leIdent,
-      he_ident: heIdent || '—',
-      length_ft: lenFt,
-      le_lat: ends.leLat,
-      le_lon: ends.leLon,
-      le_heading_degT: Math.round(leHdg * 10) / 10,
-      he_lat: ends.heLat,
-      he_lon: ends.heLon,
-      he_heading_degT: Math.round(heHdg * 10) / 10,
-      le_displaced_ft: disp(r[c.leDisp]),
-      he_displaced_ft: disp(r[c.heDisp]),
-    });
+    summary.pairs.push(runwayPair(leIdent, heIdent, lenFt, leLat, leLon, heLat, heLon, num(r[c.leHdg]), disp(r[c.leDisp]), disp(r[c.heDisp])));
   }
   return byAirport;
+}
+
+/**
+ * One runway from its two ends. Its direction comes from the ends: the listed
+ * headings are often a few degrees out (and sometimes far out), which put
+ * approaches and landing rolls beside the runway. Ends whose coordinates are
+ * the wrong way round for the runway number (e.g. "18" pointing north) are
+ * swapped back.
+ */
+function runwayPair(leIdent: string, heIdent: string, lenFt: number, leLat: number, leLon: number, heLat: number, heLon: number, listedHdg: number | null = null, leDisp?: number, heDisp?: number): RunwayEndPair {
+  let ends = { leLat, leLon, heLat, heLon };
+  let leHdg = bearingDeg(leLat, leLon, heLat, heLon);
+  const identHdg = headingFromRunwayIdent(leIdent);
+  if (identHdg !== null && angleDiff(leHdg, identHdg) > 90) {
+    ends = { leLat: heLat, leLon: heLon, heLat: leLat, heLon: leLon };
+    leHdg = (leHdg + 180) % 360;
+  }
+  if (!Number.isFinite(leHdg) || (ends.leLat === ends.heLat && ends.leLon === ends.heLon)) {
+    leHdg = listedHdg ?? identHdg ?? 90;
+  }
+  const heHdg = (leHdg + 180) % 360;
+  return {
+    le_ident: leIdent,
+    he_ident: heIdent || '—',
+    length_ft: lenFt,
+    le_lat: ends.leLat,
+    le_lon: ends.leLon,
+    le_heading_degT: Math.round(leHdg * 10) / 10,
+    he_lat: ends.heLat,
+    he_lon: ends.heLon,
+    he_heading_degT: Math.round(heHdg * 10) / 10,
+    le_displaced_ft: leDisp,
+    he_displaced_ft: heDisp,
+  };
+}
+
+const feetBetween = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const h = Math.sin(((lat2 - lat1) * D2R) / 2) ** 2 + Math.cos(lat1 * D2R) * Math.cos(lat2 * D2R) * Math.sin(((lon2 - lon1) * D2R) / 2) ** 2;
+  return (2 * 6371000 * Math.asin(Math.min(1, Math.sqrt(h)))) / 0.3048;
+};
+
+/**
+ * A runway whose two ends are much further apart than the runway is long has
+ * one end in the wrong place (one in the data was 40 nm from its airport, so
+ * landings rolled out across the countryside). The end nearer the airport is
+ * kept and the other is put where the runway's number and length say it is.
+ */
+function repairRunway(p: RunwayEndPair, apLat: number, apLon: number): RunwayEndPair {
+  const geoFt = feetBetween(p.le_lat, p.le_lon, p.he_lat, p.he_lon);
+  if (!(p.length_ft > 0)) return p;
+  if (geoFt < 300 && p.length_ft >= 1200) {
+    // Both ends listed at the same spot: that spot is one end. The runway runs
+    // from it whichever way puts its middle nearer the airport.
+    const far = (h: number) => {
+      const dNm = p.length_ft / 6076.12;
+      return { lat: p.le_lat + (dNm / 60) * Math.cos(h * D2R), lon: p.le_lon + ((dNm / 60) * Math.sin(h * D2R)) / Math.max(0.05, Math.cos(p.le_lat * D2R)) };
+    };
+    const a = far(p.le_heading_degT);
+    const b = far(p.he_heading_degT);
+    const mid = (q: { lat: number; lon: number }) => feetBetween(apLat, apLon, (p.le_lat + q.lat) / 2, (p.le_lon + q.lon) / 2);
+    return mid(a) <= mid(b)
+      ? runwayPair(p.le_ident, p.he_ident, p.length_ft, p.le_lat, p.le_lon, a.lat, a.lon, null, p.le_displaced_ft, p.he_displaced_ft)
+      : runwayPair(p.le_ident, p.he_ident, p.length_ft, b.lat, b.lon, p.le_lat, p.le_lon, null, p.le_displaced_ft, p.he_displaced_ft);
+  }
+  if (geoFt <= p.length_ft * 1.4) return p;
+  const hdg = headingFromRunwayIdent(p.le_ident) ?? p.le_heading_degT;
+  const leNear = feetBetween(apLat, apLon, p.le_lat, p.le_lon) <= feetBetween(apLat, apLon, p.he_lat, p.he_lon);
+  const from = leNear ? { lat: p.le_lat, lon: p.le_lon, hdg } : { lat: p.he_lat, lon: p.he_lon, hdg: (hdg + 180) % 360 };
+  const dNm = p.length_ft / 6076.12;
+  const lat = from.lat + (dNm / 60) * Math.cos(from.hdg * D2R);
+  const lon = from.lon + ((dNm / 60) * Math.sin(from.hdg * D2R)) / Math.max(0.05, Math.cos(from.lat * D2R));
+  return leNear
+    ? runwayPair(p.le_ident, p.he_ident, p.length_ft, p.le_lat, p.le_lon, lat, lon, null, p.le_displaced_ft, p.he_displaced_ft)
+    : runwayPair(p.le_ident, p.he_ident, p.length_ft, lat, lon, p.he_lat, p.he_lon, null, p.le_displaced_ft, p.he_displaced_ft);
+}
+
+/**
+ * Runways of airports that runways.csv lists without coordinates
+ * (public/data/runways-extra.json, from OpenStreetMap by
+ * tools/build-runways-extra.mjs), by IATA code. Anything not in the expected
+ * shape is left out.
+ */
+export function parseRunwaysExtra(json: unknown): Map<string, RunwayEndPair[]> {
+  const out = new Map<string, RunwayEndPair[]>();
+  const airports = (json as { airports?: unknown } | null)?.airports;
+  if (!airports || typeof airports !== 'object') return out;
+  const ident = (v: unknown) => (typeof v === 'string' && /^\d{2}[LRC]?$/.test(v) ? v : null);
+  const ok = (v: unknown, max: number) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= max;
+  for (const [iata, list] of Object.entries(airports as Record<string, unknown>)) {
+    if (!/^[A-Z0-9]{3}$/.test(iata) || !Array.isArray(list)) continue;
+    const pairs: RunwayEndPair[] = [];
+    for (const r of list.slice(0, 8)) {
+      if (!Array.isArray(r)) continue;
+      const [le, he, len, leLat, leLon, heLat, heLon] = r as unknown[];
+      const a = ident(le);
+      const b = ident(he);
+      if (!a || !b || !ok(len, 25000) || (len as number) < 1200 || !ok(leLat, 90) || !ok(heLat, 90) || !ok(leLon, 180) || !ok(heLon, 180)) continue;
+      pairs.push(runwayPair(a, b, Math.round(len as number), leLat as number, leLon as number, heLat as number, heLon as number));
+    }
+    if (pairs.length) out.set(iata, pairs);
+  }
+  return out;
 }
 
 /**
@@ -164,7 +239,13 @@ function parseRunways(runwaysCsvText: string): Map<number, RunwaySummary> {
  * long as they are an airport with a runway (not a heliport or seaplane base)
  * and in the same place (IATA codes are sometimes reused).
  */
-export function parseOurAirportsCsvFiles(airportsCsvText: string, runwaysCsvText?: string, airlineAirports?: ReadonlyMap<string, { lat: number; lon: number }>): Airport[] {
+export function parseOurAirportsCsvFiles(
+  airportsCsvText: string,
+  runwaysCsvText?: string,
+  airlineAirports?: ReadonlyMap<string, { lat: number; lon: number }>,
+  /** Runways for airports that runways.csv has no coordinates for (parseRunwaysExtra). */
+  extraRunways?: ReadonlyMap<string, RunwayEndPair[]>
+): Airport[] {
   const runways = runwaysCsvText ? parseRunways(runwaysCsvText) : new Map<number, RunwaySummary>();
   const t = readCsv(airportsCsvText);
   const c = {
@@ -216,8 +297,12 @@ export function parseOurAirportsCsvFiles(airportsCsvText: string, runwaysCsvText
     const isLarge = type === 'large_airport';
     const isSmall = type === 'small_airport';
     const rwy = runways.get(id);
-    const rwyCount = rwy?.count || 1;
-    const maxRwy = rwy?.maxLenFt || (isLarge ? 10000 : isSmall ? 4000 : 7003);
+    // Real runways from the extra file when the main one has none with coordinates, and only
+    // ones at this airport (a reused code somewhere else in the world must not bring its runways)
+    const extra = rwy?.pairs.length ? undefined : extraRunways?.get(iata)?.filter((p) => feetBetween(lat, lon, p.le_lat, p.le_lon) < 40000 && feetBetween(lat, lon, p.he_lat, p.he_lon) < 40000);
+    const pairs = rwy?.pairs.length ? rwy.pairs.map((p) => repairRunway(p, lat, lon)) : extra?.length ? extra : undefined;
+    const rwyCount = rwy?.count || extra?.length || 1;
+    const maxRwy = rwy?.maxLenFt || (extra?.length ? Math.max(...extra.map((p) => p.length_ft)) : 0) || (isLarge ? 10000 : isSmall ? 4000 : 7003);
     // A first guess from size and runways; network.json replaces it with real traffic
     const demandWeight =
       Math.round(
@@ -242,7 +327,7 @@ export function parseOurAirportsCsvFiles(airportsCsvText: string, runwaysCsvText
       max_runway_length_ft: maxRwy,
       demand_weight: demandWeight,
       hourly_slot_limit: rwyCount * (isLarge ? 28 : isSmall ? 8 : 14),
-      runways: rwy && rwy.pairs.length > 0 ? rwy.pairs : undefined,
+      runways: pairs,
     });
   });
 

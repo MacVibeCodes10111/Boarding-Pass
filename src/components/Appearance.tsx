@@ -1,13 +1,14 @@
 // ============================================================================
 // APPEARANCE
-//   Theme presets and a colour picker for the three colours a theme is made
-//   of (background, highlight, your aircraft). Changes apply straight away
-//   and are kept on this device. Opened from the home screen and from the Map
-//   layers menu (openAppearance()), shown by <AppearanceHost> in App.
+//   Theme presets, the finish (standard or liquid glass) and a colour picker
+//   for the colours a theme is made of (background, highlight, your aircraft,
+//   friends' aircraft). Changes apply straight away and are kept on this
+//   device. Opened from the top bar, the Map menu, the main menu and the home
+//   screen (openAppearance()), shown by <AppearanceHost> in App.
 // ============================================================================
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../ui/icons';
-import { Button, C, ModalShell, getThemeSpec, inputStyle, setTheme, useThemeVersion } from '../ui/kit';
+import { Button, C, ModalShell, Segmented, getThemeSpec, inputStyle, setTheme, useThemeVersion } from '../ui/kit';
 import {
   DEFAULT_THEME,
   POP_COLOURS,
@@ -276,7 +277,7 @@ function AppearanceModal({ onClose, mapStyle, onMapStyle }: { onClose: () => voi
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.text }}>Appearance</h2>
-            <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>Colours for the whole game. Saved on this device, for every career.</div>
+            <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>Kept on this device, for every airline.</div>
           </div>
           <button type="button" aria-label="Close" onClick={onClose} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: 4, display: 'flex' }}>
             <Icon name="close" size={18} />
@@ -284,7 +285,7 @@ function AppearanceModal({ onClose, mapStyle, onMapStyle }: { onClose: () => voi
         </div>
 
         <h3 style={{ margin: '18px 0 8px', fontSize: 13.5, fontWeight: 650, color: C.text }}>Themes</h3>
-        <div className="bp-theme-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 }}>
+        <div className="bp-theme-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(124px, 1fr))', gap: 8 }}>
           {[...THEME_PRESETS, ...(isCustom ? [{ ...live, name: 'Custom', blurb: 'Your own colours.' }] : [])].map((p) => {
             const on = p.preset === live.preset;
             return (
@@ -292,7 +293,8 @@ function AppearanceModal({ onClose, mapStyle, onMapStyle }: { onClose: () => voi
                 key={p.preset}
                 type="button"
                 aria-pressed={on}
-                onClick={() => p.preset !== 'custom' && apply({ preset: p.preset, base: p.base, accent: p.accent, fleet: p.fleet, friends: p.friends ?? null })}
+                title={p.blurb}
+                onClick={() => p.preset !== 'custom' && apply({ preset: p.preset, base: p.base, accent: p.accent, fleet: p.fleet, friends: p.friends ?? null, finish: live.finish })}
                 style={{
                   textAlign: 'left',
                   padding: 8,
@@ -308,13 +310,25 @@ function AppearanceModal({ onClose, mapStyle, onMapStyle }: { onClose: () => voi
               >
                 <ThemeSwatch spec={p} />
                 <span style={{ fontSize: 13, fontWeight: 650 }}>{p.name}</span>
-                <span style={{ fontSize: 11.5, color: C.muted, lineHeight: 1.35 }}>{p.blurb}</span>
               </button>
             );
           })}
         </div>
 
-        <h3 style={{ margin: '20px 0 8px', fontSize: 13.5, fontWeight: 650, color: C.text }}>Make it yours</h3>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginTop: 18 }}>
+          <h3 style={{ margin: 0, fontSize: 13.5, fontWeight: 650, color: C.text }}>Panels</h3>
+          <Segmented<'standard' | 'glass'>
+            size="sm"
+            value={live.finish === 'glass' ? 'glass' : 'standard'}
+            onChange={(v) => apply({ ...live, finish: v === 'glass' ? 'glass' : undefined })}
+            options={[
+              { value: 'standard', label: 'Standard' },
+              { value: 'glass', label: 'Liquid glass' },
+            ]}
+          />
+        </div>
+
+        <h3 style={{ margin: '20px 0 8px', fontSize: 13.5, fontWeight: 650, color: C.text }}>Your own colours</h3>
         <div role="radiogroup" aria-label="Colour to change" style={{ display: 'grid', gridTemplateColumns: `repeat(${targets.length === 4 ? 2 : 3}, minmax(0, 1fr))`, gap: 8 }}>
           {targets.map((t) => {
             const on = target === t.id;
@@ -389,8 +403,8 @@ function AppearanceModal({ onClose, mapStyle, onMapStyle }: { onClose: () => voi
         )}
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 20, paddingTop: 14, borderTop: `1px solid ${C.line}` }}>
-          <Button variant="ghost" onClick={() => apply({ ...DEFAULT_THEME })} disabled={live.preset === 'night' && live.base === DEFAULT_THEME.base && live.accent === DEFAULT_THEME.accent}>
-            Reset to Night shift
+          <Button variant="ghost" onClick={() => apply({ ...DEFAULT_THEME })} disabled={live.preset === DEFAULT_THEME.preset && live.base === DEFAULT_THEME.base && live.accent === DEFAULT_THEME.accent && !live.finish}>
+            Reset
           </Button>
           <Button variant="primary" onClick={onClose}>
             Done

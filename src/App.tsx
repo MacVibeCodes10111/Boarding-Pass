@@ -50,7 +50,7 @@ import {
   type EconomySpeed,
   type WeekLedger,
 } from './game/clock';
-import { parseOurAirportsCsvFiles, parseOurAirportsNavaidsCsv } from './game/csv';
+import { parseOurAirportsCsvFiles, parseRunwaysExtra, parseOurAirportsNavaidsCsv } from './game/csv';
 import { buildCabinPreset, computeNetworkEconomics, getDefaultCabinForModel, getRouteDemandAndFares, calculateCabinUsage, type CabinPreset } from './game/economics';
 import { checkReplacement, type BulkScheduleResult } from './game/fleetOps';
 import { DEFAULT_LEASE_WEEKS, buyoutPrice, leaseQuote, returnTerms } from './game/leasing';
@@ -188,7 +188,7 @@ const makeDraft = (originIata: string, _airlineIata?: string): RouteDraft => ({
   depMin: START_MIN,
   days: [...ALL_DAYS],
   mode: 'roundtrip',
-  fares: { econ: 120, prem: 210, bus: 450, first: 890, cargoPerTon: 380 },
+  fares: { econ: 120, prem: 210, bus: 450, first: 890, cargoPerTon: 380, parcelPerTon: 800 },
 });
 
 function useGlobalReset() {
@@ -336,7 +336,8 @@ export default function App() {
   // Map look and overlays (remembered between sessions)
   const [mapStyle, setMapStyleState] = useState<MapStyleChoice>(() => {
     const m = readPrefs().mapStyle;
-    return m === 'light' || m === 'satellite' ? m : 'dark';
+    // Never chosen: the map that goes with the look (a light map under a light theme)
+    return m === 'light' || m === 'satellite' || m === 'dark' ? m : C.scheme === 'light' ? 'light' : 'dark';
   });
   const setMapStyle = (m: MapStyleChoice) => {
     setMapStyleState(m);
@@ -630,11 +631,12 @@ export default function App() {
     };
 
     (async () => {
-      const [navText, apText, rwyText, netText] = await Promise.all([
+      const [navText, apText, rwyText, netText, rwyExtraText] = await Promise.all([
         fetchText('/data/navaids.csv'),
         fetchText('/data/airports.csv'),
         fetchText('/data/runways.csv'),
         fetchText('/data/network.json'),
+        fetchText('/data/runways-extra.json'),
       ]);
       if (cancelled) return;
       const notes: string[] = [];
@@ -660,7 +662,14 @@ export default function App() {
         }
       }
       if (apText) {
-        let parsed = parseOurAirportsCsvFiles(apText, rwyText ?? undefined, network ? airlineAirportPositions(network) : undefined);
+        // Runways of the airports the main list has no coordinates for (a file that may be missing)
+        let rwyExtra: ReturnType<typeof parseRunwaysExtra> | undefined;
+        try {
+          if (rwyExtraText) rwyExtra = parseRunwaysExtra(JSON.parse(rwyExtraText));
+        } catch {
+          rwyExtra = undefined;
+        }
+        let parsed = parseOurAirportsCsvFiles(apText, rwyText ?? undefined, network ? airlineAirportPositions(network) : undefined, rwyExtra);
         if (network) parsed = applyNetworkWeights(parsed, network);
         if (parsed.length > 500) {
           rememberRunways(parsed);

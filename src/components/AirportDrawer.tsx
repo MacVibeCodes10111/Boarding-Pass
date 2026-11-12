@@ -582,7 +582,7 @@ export function AirportDrawer({
                 <summary style={summaryStyle}>
                   <span style={{ flex: 1 }}>Fares</span>
                   <span className="num" style={{ fontSize: 12, color: C.muted }}>
-                    {aircraft?.model.is_cargo ? `$${draft.fares.cargoPerTon}/t` : `economy $${draft.fares.econ}, business $${draft.fares.bus}`}
+                    {aircraft?.model.is_cargo ? `parcels $${draft.fares.parcelPerTon ?? refFares?.parcelPerTon ?? '–'}/t, freight $${draft.fares.cargoPerTon ?? refFares?.cargoPerTon ?? '–'}/t` : `economy $${draft.fares.econ}, business $${draft.fares.bus}`}
                   </span>
                 </summary>
                 <div style={{ paddingTop: 10 }}>

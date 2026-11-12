@@ -168,6 +168,34 @@ function crossesWater(A: NetAirport, B: NetAirport, km: number, net: NetworkData
   return false;
 }
 
+/** True when there is no road or rail between the two airports (false until the network has loaded). */
+export function routeCrossesWater(A: NetAirport, B: NetAirport, net: NetworkData | null = current) {
+  return net ? crossesWater(A, B, kmBetween(A, B), net) : false;
+}
+
+/** Holiday airports: the mainland ones, and the islands too busy to be found by their size. */
+const RESORTS = new Set([
+  'LAS', 'MCO', 'CUN', 'FLL', 'PBI', 'RSW', 'TPA', 'SJD', 'PVR', 'AGP', 'ALC', 'FAO', 'NCE', 'AYT', 'DLM', 'BJV', 'SSH', 'HRG', 'RAK', 'AGA',
+  'DPS', 'HKT', 'USM', 'KBV', 'CXR', 'DAD', 'GOI', 'CNS', 'OOL', 'ZQN', 'INN', 'SZG', 'GVA', 'ASE', 'EGE', 'JAC', 'VRN', 'SPU', 'DBV', 'TIV',
+  'PMI', 'IBZ', 'MAH', 'TFS', 'TFN', 'LPA', 'ACE', 'FUE', 'FNC', 'HNL', 'OGG', 'KOA', 'LIH', 'HER', 'RHO', 'CFU', 'JTR', 'JMK', 'KGS', 'ZTH', 'CHQ',
+  'MLE', 'PUJ', 'MBJ', 'NAS', 'AUA', 'CUR', 'SXM', 'BGI', 'MRU', 'SEZ', 'PPT', 'NAN', 'OKA', 'CJU', 'SYX', 'PQC', 'LGK', 'ZNZ', 'MLA', 'LCA', 'PFO',
+  'CTA', 'PMO', 'OLB', 'CAG', 'CEB', 'MPH', 'SJU', 'STT', 'HAV', 'VRA',
+]);
+function leisureEnd(a: NetAirport) {
+  return RESORTS.has(a.iata) || (islandEnd(a) && a.popK < 1500);
+}
+const businessEnd = (a: NetAirport) => a.carrierRoutes >= 120 && a.popK >= 2500 && !leisureEnd(a);
+
+/** Who flies a route: holidaymakers, people on business, or a bit of both. */
+export type RouteKind = 'business' | 'leisure' | 'mixed';
+export function routeKind(o: string, d: string, net: NetworkData | null = current): RouteKind {
+  const A = net?.airports.get(o);
+  const B = net?.airports.get(d);
+  if (!A || !B) return 'mixed';
+  if (leisureEnd(A) || leisureEnd(B)) return 'leisure';
+  return businessEnd(A) && businessEnd(B) ? 'business' : 'mixed';
+}
+
 // ----------------------------------------------------------------------------
 // The model
 // ----------------------------------------------------------------------------

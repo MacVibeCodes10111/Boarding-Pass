@@ -1,7 +1,8 @@
 // ============================================================================
 // CABIN LAYOUT, PASSENGER + CARGO DEMAND & FLIGHT ECONOMICS
 // ============================================================================
-import { gameMarket, marketDemand, PLAYER_MARKET_SHARE } from './demand';
+import { cargoDemand, FREIGHT_DAY, freightRate, freightShare, holdTons, PARCEL_DAY, parcelHourAppeal, parcelRate } from './cargo';
+import { gameMarket, marketDemand, PLAYER_MARKET_SHARE, routeKind, type RouteKind } from './demand';
 import { daysOrAll } from './time';
 import type { AircraftModel, Airport, CabinConfig, Fares, PlayerAircraft, ScheduledFlight } from './types';
 
@@ -9,6 +10,24 @@ import type { AircraftModel, Airport, CabinConfig, Fares, PlayerAircraft, Schedu
 // Cabin configuration
 // ----------------------------------------------------------------------------
 const DEFAULT_PITCH = { econPitchIn: 30, premPitchIn: 36, busPitchIn: 48, firstPitchIn: 62 };
+
+export type CabinClass = 'econ' | 'prem' | 'bus' | 'first';
+/** The usual seat pitch of each class, inches: what the market fare buys. */
+export const STANDARD_PITCH: Record<CabinClass, number> = { econ: 30, prem: 36, bus: 48, first: 62 };
+const COMFORT_WEIGHT: Record<CabinClass, number> = { econ: 0.9, prem: 0.6, bus: 0.5, first: 0.4 };
+
+/**
+ * What travellers will pay for a seat compared with the market fare (1 = the
+ * same): more legroom than usual is worth more, less is worth less, and it
+ * matters most on long flights (hardly at all on a one-hour hop).
+ */
+export function seatComfort(cabin: CabinConfig, cls: CabinClass, blockTimeMin: number): number {
+  const pitch = cabin[`${cls}PitchIn` as const];
+  const std = STANDARD_PITCH[cls];
+  if (!(pitch > 0)) return 1;
+  const length = Math.min(1, Math.max(0.25, blockTimeMin / 480));
+  return Math.min(1.4, Math.max(0.8, 1 + COMFORT_WEIGHT[cls] * ((pitch - std) / std) * length));
+}
 
 export type CabinPreset = 'dense' | 'standard' | 'premium';
 
@@ -118,6 +137,37 @@ export function calculateCabinUsage(model: AircraftModel, cabin: CabinConfig) {
 function fallbackPax(origin: Airport, destination: Airport, distanceNm: number) {
   return (12.5 * origin.demand_weight * destination.demand_weight) / Math.pow(Math.max(80, distanceNm), 0.85);
 }
+
+/**
+ * Share of a route's travellers in each class. Short flights are nearly all
+ * economy; long ones have more premium economy, business and a little first.
+ * Business routes have more people at the front, holiday routes fewer.
+ */
+export function classMix(distanceNm: number, kind: RouteKind = 'mixed'): Record<CabinClass, number> {
+  const t = Math.min(1, Math.max(0, (distanceNm - 300) / 2700));
+  const far = Math.min(1, Math.max(0, (distanceNm - 1500) / 2500));
+  const k = kind === 'business' ? { first: 1.25, bus: 1.3, prem: 1.1 } : kind === 'leisure' ? { first: 0.5, bus: 0.5, prem: 0.8 } : { first: 1, bus: 1, prem: 1 };
+  const first = (0.004 + 0.026 * far) * k.first;
+  const bus = (0.06 + 0.04 * t) * k.bus;
+  const prem = (0.04 + 0.08 * t) * k.prem;
+  return { first, bus, prem, econ: 1 - first - bus - prem };
+}
+/** Where the schedule flies to from each airport (worked out once per schedule). */
+const destinationsCache = new WeakMap<ScheduledFlight[], Map<string, Set<string>>>();
+function destinationsFrom(schedule: ScheduledFlight[]) {
+  let m = destinationsCache.get(schedule);
+  if (!m) {
+    m = new Map();
+    for (const fl of schedule) {
+      const set = m.get(fl.origin.iata_code);
+      if (set) set.add(fl.destination.iata_code);
+      else m.set(fl.origin.iata_code, new Set([fl.destination.iata_code]));
+    }
+    destinationsCache.set(schedule, m);
+  }
+  return m;
+}
+
 export function getRouteDemandAndFares(
   origin: Airport,
   destination: Airport,
@@ -129,10 +179,9 @@ export function getRouteDemandAndFares(
   const market = raw === null ? null : gameMarket(raw);
   const baseRawPax = market === null ? fallbackPax(origin, destination, distanceNm) : market * PLAYER_MARKET_SHARE;
 
-  const cargoWeight = (ap: Airport) =>
-    ap.demand_weight * 0.16 + (ap.runway_count || 1) * 4.5 + (ap.max_runway_length_ft >= 9000 ? 12 : 4);
-  const baseRawCargoTons =
-    (0.85 * cargoWeight(origin) * cargoWeight(destination)) / Math.pow(Math.max(90, distanceNm), 0.65);
+  const kind = routeKind(origin.iata_code, destination.iata_code);
+  const mix = classMix(distanceNm, kind);
+  const cargoBase = cargoDemand(origin, destination, distanceNm);
 
   const origIsHub = playerHubs.includes(origin.iata_code);
   const destIsHub = playerHubs.includes(destination.iata_code);
@@ -142,14 +191,10 @@ export function getRouteDemandAndFares(
   // Each distinct spoke reachable from a hub end of this route adds 3% (max 30%)
   let connectingFeedCount = 0;
   if (origIsHub || destIsHub) {
+    const from = destinationsFrom(allSchedule);
     const spokes = new Set<string>();
-    for (const fl of allSchedule) {
-      const fromHubEnd =
-        (origIsHub && fl.origin.iata_code === origin.iata_code) ||
-        (destIsHub && fl.origin.iata_code === destination.iata_code);
-      const spoke = fl.destination.iata_code;
-      if (fromHubEnd && spoke !== origin.iata_code && spoke !== destination.iata_code) spokes.add(spoke);
-    }
+    for (const hub of [origIsHub ? origin.iata_code : '', destIsHub ? destination.iata_code : ''])
+      for (const spoke of from.get(hub) ?? []) if (spoke !== origin.iata_code && spoke !== destination.iata_code) spokes.add(spoke);
     connectingFeedCount = spokes.size;
   }
   const connectingBoostMult = Math.min(0.3, connectingFeedCount * 0.03);
@@ -168,20 +213,30 @@ export function getRouteDemandAndFares(
     connectingPax: Math.round(baseRawPax * connectingBoostMult),
     hubBonusPct: Math.round(hubBonusMult * 100),
     connectingBoostPct: Math.round(connectingBoostMult * 100),
+    /** Who flies it: 'business', 'leisure' or 'mixed'. */
+    kind,
     dailyPax: {
-      econ: Math.round(boostedTotalPax * 0.76),
-      prem: Math.round(boostedTotalPax * 0.12),
-      bus: Math.round(boostedTotalPax * 0.09),
-      first: Math.round(boostedTotalPax * 0.03),
+      econ: Math.round(boostedTotalPax * mix.econ),
+      prem: Math.round(boostedTotalPax * mix.prem),
+      bus: Math.round(boostedTotalPax * mix.bus),
+      first: Math.round(boostedTotalPax * mix.first),
       total: Math.round(boostedTotalPax),
     },
-    dailyCargoTons: Math.max(1.5, Math.round(baseRawCargoTons * totalMult * 10) / 10),
+    /** Parcels and freight you can win a day, tonnes. */
+    cargo: {
+      parcels: Math.round(cargoBase.parcels * totalMult * 10) / 10,
+      freight: Math.round(cargoBase.freight * totalMult * 10) / 10,
+      direction: cargoBase.direction,
+      hubs: cargoBase.hubs,
+    },
+    dailyCargoTons: Math.round((cargoBase.parcels + cargoBase.freight) * totalMult * 10) / 10,
     refFares: {
       econ: Math.round(45 + distanceNm * 0.14),
       prem: Math.round(85 + distanceNm * 0.24),
       bus: Math.round(190 + distanceNm * 0.52),
       first: Math.round(380 + distanceNm * 0.95),
-      cargoPerTon: Math.round(220 + distanceNm * 0.42),
+      cargoPerTon: freightRate(distanceNm),
+      parcelPerTon: parcelRate(distanceNm),
     } as Required<Fares>,
   };
 }
@@ -194,7 +249,7 @@ export function calcRouteServedCapacity(
   fleet: PlayerAircraft[]
 ) {
   const byTail = new Map(fleet.map((a) => [a.tailNumber, a]));
-  const totals = { econ: 0, prem: 0, bus: 0, first: 0, seats: 0, cargo: 0, flights: 0 };
+  const totals = { econ: 0, prem: 0, bus: 0, first: 0, seats: 0, cargo: 0, freight: 0, flights: 0 };
 
   for (const fl of allSchedule) {
     if (fl.origin.iata_code !== originIata || fl.destination.iata_code !== destIata) continue;
@@ -209,13 +264,18 @@ export function calcRouteServedCapacity(
       totals.first += ac.cabin.firstSeats * freq;
       totals.seats += cabinSeatTotal(ac.cabin) * freq;
     }
-    totals.cargo += (ac.model.cargo_cap_tons || 0) * freq;
+    const hold = holdTons(ac.model, fl.distanceNm);
+    totals.cargo += hold * freq;
+    totals.freight += hold * freightShare(ac.model) * freq;
   }
 
   return {
     flightCount: totals.flights,
     dailySeats: Math.round(totals.seats),
+    /** Hold space a day, tonnes (parcels can use all of it). */
     dailyCargoTons: Math.round(totals.cargo * 10) / 10,
+    /** The part of it that can take freight. */
+    dailyFreightTons: Math.round(totals.freight * 10) / 10,
     byClass: {
       econ: Math.round(totals.econ),
       prem: Math.round(totals.prem),
@@ -231,9 +291,15 @@ export function calcRouteServedCapacity(
 export interface FlightEconomics {
   sold: { econ: number; prem: number; bus: number; first: number };
   cap: { econ: number; prem: number; bus: number; first: number };
+  /** Parcels and freight together. */
   soldCargoTons: number;
+  /** Hold space on this flight, tonnes (less near the aircraft's full range). */
   maxCargoTons: number;
   cargoRevenue: number;
+  soldParcelTons: number;
+  soldFreightTons: number;
+  parcelRevenue: number;
+  freightRevenue: number;
   paxRevenue: number;
   isHubToHub: boolean;
   hubBonusPct: number;
@@ -271,8 +337,17 @@ export const MAX_FARE_MULT = 5;
 // ----------------------------------------------------------------------------
 /** Share of a route's travellers who want this local departure hour (0..1). */
 const HOUR_DEMAND = [0.45, 0.35, 0.3, 0.3, 0.4, 0.65, 0.85, 1, 1, 0.95, 0.85, 0.82, 0.82, 0.82, 0.85, 0.9, 0.95, 1, 1, 0.95, 0.85, 0.75, 0.62, 0.52];
-/** Relative demand by weekday (Mon..Sun): Fridays and Sundays busiest. */
-const DAY_DEMAND = [0.97, 0.88, 0.88, 0.95, 1.06, 0.92, 1.04];
+/**
+ * Relative demand by weekday (Mon..Sun). Most routes: Fridays and Sundays
+ * busiest. Business routes: the working week, quiet Saturdays. Holiday
+ * routes: the weekend.
+ */
+const DAY_DEMAND: Record<RouteKind, number[]> = {
+  mixed: [0.97, 0.88, 0.88, 0.95, 1.06, 0.92, 1.04],
+  business: [1.05, 0.96, 0.96, 1.02, 1.08, 0.7, 0.93],
+  leisure: [0.9, 0.82, 0.82, 0.9, 1.04, 1.12, 1.1],
+};
+export const dayDemand = (kind: RouteKind = 'mixed') => DAY_DEMAND[kind];
 
 function seeded(s: string) {
   let h = 2166136261;
@@ -286,27 +361,40 @@ function seeded(s: string) {
  * `maxLoad` is the share of seats it fills even when the route has more than
  * enough travellers (88–97% across the week).
  */
-export function flightAppeal(flight: Pick<ScheduledFlight, 'id' | 'depTimeMin' | 'daysOfWeek' | 'origin' | 'flightNumber'>) {
+export function flightAppeal(flight: Pick<ScheduledFlight, 'id' | 'depTimeMin' | 'daysOfWeek' | 'origin' | 'flightNumber'>, kind: RouteKind = 'mixed') {
   const localMin = (((flight.depTimeMin + Math.round((flight.origin.longitude_deg / 15) * 60)) % 1440) + 1440) % 1440;
   const h = Math.floor(localMin / 60);
   const frac = (localMin % 60) / 60;
-  const hour = HOUR_DEMAND[h] * (1 - frac) + HOUR_DEMAND[(h + 1) % 24] * frac;
+  let hour = HOUR_DEMAND[h] * (1 - frac) + HOUR_DEMAND[(h + 1) % 24] * frac;
+  // Holidaymakers mind the hour less than people with a meeting to get to
+  if (kind === 'leisure') hour = 0.35 + 0.65 * hour;
   const days = daysOrAll(flight.daysOfWeek);
   const n = days.filter(Boolean).length || 7;
-  const day = days.reduce((s, on, i) => s + (on ? DAY_DEMAND[i] : 0), 0) / n;
-  const luck = seeded(flight.flightNumber + flight.origin.iata_code);
-  return { demand: hour * day * (0.9 + 0.12 * luck), maxLoad: 0.88 + 0.09 * seeded(flight.id + 'lf'), hour };
+  const day = days.reduce((s, on, i) => s + (on ? DAY_DEMAND[kind][i] : 0), 0) / n;
+  const luck = 0.9 + 0.12 * seeded(flight.flightNumber + flight.origin.iata_code);
+  return { demand: hour * day * luck, maxLoad: 0.88 + 0.09 * seeded(flight.id + 'lf'), hour, luck, localMin };
 }
 
 /**
  * A "through" leg continues a chain A→B→C on the same aircraft within 4h of
  * landing at B. Simple out-and-back legs (A→B→A) do not qualify.
  */
+const flightsByTailCache = new WeakMap<ScheduledFlight[], Map<string, ScheduledFlight[]>>();
 export function isThroughFlight(flight: ScheduledFlight, aircraft: PlayerAircraft, schedule: ScheduledFlight[]) {
   const currDays = daysOrAll(flight.daysOfWeek);
   const turn = aircraft.model.turnaround_min;
-  return schedule.some((prev) => {
-    if (prev.id === flight.id || prev.tailNumber !== flight.tailNumber) return false;
+  let byTail = flightsByTailCache.get(schedule);
+  if (!byTail) {
+    byTail = new Map();
+    for (const fl of schedule) {
+      const list = byTail.get(fl.tailNumber);
+      if (list) list.push(fl);
+      else byTail.set(fl.tailNumber, [fl]);
+    }
+    flightsByTailCache.set(schedule, byTail);
+  }
+  return (byTail.get(flight.tailNumber) ?? []).some((prev) => {
+    if (prev.id === flight.id) return false;
     if (prev.destination.iata_code !== flight.origin.iata_code) return false;
     if (prev.origin.iata_code === flight.destination.iata_code) return false;
     const prevDays = daysOrAll(prev.daysOfWeek);
@@ -315,6 +403,50 @@ export function isThroughFlight(flight: ScheduledFlight, aircraft: PlayerAircraf
     return groundMin >= turn && groundMin <= turn + 240;
   });
 }
+
+// ----------------------------------------------------------------------------
+// What the airline offers on each route, day by day
+// ----------------------------------------------------------------------------
+const CLASSES: CabinClass[] = ['econ', 'prem', 'bus', 'first'];
+interface RouteLoad {
+  /** Seats offered on each weekday (Mon..Sun), by class. */
+  seats: Record<CabinClass, number[]>;
+  /** Hold space on each weekday, tonnes, and the part that takes freight. */
+  hold: number[];
+  freight: number[];
+}
+const week = () => [0, 0, 0, 0, 0, 0, 0];
+const emptyLoad = (): RouteLoad => ({ seats: { econ: week(), prem: week(), bus: week(), first: week() }, hold: week(), freight: week() });
+const routeLoadCache = new WeakMap<ScheduledFlight[], { fleet: PlayerAircraft[]; byRoute: Map<string, RouteLoad> }>();
+
+/** Seats and hold space on every directed route, per weekday (worked out once per schedule). */
+function routeLoads(ctx: EconomicsContext): Map<string, RouteLoad> {
+  const hit = routeLoadCache.get(ctx.schedule);
+  if (hit && hit.fleet === ctx.fleet) return hit.byRoute;
+  const byTail = new Map(ctx.fleet.map((a) => [a.tailNumber, a]));
+  const byRoute = new Map<string, RouteLoad>();
+  for (const fl of ctx.schedule) {
+    const ac = byTail.get(fl.tailNumber);
+    if (!ac) continue;
+    const key = `${fl.origin.iata_code}>${fl.destination.iata_code}`;
+    let load = byRoute.get(key);
+    if (!load) byRoute.set(key, (load = emptyLoad()));
+    const hold = holdTons(ac.model, fl.distanceNm);
+    const freight = hold * freightShare(ac.model);
+    daysOrAll(fl.daysOfWeek).forEach((on, i) => {
+      if (!on) return;
+      if (!ac.model.is_cargo) for (const c of CLASSES) load.seats[c][i] += ac.cabin[`${c}Seats` as const];
+      load.hold[i] += hold;
+      load.freight[i] += freight;
+    });
+  }
+  routeLoadCache.set(ctx.schedule, { fleet: ctx.fleet, byRoute });
+  return byRoute;
+}
+
+/** Share of travellers who trade down when the class they wanted isn't offered that day. */
+const TRADE_DOWN = 0.6;
+const NEXT_DOWN: [CabinClass, CabinClass][] = [['first', 'bus'], ['bus', 'prem'], ['prem', 'econ']];
 
 export function simulateFlightEconomics(
   flight: ScheduledFlight,
@@ -328,43 +460,76 @@ export function simulateFlightEconomics(
   const through = isThroughFlight(flight, aircraft, ctx.schedule);
   const throughMult = through ? 1.15 : 1;
 
-  // Several of your flights on the same route share its daily demand
-  // in proportion to the capacity each one brings.
-  const served = calcRouteServedCapacity(origin.iata_code, destination.iata_code, ctx.schedule, ctx.fleet);
-  const mySeats = isCargoPlane ? 0 : cabinSeatTotal(aircraft.cabin);
-  const paxShare = mySeats > 0 && served.dailySeats > 0 ? Math.min(1, mySeats / served.dailySeats) : 1;
-  const myCargo = aircraft.model.cargo_cap_tons || 0;
-  const cargoShare = myCargo > 0 && served.dailyCargoTons > 0 ? Math.min(1, myCargo / served.dailyCargoTons) : 1;
+  // Several of your flights on the same route share its demand, day by day,
+  // in proportion to what each one brings on that day.
+  const load = routeLoads(ctx).get(`${origin.iata_code}>${destination.iata_code}`) ?? emptyLoad();
+  const days = daysOrAll(flight.daysOfWeek);
+  const flown = days.filter(Boolean).length || 7;
+  const share = (mine: number, offered: number) => (mine > 0 ? mine / Math.max(mine, offered) : 0);
 
   // Not every departure fills: time of day, the days it flies and the flight
   // itself make some flights busier than others, and even a sold-out route
   // averages a few empty seats across the week.
-  const appeal = flightAppeal(flight);
-  const sell = (cls: 'econ' | 'prem' | 'bus' | 'first') =>
+  const appeal = flightAppeal(flight, demand.kind);
+  const dayPax = dayDemand(demand.kind);
+  const mySeats = (c: CabinClass) => (isCargoPlane ? 0 : aircraft.cabin[`${c}Seats` as const]);
+  const wanted: Record<CabinClass, number> = { econ: 0, prem: 0, bus: 0, first: 0 };
+  if (!isCargoPlane) {
+    days.forEach((on, i) => {
+      if (!on && flown < 7) return;
+      // A class nobody offers that day: most of its travellers buy the next one down
+      const want = { econ: demand.dailyPax.econ, prem: demand.dailyPax.prem, bus: demand.dailyPax.bus, first: demand.dailyPax.first };
+      for (const [from, to] of NEXT_DOWN)
+        if (load.seats[from][i] <= 0 && mySeats(from) <= 0 && want[from] > 0) {
+          want[to] += want[from] * TRADE_DOWN;
+          want[from] = 0;
+        }
+      for (const c of CLASSES) wanted[c] += (dayPax[i] * want[c] * share(mySeats(c), load.seats[c][i])) / flown;
+    });
+  }
+  const sell = (cls: CabinClass) =>
     isCargoPlane
       ? 0
       : Math.min(
-          Math.floor(aircraft.cabin[`${cls}Seats` as const] * appeal.maxLoad),
-          Math.round(demand.dailyPax[cls] * throughMult * paxShare * appeal.demand * priceElasticity(fares[cls], demand.refFares[cls]))
+          Math.floor(mySeats(cls) * appeal.maxLoad),
+          Math.round(wanted[cls] * throughMult * appeal.hour * appeal.luck * priceElasticity(fares[cls], demand.refFares[cls] * seatComfort(aircraft.cabin, cls, blockTimeMin)))
         );
   const sold = { econ: sell('econ'), prem: sell('prem'), bus: sell('bus'), first: sell('first') };
-  const cap = isCargoPlane
-    ? { econ: 0, prem: 0, bus: 0, first: 0 }
-    : {
-        econ: aircraft.cabin.econSeats,
-        prem: aircraft.cabin.premSeats,
-        bus: aircraft.cabin.busSeats,
-        first: aircraft.cabin.firstSeats,
-      };
+  const cap = { econ: mySeats('econ'), prem: mySeats('prem'), bus: mySeats('bus'), first: mySeats('first') };
+  const mySeatTotal = cap.econ + cap.prem + cap.bus + cap.first;
+  let paxShare = 1;
+  if (mySeatTotal > 0) {
+    let s = 0;
+    days.forEach((on, i) => {
+      if (on || flown === 7) s += share(mySeatTotal, CLASSES.reduce((t, c) => t + load.seats[c][i], 0)) / flown;
+    });
+    paxShare = Math.min(1, s);
+  }
 
+  // The hold: parcels first (they pay about twice as much), then freight in
+  // what is left, as far as this kind of hold can take it.
+  const hold = holdTons(aircraft.model, distanceNm);
+  const freightCap = hold * freightShare(aircraft.model);
+  let parcelsWanted = 0;
+  let freightWanted = 0;
+  days.forEach((on, i) => {
+    if (!on && flown < 7) return;
+    parcelsWanted += (PARCEL_DAY[i] * demand.cargo.parcels * share(hold, load.hold[i])) / flown;
+    freightWanted += (FREIGHT_DAY[i] * demand.cargo.freight * share(freightCap, load.freight[i])) / flown;
+  });
+  const parcelFare = fares.parcelPerTon || demand.refFares.parcelPerTon;
   const cargoFare = fares.cargoPerTon || demand.refFares.cargoPerTon;
-  const effCargoTons = demand.dailyCargoTons * throughMult * cargoShare;
-  const soldCargoTons =
-    Math.round(Math.min(myCargo, effCargoTons * priceElasticity(cargoFare, demand.refFares.cargoPerTon)) * 10) / 10;
+  const soldParcelTons =
+    Math.round(Math.min(hold, parcelsWanted * throughMult * parcelHourAppeal(appeal.localMin) * priceElasticity(parcelFare, demand.refFares.parcelPerTon)) * 10) / 10;
+  const soldFreightTons =
+    Math.round(Math.max(0, Math.min(hold - soldParcelTons, freightCap, freightWanted * throughMult * priceElasticity(cargoFare, demand.refFares.cargoPerTon))) * 10) / 10;
+  const parcelRevenue = Math.round(soldParcelTons * parcelFare);
+  const freightRevenue = Math.round(soldFreightTons * cargoFare);
+  const myCargo = aircraft.model.cargo_cap_tons || 0;
 
   const paxRevenue =
     sold.econ * fares.econ + sold.prem * fares.prem + sold.bus * fares.bus + sold.first * fares.first;
-  const cargoRevenue = Math.round(soldCargoTons * cargoFare);
+  const cargoRevenue = parcelRevenue + freightRevenue;
   const revenue = paxRevenue + cargoRevenue;
 
   const flightHours = blockTimeMin / 60;
@@ -376,9 +541,13 @@ export function simulateFlightEconomics(
   return {
     sold,
     cap,
-    soldCargoTons,
-    maxCargoTons: myCargo,
+    soldCargoTons: Math.round((soldParcelTons + soldFreightTons) * 10) / 10,
+    maxCargoTons: hold,
     cargoRevenue,
+    soldParcelTons,
+    soldFreightTons,
+    parcelRevenue,
+    freightRevenue,
     paxRevenue: Math.round(paxRevenue),
     isHubToHub: demand.isHubToHub,
     hubBonusPct: demand.hubBonusPct,
@@ -387,7 +556,7 @@ export function simulateFlightEconomics(
     throughBonusPct: through ? 15 : 0,
     demandShare: paxShare,
     totalPax: sold.econ + sold.prem + sold.bus + sold.first,
-    totalCap: cap.econ + cap.prem + cap.bus + cap.first,
+    totalCap: mySeatTotal,
     revenue: Math.round(revenue),
     cost,
     profit: Math.round(revenue - cost),

@@ -11,6 +11,7 @@ import { WINGSPAN_M, aircraftGateCode } from '../game/gateCode';
 import { AircraftPhoto, hasAircraftPhoto, useBuyLivery } from './AircraftPhoto';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BRAND_ORDER } from '../game/aircraftCatalog';
+import { holdTakes } from '../game/cargo';
 import { cabinSeatTotal, calculateCabinUsage, getDefaultCabinForModel } from '../game/economics';
 import { getAircraftTierInfo } from '../game/tiers';
 import { formatMoneyM } from '../game/time';
@@ -345,7 +346,8 @@ function ModelView(props: BuyAircraftPanelProps & { onBack: () => void }) {
               ['Max takeoff', `${Math.round(m.mtow_kg / 1000)} t`],
               ['Typical seats', m.is_cargo ? '—' : String(m.typical_seats)],
               ['Seat limit', m.is_cargo ? '—' : String(m.max_exit_limit)],
-              [m.is_cargo ? 'Cargo' : 'Belly cargo', `${m.cargo_cap_tons} t`],
+              [m.is_cargo ? 'Payload' : 'Hold', `${m.cargo_cap_tons} t`],
+              ['Carries', holdTakes(m)],
               ['Resale', '75%'],
             ].map(([k, v]) => (
               <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>

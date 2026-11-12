@@ -44,6 +44,11 @@ export interface AirlineStats {
   revenue: number;
   paxRevenue: number;
   cargoRevenue: number;
+  /** The two kinds of cargo, a week. */
+  parcelRevenue: number;
+  freightRevenue: number;
+  parcelTons: number;
+  freightTons: number;
   cost: number;
   profit: number;
   /** Seat-nautical-miles offered and flown (ASM/RPM in nm). */
@@ -98,6 +103,7 @@ export function computeAirlineStats(args: {
   const depsByAirport = new Map<string, number>();
   const depsByHub = new Map<string, number>();
   let departures = 0, pax = 0, seats = 0, cargoTons = 0, revenue = 0, paxRevenue = 0, cargoRevenue = 0, cost = 0;
+  let parcelRevenue = 0, freightRevenue = 0, parcelTons = 0, freightTons = 0;
   let seatNm = 0, paxNm = 0, nmFlown = 0, blockMin = 0;
   const cabinSeats = { econ: 0, prem: 0, bus: 0, first: 0 };
 
@@ -123,6 +129,10 @@ export function computeAirlineStats(args: {
       revenue += e.revenue * n;
       paxRevenue += e.paxRevenue * n;
       cargoRevenue += e.cargoRevenue * n;
+      parcelRevenue += e.parcelRevenue * n;
+      freightRevenue += e.freightRevenue * n;
+      parcelTons += e.soldParcelTons * n;
+      freightTons += e.soldFreightTons * n;
       cost += e.cost * n;
       seatNm += e.totalCap * fl.distanceNm * n;
       paxNm += e.totalPax * fl.distanceNm * n;
@@ -206,6 +216,10 @@ export function computeAirlineStats(args: {
     revenue,
     paxRevenue,
     cargoRevenue,
+    parcelRevenue,
+    freightRevenue,
+    parcelTons: Math.round(parcelTons * 10) / 10,
+    freightTons: Math.round(freightTons * 10) / 10,
     cost,
     profit: revenue - cost,
     seatNm,

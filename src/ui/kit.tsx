@@ -1,7 +1,7 @@
 // ============================================================================
 // Shared UI kit: design tokens and small reusable controls.
-// Look: a dispatcher's console. Deep navy surfaces, one amber accent for your
-// airline, quiet steel-blue for information, green/red reserved for money.
+// Look: soft surfaces floating over the map, one highlight colour for your
+// airline, quiet blue for information, green/red reserved for money.
 // ============================================================================
 import React, { useEffect, useRef, useState } from 'react';
 import { DAY_LETTERS } from '../game/time';
@@ -17,19 +17,45 @@ import { useLayout } from './layout';
 export const FONT = `'Barlow', 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif`;
 /** Headings, big numbers, toolbar labels */
 export const DISPLAY = `'Barlow Condensed', 'Barlow', 'Segoe UI', system-ui, sans-serif`;
+/** True with the liquid glass finish (Appearance): panels are clearer, with bright edges. */
+export const isGlass = () => themeSpec.finish === 'glass';
+const hex2 = (v: number) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, '0');
+/** Drop shadows are lighter on light themes. */
+const shade = (dark: number) => `rgba(${C.scheme === 'light' ? '30,45,80' : '0,0,0'},${C.scheme === 'light' ? (dark * 0.42).toFixed(3) : dark})`;
+const BLUR = 'blur(16px) saturate(1.2)';
+const GLASS_BLUR = 'blur(28px) saturate(1.9)';
+/** Liquid glass: how see-through a surface is, its sheen, and the light caught on its edges. */
+const glassAlpha = (alpha: string) => hex2(parseInt(alpha, 16) * (C.scheme === 'light' ? 0.68 : 0.6));
+const glassSheen = () => `linear-gradient(180deg, #ffffff${C.scheme === 'light' ? '80' : '1c'} 0%, #ffffff${C.scheme === 'light' ? '26' : '08'} 34%, #ffffff00 100%)`;
+const glassEdge = () => (C.scheme === 'light' ? '#ffffffcc' : '#ffffff38');
+const glassRim = () => `inset 0 1px 0 ${C.scheme === 'light' ? '#ffffff' : '#ffffff4d'}, inset 0 -1px 0 #ffffff14`;
+
 /** A floating panel's surface: the theme's panel colour, see-through with the map blurred behind it. */
-export const glass = (alpha = 'e6'): React.CSSProperties => ({
-  background: `${C.panel}${alpha}`,
-  backdropFilter: 'blur(16px) saturate(1.2)',
-  WebkitBackdropFilter: 'blur(16px) saturate(1.2)',
-  border: `1px solid ${C.border}80`,
-  boxShadow: '0 12px 36px rgba(0,0,0,0.34)',
-});
+export const glass = (alpha = 'e6'): React.CSSProperties =>
+  isGlass()
+    ? {
+        background: `${glassSheen()}, ${C.panel}${glassAlpha(alpha)}`,
+        backdropFilter: GLASS_BLUR,
+        WebkitBackdropFilter: GLASS_BLUR,
+        border: `1px solid ${glassEdge()}`,
+        boxShadow: `${glassRim()}, 0 16px 44px ${shade(0.36)}`,
+      }
+    : {
+        background: `${C.panel}${alpha}`,
+        backdropFilter: BLUR,
+        WebkitBackdropFilter: BLUR,
+        border: `1px solid ${C.border}80`,
+        boxShadow: `0 12px 36px ${shade(0.34)}`,
+      };
+/** The shadow under a floating menu or window (kept with the glass edge light when that finish is on). */
+export const floatShadow = () => (isGlass() ? `${glassRim()}, 0 18px 44px ${shade(0.4)}` : `0 18px 44px ${shade(0.45)}`);
 
 /** Control faces worked out from the theme: a button's face, a pressed or chosen face, and a shallow well. */
-export const face = () => mix(C.raised, C.text, 0.05);
-export const faceHi = () => mix(C.raised, C.text, 0.13);
-export const well = () => `${C.text}0d`;
+export const face = () => (isGlass() ? `${C.text}17` : mix(C.raised, C.text, 0.05));
+export const faceHi = () => (isGlass() ? `${C.text}2b` : mix(C.raised, C.text, 0.13));
+export const well = () => `${C.text}${isGlass() ? '0f' : '0d'}`;
+/** A card inside a panel. */
+const cardFace = () => (isGlass() ? `${C.text}0d` : C.panelAlt);
 
 export const C: Palette = { ...DEFAULT_PALETTE };
 /** The map's own colours (route lines, labels, halos): they suit the map styles, not the interface theme. */
@@ -46,7 +72,7 @@ let themeSpec: ThemeSpec = (() => {
     saveThemeSpec(fromUrl);
     try {
       const u = new URL(location.href);
-      ['theme', 'bg', 'hl', 'ac'].forEach((k) => u.searchParams.delete(k));
+      ['theme', 'bg', 'hl', 'ac', 'glass'].forEach((k) => u.searchParams.delete(k));
       history.replaceState(null, '', u.pathname + u.search + u.hash);
     } catch {
       /* address left as it is */
@@ -97,6 +123,8 @@ export function applyThemeToDocument() {
   style.innerHTML = globalCss();
   document.documentElement.style.colorScheme = C.scheme;
   document.documentElement.dataset.theme = C.scheme;
+  if (isGlass()) document.documentElement.dataset.finish = 'glass';
+  else delete document.documentElement.dataset.finish;
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', C.bg);
 }
 
@@ -128,8 +156,8 @@ export const globalCss = () => `
   input, select, button, textarea { font-family: inherit; }
   .num, .bp-num { font-variant-numeric: tabular-nums; }
   h1, h2, h3, .bp-display { font-family: ${DISPLAY}; letter-spacing: 0.005em; }
-  .bp-glass { background: ${C.panel}e6; backdrop-filter: blur(16px) saturate(1.2); -webkit-backdrop-filter: blur(16px) saturate(1.2);
-    border: 1px solid ${C.border}80; box-shadow: 0 12px 36px rgba(0,0,0,.34); }
+  .bp-glass { background: ${C.panel}e6; backdrop-filter: ${BLUR}; -webkit-backdrop-filter: ${BLUR};
+    border: 1px solid ${C.border}80; box-shadow: 0 12px 36px ${shade(0.34)}; }
   /* List rows are tiles */
   .bp-row { border-radius: 10px; }
   button { transition: background-color .12s, border-color .12s, color .12s, filter .12s; }
@@ -150,13 +178,14 @@ export const globalCss = () => `
   ::-webkit-scrollbar-track { background: transparent; }
   .bp-row:hover { background: ${C.panelAlt}; }
   .bp-saved-item:hover { background: ${C.panelAlt}; }
+  .bp-manual p { margin: 0; }
   .bp-saved-item button[aria-label^=Delete]:hover { color: ${C.red}; }
   @keyframes bp-panel-in { from { transform: translateX(-14px); opacity: 0; } to { transform: none; opacity: 1; } }
   @keyframes bp-fade-in { from { opacity: 0; } to { opacity: 1; } }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
   .maplibregl-popup-content { background: ${C.panel}eb !important; color: ${C.text}; border: 1px solid ${C.border}; border-radius: 14px !important;
-    backdrop-filter: blur(16px) saturate(1.2); -webkit-backdrop-filter: blur(16px) saturate(1.2);
-    box-shadow: 0 14px 36px rgba(0,0,0,.5) !important; padding: 12px 14px !important; }
+    backdrop-filter: ${BLUR}; -webkit-backdrop-filter: ${BLUR};
+    box-shadow: 0 14px 36px ${shade(0.5)} !important; padding: 12px 14px !important; }
   .maplibregl-popup-tip { border-top-color: ${C.border} !important; border-bottom-color: ${C.border} !important; }
   .bp-orbit-popup .maplibregl-popup-tip { display: none; }
   .bp-orbit-popup .maplibregl-popup-content { cursor: grab; user-select: none; }
@@ -176,10 +205,22 @@ export const globalCss = () => `
   html[data-layout=phone] .bp-camera-alt { flex-direction: column; padding: 3px !important; gap: 4px !important; }
   html[data-layout=phone] .bp-cam-text { display: none; }
   .bp-cam-btn { border: 1px solid ${C.border}; background: ${C.raised}; color: ${C.text}; }
-  .bp-zoom { border: 1px solid ${C.border}; background: ${C.panel}d8; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+  .bp-zoom { border: 1px solid ${C.border}; background: ${C.panel}d8; box-shadow: 0 6px 18px ${shade(0.35)}; }
   .bp-zoom-btn { background: transparent; color: ${C.text}; }
   .bp-zoom-btn + .bp-zoom-btn { border-top: 1px solid ${C.border} !important; }
   .bp-zoom-btn:hover { background: ${C.raised}; }
+
+  /* Liquid glass (Appearance): clearer surfaces that catch the light on their edges, and rounder controls */
+  html[data-finish=glass] .bp-glass, html[data-finish=glass] .maplibregl-popup-content, html[data-finish=glass] .bp-zoom, html[data-finish=glass] .bp-camera-alt {
+    background: ${glassSheen()}, ${C.panel}${glassAlpha('e6')} !important; backdrop-filter: ${GLASS_BLUR}; -webkit-backdrop-filter: ${GLASS_BLUR};
+    border: 1px solid ${glassEdge()} !important; box-shadow: ${glassRim()}, 0 16px 44px ${shade(0.36)} !important; }
+  html[data-finish=glass] .maplibregl-popup-content { border-radius: 20px !important; }
+  html[data-finish=glass] .bp-btn, html[data-finish=glass] .bp-btn-ghost { border-radius: 999px !important; }
+  html[data-finish=glass] .bp-btn:not(:disabled) { box-shadow: inset 0 1px 0 #ffffff${C.scheme === 'light' ? 'b3' : '2e'}, inset 0 -1px 0 #0000000f; }
+  html[data-finish=glass] .bp-seg { border-radius: 999px !important; }
+  html[data-finish=glass] .bp-seg > button { border-radius: 999px !important; }
+  html[data-finish=glass] .bp-row:hover, html[data-finish=glass] .bp-saved-item:hover { background: ${C.text}0f; }
+  html[data-finish=glass] .bp-cam-btn { background: ${C.text}17; border-color: transparent; }
 
   /* Touch screens: no sticky hover, roomier controls */
   html[data-input=touch] button:not(:disabled):hover { filter: none; }
@@ -234,7 +275,7 @@ export const globalCss = () => `
 export const inputStyle: React.CSSProperties = live(() => ({
   width: '100%',
   padding: '8px 11px',
-  background: C.bg,
+  background: isGlass() ? `${C.bg}a6` : C.bg,
   border: `1px solid ${C.border}`,
   borderRadius: 10,
   color: C.text,
@@ -250,14 +291,14 @@ export const labelStyle: React.CSSProperties = live(() => ({
 }));
 
 export const panelStyle: React.CSSProperties = live(() => ({
-  background: C.panelAlt,
+  background: cardFace(),
   border: '1px solid transparent',
   borderRadius: 14,
   padding: 16,
 }));
 
 export const cardStyle: React.CSSProperties = live(() => ({
-  background: C.panelAlt,
+  background: cardFace(),
   border: '1px solid transparent',
   borderRadius: 12,
   padding: '10px 12px',
@@ -369,7 +410,7 @@ export function Segmented<T extends string>({
   block?: boolean;
 }) {
   return (
-    <div style={{ display: block ? 'flex' : 'inline-flex', width: block ? '100%' : undefined, background: well(), borderRadius: 10, padding: 3, gap: 2 }}>
+    <div className="bp-seg" style={{ display: block ? 'flex' : 'inline-flex', width: block ? '100%' : undefined, background: well(), borderRadius: 10, padding: 3, gap: 2 }}>
       {options.map((o) => {
         const on = o.value === value;
         return (
@@ -390,7 +431,7 @@ export function Segmented<T extends string>({
               whiteSpace: 'nowrap',
               background: on ? faceHi() : 'transparent',
               color: on ? C.text : C.muted,
-              boxShadow: on ? '0 1px 2px rgba(0,0,0,.25)' : 'none',
+              boxShadow: on ? `0 1px 2px ${shade(0.25)}` : 'none',
             }}
           >
             {o.label}
@@ -698,7 +739,7 @@ export function ModalShell({
           maxHeight: 'calc(100dvh - 68px)',
           overflowY: 'auto',
           padding: 22,
-          boxShadow: '0 28px 70px rgba(0,0,0,0.55)',
+          boxShadow: isGlass() ? floatShadow() : `0 28px 70px ${shade(0.55)}`,
         }}
       >
         {onClose && closeButton && (
@@ -781,9 +822,9 @@ export function Toggle({ on, onChange, label, disabled }: { on: boolean; onChang
       title={label}
       disabled={disabled}
       onClick={() => onChange(!on)}
-      style={{ width: 36, height: 22, borderRadius: 999, border: 'none', padding: 2, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.45 : 1, background: on ? C.brand : C.border, display: 'flex', justifyContent: on ? 'flex-end' : 'flex-start', flex: 'none' }}
+      style={{ width: 36, height: 22, borderRadius: 999, border: 'none', padding: 2, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.45 : 1, background: on ? C.brand : C.scheme === 'light' ? C.faint : C.border, display: 'flex', justifyContent: on ? 'flex-end' : 'flex-start', flex: 'none' }}
     >
-      <span style={{ width: 18, height: 18, borderRadius: 999, background: on ? C.brandInk : C.textDim }} />
+      <span style={{ width: 18, height: 18, borderRadius: 999, background: on ? C.brandInk : C.scheme === 'light' ? '#ffffff' : C.textDim, boxShadow: '0 1px 2px rgba(0,0,0,.25)' }} />
     </button>
   );
 }

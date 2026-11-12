@@ -117,7 +117,13 @@ export function friendTintFor(id: MapStyleId): string {
 }
 const aiIconName = (f: AiFlight) => `${f.friend ? 'friend' : 'ai'}-${f.group}`;
 /** Friends' aircraft are drawn a little bigger than the other airlines'. */
-const aiIconScale = (f: AiFlight) => (AI_ICON_SCALE[f.group] ?? 0.56) * (f.friend ? 1.2 : 1);
+const aiIconScale = (f: AiFlight) => (AI_ICON_SCALE[f.group] ?? 0.56) * (f.friend ? HIGHLIGHT_SCALE : 1);
+/** Your aircraft and friends' are drawn this much bigger than the other airlines', from the same size table. */
+const HIGHLIGHT_SCALE = 1.2;
+/** Callsigns appear from this zoom level, for every aircraft. */
+const CALLSIGN_ZOOM = 6;
+/** Dots are small: clicks and taps within this many pixels of one count. */
+const DOT_HIT_PX = 10;
 /** The picture at the top of a friend's aircraft's pop-up, and which livery to paint on it. */
 const friendPlane = (t: AiTraffic, f: AiFlight) =>
   f.friend ? { modelId: f.friend.modelId, tailNumber: f.friend.reg, friendOf: f.friend.owner, friendLivery: f.friend.livery, airlineName: t.airlines[f.airline]?.name ?? '' } : undefined;
@@ -291,7 +297,7 @@ export interface AiDrawStats {
   /** Current budget (Infinity when unlimited). */
   budget: number;
 }
-// Silhouettes already differ in size, so AI aircraft only get a gentle extra step by class
+// Silhouettes already differ in size, so aircraft only get a gentle extra step by class (yours and other airlines' alike)
 const AI_ICON_SCALE: Record<RadarIconGroup, number> = {
   commuter: 0.52, prop: 0.54, rj_tail: 0.54, small_jet: 0.54, rear_jet: 0.56, medium_jet: 0.56, long_narrow: 0.58,
   large_jet: 0.62, heavy_twin: 0.64, trijet: 0.63, a340: 0.64, b747: 0.66, a380: 0.68, high_quad: 0.66,
@@ -433,7 +439,8 @@ function buildPlanePopupHtml(raw: Record<string, any>): string {
   for (const [k, v] of Object.entries(raw)) p[k] = escapeHtml(v);
   const isCargo = Number(raw.isCargo) === 1;
   const load = isCargo
-    ? `<div style="display:flex;justify-content:space-between"><span>Freight</span><b style="font-variant-numeric:tabular-nums">${p.soldCargoTons} of ${p.maxCargoTons} t (${p.cargoLoadPct}%)</b></div>${progressBar(Number(raw.cargoLoadPct), C.brand)}`
+    ? `<div style="display:flex;justify-content:space-between"><span>Cargo</span><b style="font-variant-numeric:tabular-nums">${p.soldCargoTons} of ${p.maxCargoTons} t (${p.cargoLoadPct}%)</b></div>${progressBar(Number(raw.cargoLoadPct), C.brand)}
+       <div style="display:flex;gap:10px;font-size:11.5px;color:${C.muted};font-variant-numeric:tabular-nums;flex-wrap:wrap"><span>Parcels ${p.soldParcelTons} t</span><span>Freight ${p.soldFreightTons} t</span></div>`
     : `<div style="display:flex;justify-content:space-between"><span>Passengers</span><b style="font-variant-numeric:tabular-nums">${p.totalPax} of ${p.totalCap} (${p.loadFactorPct}%)</b></div>${progressBar(Number(raw.loadFactorPct), C.brand)}
        <div style="display:flex;gap:10px;font-size:11.5px;color:${C.muted};font-variant-numeric:tabular-nums;flex-wrap:wrap">
          ${Number(raw.capFirst) ? `<span>First ${p.soldFirst}/${p.capFirst}</span>` : ''}${Number(raw.capBus) ? `<span>Business ${p.soldBus}/${p.capBus}</span>` : ''}${Number(raw.capPrem) ? `<span>Premium ${p.soldPrem}/${p.capPrem}</span>` : ''}<span>Economy ${p.soldEcon}/${p.capEcon}</span><span>Cargo ${p.soldCargoTons}/${p.maxCargoTons} t</span>
@@ -672,7 +679,7 @@ function addLayers(map: any) {
       'icon-rotation-alignment': 'map',
       'icon-allow-overlap': true,
       'icon-ignore-placement': true,
-      'text-field': ['step', ['zoom'], '', 7, ['get', 'flightNumber']],
+      'text-field': ['step', ['zoom'], '', CALLSIGN_ZOOM, ['get', 'flightNumber']],
       'text-size': 9,
       'text-offset': [0, 1.1],
       'text-anchor': 'top',
@@ -686,6 +693,14 @@ function addLayers(map: any) {
     source: 'ai-planes',
     maxzoom: AI_DETAIL_LEVELS.auto.dotsBelow,
     paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 1, ['case', ['has', 'friend'], 2.6, 1.3], 4, ['case', ['has', 'friend'], 4, 2.2]], 'circle-color': ['case', ['has', 'friend'], C.friends, AI_TINT], 'circle-opacity': ['case', ['has', 'friend'], 1, 0.75] },
+  });
+  // The dots are only a pixel or two across: an unseen, wider circle takes the clicks
+  map.addLayer({
+    id: 'ai-planes-dot-hit',
+    type: 'circle',
+    source: 'ai-planes',
+    maxzoom: AI_DETAIL_LEVELS.auto.dotsBelow,
+    paint: { 'circle-radius': DOT_HIT_PX, 'circle-opacity': 0, 'circle-stroke-width': 0 },
   });
   // Aircraft on the ground, at true scale so parked aircraft fit their stands
   map.addLayer({
@@ -721,10 +736,26 @@ function addLayers(map: any) {
       'icon-opacity': ['case', ['==', ['get', 'kind'], 'player'], 1, 0.92],
     },
   });
+  // Your aircraft follow the same level of detail as the other airlines': dots when zoomed far out
+  map.addLayer({
+    id: 'live-planes-dot',
+    type: 'circle',
+    source: 'live-planes',
+    maxzoom: AI_DETAIL_LEVELS.auto.dotsBelow,
+    paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 1, 2.6, 4, 4], 'circle-color': C.fleet, 'circle-opacity': 1 },
+  });
+  map.addLayer({
+    id: 'live-planes-dot-hit',
+    type: 'circle',
+    source: 'live-planes',
+    maxzoom: AI_DETAIL_LEVELS.auto.dotsBelow,
+    paint: { 'circle-radius': DOT_HIT_PX, 'circle-opacity': 0, 'circle-stroke-width': 0 },
+  });
   map.addLayer({
     id: 'live-planes-symbol',
     type: 'symbol',
     source: 'live-planes',
+    minzoom: AI_DETAIL_LEVELS.auto.dotsBelow,
     layout: {
       'icon-image': ['get', 'icon_name'],
       'icon-size': [
@@ -741,7 +772,7 @@ function addLayers(map: any) {
       'icon-allow-overlap': true,
       'icon-ignore-placement': true,
       // Callsigns only once zoomed in, like FR24
-      'text-field': ['step', ['zoom'], '', 5.5, ['get', 'flightNumber']],
+      'text-field': ['step', ['zoom'], '', CALLSIGN_ZOOM, ['get', 'flightNumber']],
       'text-size': 10,
       'text-offset': [0, 1.15],
       'text-anchor': 'top',
@@ -782,8 +813,8 @@ function addLayers(map: any) {
     type: 'symbol',
     source: 'labels-3d',
     layout: {
-      // Your callsigns from zoom 5.5, other airlines' from 7 (as on the flat map)
-      'text-field': ['step', ['zoom'], '', 5.5, ['case', ['==', ['get', 'kind'], 'player'], ['get', 'label'], ''], 7, ['get', 'label']],
+      // Callsigns from the same zoom level as on the flat map
+      'text-field': ['step', ['zoom'], '', CALLSIGN_ZOOM, ['get', 'label']],
       'text-size': ['case', ['==', ['get', 'kind'], 'player'], 10, 9],
       'text-anchor': 'top',
       'text-offset': [0, 1],
@@ -813,7 +844,7 @@ const AI_MIN_WITH_FLEET = 150;
  * open). Aircraft on the ground stay: they are only drawn zoomed in at an
  * airport, where they are what you came to see.
  */
-const PLANE_LAYERS = ['ai-planes-symbol', 'ai-planes-dot', 'live-planes-symbol', 'labels-3d-hit', 'labels-3d-text', 'ai-3d', 'planes-3d', 'aircraft-3d'];
+const PLANE_LAYERS = ['ai-planes-symbol', 'ai-planes-dot', 'ai-planes-dot-hit', 'live-planes-symbol', 'live-planes-dot', 'live-planes-dot-hit', 'labels-3d-hit', 'labels-3d-text', 'ai-3d', 'planes-3d', 'aircraft-3d'];
 
 /** The detailed 3D aircraft layer of each map (kept across basemap changes). */
 const AIRCRAFT_LAYERS = new WeakMap<object, AircraftLayerHandle>();
@@ -993,7 +1024,7 @@ const formatCameraHeight = (m: number) => {
  */
 function apply3dLook(map: any, on: boolean) {
   const onGround = ['<=', ['coalesce', ['get', 'agl'], 0], 0];
-  for (const layer of ['live-planes-symbol', 'ai-planes-symbol', 'ai-planes-dot']) {
+  for (const layer of ['live-planes-symbol', 'live-planes-dot', 'live-planes-dot-hit', 'ai-planes-symbol', 'ai-planes-dot', 'ai-planes-dot-hit']) {
     try {
       if (map.getLayer?.(layer)) map.setFilter(layer, on ? onGround : null);
     } catch {
@@ -1338,6 +1369,8 @@ export function LiveMap(props: LiveMapProps) {
           maxPitch: 85,
         });
         mapRef.current = map;
+        // Local development only: lets test scripts reach the map
+        if (import.meta.env.DEV) (window as any).__bpMap = map;
         map.addControl(new TrustedCredits(), 'bottom-right');
 
         map.on('load', () => {
@@ -1367,7 +1400,7 @@ export function LiveMap(props: LiveMapProps) {
             if (!latest.current.threeD) return;
             const over = pick3dAt(picks3d.current, e.point.x, e.point.y);
             if (over) map.getCanvas().style.cursor = 'pointer';
-            else if (map.getCanvas().style.cursor === 'pointer' && !map.queryRenderedFeatures(e.point, { layers: ['airports-hit', 'live-planes-symbol', 'ai-planes-symbol', 'ground-planes-symbol'] }).length) map.getCanvas().style.cursor = '';
+            else if (map.getCanvas().style.cursor === 'pointer' && !map.queryRenderedFeatures(e.point, { layers: ['airports-hit', 'live-planes-symbol', 'live-planes-dot-hit', 'ai-planes-symbol', 'ai-planes-dot-hit', 'ground-planes-symbol'] }).length) map.getCanvas().style.cursor = '';
           });
 
           map.on('click', 'airports-hit', (e: any) => {
@@ -1475,12 +1508,32 @@ export function LiveMap(props: LiveMapProps) {
             return true;
           };
 
-          map.on('click', 'live-planes-symbol', (e: any) => {
+          /** Of the features under a click, the one whose aircraft is closest to it. */
+          const nearest = (e: any) => {
+            const feats = (e.features ?? []) as any[];
+            if (feats.length < 2) return feats[0];
+            let best = feats[0];
+            let bestD = Infinity;
+            for (const ft of feats) {
+              const c = ft.geometry?.coordinates;
+              if (!Array.isArray(c)) continue;
+              const p = map.project(c);
+              const d = (p.x - e.point.x) ** 2 + (p.y - e.point.y) ** 2;
+              if (d < bestD) {
+                bestD = d;
+                best = ft;
+              }
+            }
+            return best;
+          };
+          const onPlayerClick = (e: any) => {
             if (e.picked3d || e.originalEvent?.picked3d) return;
-            const feat = e.features?.[0];
+            const feat = nearest(e);
             if (!feat || airportFirst(e) || (latest.current.threeD && map.queryRenderedFeatures(e.point, { layers: ['labels-3d-hit'] }).length > 0) || planeClickBlocked()) return;
             openTrackedPopup(feat.geometry.coordinates.slice(), buildPlanePopupHtml(feat.properties), feat.properties.flightId, feat.properties);
-          });
+          };
+          map.on('click', 'live-planes-symbol', onPlayerClick);
+          map.on('click', 'live-planes-dot-hit', onPlayerClick);
 
           const openAiById = (id: number) => {
             const traffic = latest.current.aiTraffic;
@@ -1491,11 +1544,11 @@ export function LiveMap(props: LiveMapProps) {
           };
           const onAiClick = (e: any) => {
             if (!e.fromHit3d && (e.picked3d || e.originalEvent?.picked3d)) return;
-            const feat = e.features?.[0];
+            const feat = nearest(e);
             const traffic = latest.current.aiTraffic;
             if (!feat || !traffic || airportFirst(e)) return;
             // Your own planes sit on top — don't steal their clicks (nor the 3D targets)
-            if (!e.fromHit3d && map.queryRenderedFeatures(e.point, { layers: ['live-planes-symbol', 'planes-3d'] }).length > 0) return;
+            if (!e.fromHit3d && map.queryRenderedFeatures(e.point, { layers: ['live-planes-symbol', 'live-planes-dot-hit', 'planes-3d'] }).length > 0) return;
             if (!e.fromHit3d && latest.current.threeD && map.queryRenderedFeatures(e.point, { layers: ['labels-3d-hit'] }).length > 0) return;
             if (planeClickBlocked()) return;
             const f = traffic.flights[Number(feat.properties.aiId)];
@@ -1504,7 +1557,7 @@ export function LiveMap(props: LiveMapProps) {
             if (f && pos) openTrackedPopup(pos.coordinates, buildAiPopupHtml(traffic, f, pos), `ai:${f.id}`, friendPlane(traffic, f));
           };
           map.on('click', 'ai-planes-symbol', onAiClick);
-          map.on('click', 'ai-planes-dot', onAiClick);
+          map.on('click', 'ai-planes-dot-hit', onAiClick);
           // 3D: the floating aircraft are picked by where they are drawn on screen
           const hit3d = (e: any) => Boolean(e.picked3d) || (latest.current.threeD && map.queryRenderedFeatures(e.point, { layers: ['labels-3d-hit'] }).length > 0);
           map.on('click', 'labels-3d-hit', (e: any) => {
@@ -1545,7 +1598,7 @@ export function LiveMap(props: LiveMapProps) {
 
           map.on('click', (e: any) => {
             if (e.picked3d || e.originalEvent?.picked3d) return;
-            const hits = map.queryRenderedFeatures(e.point, { layers: ['airports-hit', 'live-planes-symbol', 'ai-planes-symbol', 'ai-planes-dot', 'ground-planes-symbol', 'planes-3d', 'ai-3d', 'labels-3d-hit'] });
+            const hits = map.queryRenderedFeatures(e.point, { layers: ['airports-hit', 'live-planes-symbol', 'live-planes-dot-hit', 'ai-planes-symbol', 'ai-planes-dot-hit', 'ground-planes-symbol', 'planes-3d', 'ai-3d', 'labels-3d-hit'] });
             if (hits.length === 0) {
               latest.current.onInspectAirport(null);
               if (followRef.current) return; // a stray click doesn't end following
@@ -1554,7 +1607,7 @@ export function LiveMap(props: LiveMapProps) {
             }
           });
 
-          ['airports-hit', 'live-planes-symbol', 'ai-planes-symbol', 'ai-planes-dot', 'ground-planes-symbol', 'planes-3d', 'ai-3d', 'labels-3d-hit'].forEach((layer) => {
+          ['airports-hit', 'live-planes-symbol', 'live-planes-dot-hit', 'ai-planes-symbol', 'ai-planes-dot-hit', 'ground-planes-symbol', 'planes-3d', 'ai-3d', 'labels-3d-hit'].forEach((layer) => {
             map.on('mouseenter', layer, () => (map.getCanvas().style.cursor = 'pointer'));
             map.on('mouseleave', layer, () => (map.getCanvas().style.cursor = ''));
           });
@@ -1833,6 +1886,7 @@ export function LiveMap(props: LiveMapProps) {
       });
       if (map.getLayer('track-flown')) map.setPaintProperty('track-flown', 'line-color', C.fleet);
       if (map.getLayer('live-planes-symbol')) map.setPaintProperty('live-planes-symbol', 'text-color', C.fleet);
+      if (map.getLayer('live-planes-dot')) map.setPaintProperty('live-planes-dot', 'circle-color', C.fleet);
       if (map.getLayer('ground-planes-symbol') && latest.current.mapStyle !== 'light')
         map.setPaintProperty('ground-planes-symbol', 'text-color', ['case', ['==', ['get', 'kind'], 'player'], C.fleet, MAP_C.muted]);
     } catch {
@@ -2051,7 +2105,7 @@ export function LiveMap(props: LiveMapProps) {
         cruiseKts: ac?.model.cruise_speed_kts ?? 450,
         /** Highest cruising altitude of the type (turboprops FL250, and so on). */
         maxCruiseFt: typeMaxCruiseFt(ac?.model),
-        iconScale: Number((acTier.iconScale * planeIconScale).toFixed(3)),
+        iconScale: Number(((ac ? AI_ICON_SCALE[getRadarIconGroup(ac.model)] ?? 0.56 : 0.56) * HIGHLIGHT_SCALE * planeIconScale).toFixed(3)),
         props: {
           flightId: fl.id,
           flightNumber: fl.flightNumber,
@@ -2081,6 +2135,8 @@ export function LiveMap(props: LiveMapProps) {
           totalCap: econ?.totalCap ?? 0,
           loadFactorPct: econ && econ.totalCap > 0 ? Math.round((econ.totalPax / econ.totalCap) * 100) : 0,
           soldCargoTons: econ?.soldCargoTons ?? 0,
+          soldParcelTons: econ?.soldParcelTons ?? 0,
+          soldFreightTons: econ?.soldFreightTons ?? 0,
           maxCargoTons: econ?.maxCargoTons ?? 0,
           cargoLoadPct: econ && econ.maxCargoTons > 0 ? Math.round((econ.soldCargoTons / econ.maxCargoTons) * 100) : 0,
           bonusSummary: bonus.join(', '),
@@ -2505,8 +2561,9 @@ export function LiveMap(props: LiveMapProps) {
         lod = AI_DETAIL_LEVELS[detail];
         budget = lod.budget;
         aiLastDraw = 0;
-        map.setLayerZoomRange?.('ai-planes-dot', 0, Math.max(0.01, lod.dotsBelow));
-        map.setLayerZoomRange?.('ai-planes-symbol', lod.dotsBelow, 24);
+        // Dots below the switch-over zoom, icons above: your aircraft and other airlines' alike
+        for (const id of ['ai-planes-dot', 'ai-planes-dot-hit', 'live-planes-dot', 'live-planes-dot-hit']) if (map.getLayer?.(id)) map.setLayerZoomRange?.(id, 0, Math.max(0.01, lod.dotsBelow));
+        for (const id of ['ai-planes-symbol', 'live-planes-symbol']) if (map.getLayer?.(id)) map.setLayerZoomRange?.(id, lod.dotsBelow, 24);
         probeStart = t;
         probeFrames = 0;
       }
@@ -2734,7 +2791,7 @@ export function LiveMap(props: LiveMapProps) {
           const b = raw
             ? (() => {
                 const w = raw.getWest(), e = raw.getEast(), so = raw.getSouth(), no = raw.getNorth();
-                const padX = (e - w) * 0.15, padY = (no - so) * 0.15;
+                const padX = (e - w) * 0.2, padY = (no - so) * 0.2;
                 return { w: w - padX, e: e + padX, s: so - padY, n: no + padY };
               })()
             : { w: -180, e: 180, s: -90, n: 90 };

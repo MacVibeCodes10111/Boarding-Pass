@@ -33,6 +33,7 @@ export type IconName =
   | 'letter'
   | 'exit'
   | 'help'
+  | 'palette'
   | 'chart';
 
 const PATHS: Record<IconName, React.ReactNode> = {
@@ -69,6 +70,7 @@ const PATHS: Record<IconName, React.ReactNode> = {
   letter: <path d="M3 5h14v10H3V5Zm0 .5 7 5.5 7-5.5" />,
   // back out through a door: to the main menu
   exit: <path d="M11.5 3.5h-6v13h6M8.5 10h8.5M14 7l3 3-3 3" />,
+  palette: <path d="M10 3a7 7 0 0 0 0 14c.9 0 1.5-.6 1.5-1.4 0-.4-.2-.7-.4-1-.2-.3-.4-.6-.4-1 0-.8.6-1.4 1.4-1.4h1.7A3.2 3.2 0 0 0 17 9.1C17 5.7 13.9 3 10 3ZM6.4 10.6v.1M7.6 7.2v.1M11 5.9v.1M13.9 8v.1" />,
   help: <path d="M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14ZM7.8 7.8a2.3 2.3 0 1 1 3.3 2.1c-.7.3-1.1.9-1.1 1.6v.4M10 14.3v.2" />,
 };
 

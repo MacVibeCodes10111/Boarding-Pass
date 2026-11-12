@@ -57,7 +57,7 @@ export function AircraftScheduleModal({
   const [editFlightNum, setEditFlightNum] = useState('');
   const [editDepMin, setEditDepMin] = useState(480);
   const [editDays, setEditDays] = useState<WeekDays>(daysOrAll(null));
-  const [editFares, setEditFares] = useState<Fares>({ econ: 120, prem: 220, bus: 480, first: 950, cargoPerTon: 400 });
+  const [editFares, setEditFares] = useState<Fares>({ econ: 120, prem: 220, bus: 480, first: 950, cargoPerTon: 400, parcelPerTon: 850 });
 
   // Load the editor fields only when a *different* flight is selected,
   // so unrelated schedule changes don't wipe what you're typing.
@@ -68,7 +68,7 @@ export function AircraftScheduleModal({
     setEditDepMin(snapToFiveMin(selectedFlight.depTimeMin));
     setEditDays([...daysOrAll(selectedFlight.daysOfWeek)]);
     const { refFares } = getRouteDemandAndFares(selectedFlight.origin, selectedFlight.destination, selectedFlight.distanceNm, playerHubs, allSchedule);
-    setEditFares({ ...selectedFlight.fares, cargoPerTon: selectedFlight.fares.cargoPerTon || refFares.cargoPerTon });
+    setEditFares({ ...selectedFlight.fares, cargoPerTon: selectedFlight.fares.cargoPerTon || refFares.cargoPerTon, parcelPerTon: selectedFlight.fares.parcelPerTon || refFares.parcelPerTon });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
@@ -300,13 +300,13 @@ export function ErrorBanner({ message }: { message: string }) {
 
 const FARE_LABELS = { econ: 'Economy', prem: 'Premium', bus: 'Business', first: 'First' } as const;
 
-/** Fare inputs for the four cabins plus cargo rate. */
+/** Fare inputs for the four cabins plus the parcel and freight rates. */
 export function FaresEditor({ fares, onChange, cargoOnly, refFares }: { fares: Fares; onChange: (f: Fares) => void; cargoOnly: boolean; refFares?: Fares }) {
   const classes = cargoOnly ? [] : (['econ', 'prem', 'bus', 'first'] as const);
   // Nobody buys at three times the market fare; the box stops at five times it
   const cap = (ref: number | undefined) => (ref ? Math.round(ref * MAX_FARE_MULT) : undefined);
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: cargoOnly ? '160px' : 'repeat(5, 1fr)', gap: 8 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: cargoOnly ? 'repeat(2, minmax(0, 160px))' : 'repeat(auto-fit, minmax(92px, 1fr))', gap: 8 }}>
       {classes.map((k) => (
         <label key={k} style={{ display: 'block' }}>
           <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginBottom: 3 }}>{FARE_LABELS[k]}</span>
@@ -314,8 +314,12 @@ export function FaresEditor({ fares, onChange, cargoOnly, refFares }: { fares: F
         </label>
       ))}
       <label style={{ display: 'block' }}>
-        <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginBottom: 3 }}>Cargo $/t</span>
-        <NumberField value={fares.cargoPerTon ?? 350} min={25} max={cap(refFares?.cargoPerTon)} onChange={(v) => onChange({ ...fares, cargoPerTon: v })} />
+        <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginBottom: 3 }}>Parcels $/t</span>
+        <NumberField value={fares.parcelPerTon ?? refFares?.parcelPerTon ?? 800} min={25} max={cap(refFares?.parcelPerTon)} onChange={(v) => onChange({ ...fares, parcelPerTon: v })} />
+      </label>
+      <label style={{ display: 'block' }}>
+        <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginBottom: 3 }}>Freight $/t</span>
+        <NumberField value={fares.cargoPerTon ?? refFares?.cargoPerTon ?? 350} min={25} max={cap(refFares?.cargoPerTon)} onChange={(v) => onChange({ ...fares, cargoPerTon: v })} />
       </label>
     </div>
   );

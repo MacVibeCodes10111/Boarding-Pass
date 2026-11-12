@@ -18,7 +18,7 @@ import { TILT_HINT } from '../game/platform';
 import { DEV_BUILD, IS_DEV } from '../game/channel';
 import type { GameMode } from '../game/types';
 import { Icon, type IconName } from '../ui/icons';
-import { Button, C, DISPLAY, FONT, IconButton, Segmented, glass } from '../ui/kit';
+import { Button, C, DISPLAY, FONT, IconButton, Segmented, floatShadow, glass } from '../ui/kit';
 import { isTouchFirst, useLayout } from '../ui/layout';
 import { deviceOffsetMin, offsetLabel, shiftClock } from '../game/localTime';
 
@@ -230,7 +230,7 @@ function ClockButton(props: {
             borderRadius: 16,
             padding: '14px 16px 16px',
             zIndex: 300,
-            boxShadow: '0 18px 44px rgba(0,0,0,.45)',
+            boxShadow: floatShadow(),
             display: 'grid',
             gap: 14,
           }}
@@ -392,7 +392,7 @@ export function TopBar(props: {
               <div
                 role="dialog"
                 aria-label="Money"
-                style={{ ...glass('f0'), position: 'fixed', top: phone ? 'calc(var(--bp-top-h) + 8px)' : 72, left: phone ? 8 : 230, width: 'min(300px, calc(100vw - 16px))', borderRadius: 16, padding: '14px 16px 16px', zIndex: 300, boxShadow: '0 18px 44px rgba(0,0,0,.45)', display: 'grid', gap: 8, fontSize: 13.5 }}
+                style={{ ...glass('f0'), position: 'fixed', top: phone ? 'calc(var(--bp-top-h) + 8px)' : 72, left: phone ? 8 : 230, width: 'min(300px, calc(100vw - 16px))', borderRadius: 16, padding: '14px 16px 16px', zIndex: 300, boxShadow: floatShadow(), display: 'grid', gap: 8, fontSize: 13.5 }}
               >
                 <div style={{ fontSize: 12, color: C.muted }}>A week, as scheduled</div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
@@ -460,6 +460,7 @@ export function TopBar(props: {
         </div>
 
       </div>
+      {!phone && <IconButton icon="palette" label="Appearance" size={38} iconSize={19} onClick={openAppearance} />}
       {/* Both clocks live behind one button */}
       <ClockButton
         econMin={props.econMin}
@@ -773,13 +774,27 @@ export function LayersMenu(props: {
             borderRadius: 16,
             padding: '10px 14px 12px',
             zIndex: 60,
-            boxShadow: '0 18px 44px rgba(0,0,0,.45)',
+            boxShadow: floatShadow(),
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <span style={{ fontFamily: DISPLAY, fontSize: 19, fontWeight: 700, flex: 1 }}>Map</span>
             <IconButton icon="close" label="Close" size={32} iconSize={14} onClick={() => setOpen(false)} style={{ marginRight: -6 }} />
           </div>
+          <button
+            type="button"
+            className="bp-row"
+            onClick={() => {
+              setOpen(false);
+              openAppearance();
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 10px', margin: '0 0 10px', borderRadius: 12, border: 'none', background: `${C.brand}1c`, color: C.text, cursor: 'pointer', font: 'inherit', fontSize: 14.5, fontWeight: 600, textAlign: 'left' }}
+          >
+            <Icon name="palette" size={19} color={C.brand} />
+            <span style={{ flex: 1 }}>Appearance</span>
+            <span style={{ fontSize: 12.5, fontWeight: 500, color: C.muted }}>Colours and glass</span>
+            <Icon name="chevron" size={13} color={C.muted} />
+          </button>
           <Segmented<MapStyleChoice>
             size="sm"
             block
@@ -902,16 +917,6 @@ export function LayersMenu(props: {
             />
           </MenuSection>
           <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.line}`, display: 'flex', alignItems: 'center', gap: 14 }}>
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                openAppearance();
-              }}
-              style={link}
-            >
-              Appearance
-            </button>
             <button type="button" onClick={() => setCredits(true)} style={link}>
               Credits
             </button>

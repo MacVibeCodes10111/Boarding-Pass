@@ -147,7 +147,10 @@ export interface Fares {
   prem: number;
   bus: number;
   first: number;
+  /** Freight, per tonne. */
   cargoPerTon?: number;
+  /** Parcels (mail and express), per tonne. */
+  parcelPerTon?: number;
 }
 
 export interface ScheduledFlight {

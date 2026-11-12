@@ -5,6 +5,9 @@ src-tauri/gen/
 .DS_Store
 *.log
 
+# tools/build-runways-extra.mjs keeps its downloads here between runs
+tools/.runways-extra.state.json
+
 # Aircraft art working files
 tools/art/templates/
 tools/art/out/

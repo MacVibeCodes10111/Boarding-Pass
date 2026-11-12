@@ -589,11 +589,12 @@ export function StatsPanel(props: {
               <SplitBar
                 parts={[
                   { label: 'Passengers', value: st.paxRevenue },
-                  { label: 'Cargo', value: st.cargoRevenue },
+                  { label: 'Parcels', value: st.parcelRevenue },
+                  { label: 'Freight', value: st.freightRevenue },
                 ].filter((p) => p.value > 0)}
               />
               <div className="num" style={{ fontSize: 11.5, color: C.faint, marginTop: 6 }}>
-                {num(st.cargoTons)} t of cargo a week
+                {num(st.parcelTons)} t of parcels and {num(st.freightTons)} t of freight a week
               </div>
             </Card>
 

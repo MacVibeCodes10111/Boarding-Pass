@@ -21,7 +21,7 @@ export function applyAirlineTheme(c: AirlineColours | undefined) {
     return;
   }
   const device = loadThemeSpec();
-  const tryWith = (accent: string, fleet: string): ThemeSpec => ({ preset: 'airline', base: device.base, accent, fleet });
+  const tryWith = (accent: string, fleet: string): ThemeSpec => ({ preset: 'airline', base: device.base, accent, fleet, finish: device.finish });
   let spec = tryWith(c.a, c.b);
   if (highlightWarning(buildPalette(spec))) {
     const other = tryWith(c.b, c.a);

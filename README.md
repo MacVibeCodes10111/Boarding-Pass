@@ -292,7 +292,7 @@ Boarding Pass's own code is © 2026 Mac under the [MIT licence](LICENSE). It is 
 - **Airports, runways and navaids:** [OurAirports](https://ourairports.com/data/) (public domain).
 - **Airline routes flown today:** [airline-route-data](https://github.com/Jonty/airline-route-data) by Jonty Wareing. Route demand and the other airlines' schedules are worked out from them.
 - **Population around airports:** [GeoNames](https://www.geonames.org) (CC BY 4.0).
-- **Cargo ramps at airports:** © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL).
+- **Cargo ramps at airports, and runways where OurAirports has none:** © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL).
 - **Aircraft pictures:** made from the [Airline Empires](https://www.airline-empires.com) community's aircraft templates and their artists (see Credits in the game).
 - **Software:** React (MIT), Tauri (MIT / Apache 2.0).
 

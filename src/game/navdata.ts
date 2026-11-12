@@ -145,11 +145,28 @@ interface RunwayEnd {
   lat: number;
   lenFt: number;
   dispFt: number;
+  /** Length to move along on the map (see drawnLengthFt). */
+  drawnFt: number;
 }
 const endsOf = (pair: RunwayEndPair): [RunwayEnd, RunwayEnd] => [
-  { pair: pair.le_ident, ident: pair.le_ident, hdg: pair.le_heading_degT, lon: pair.le_lon, lat: pair.le_lat, lenFt: pair.length_ft, dispFt: pair.le_displaced_ft ?? 0 },
-  { pair: pair.le_ident, ident: pair.he_ident, hdg: pair.he_heading_degT, lon: pair.he_lon, lat: pair.he_lat, lenFt: pair.length_ft, dispFt: pair.he_displaced_ft ?? 0 },
+  { pair: pair.le_ident, ident: pair.le_ident, hdg: pair.le_heading_degT, lon: pair.le_lon, lat: pair.le_lat, lenFt: pair.length_ft, dispFt: pair.le_displaced_ft ?? 0, drawnFt: drawnLengthFt(pair) },
+  { pair: pair.le_ident, ident: pair.he_ident, hdg: pair.he_heading_degT, lon: pair.he_lon, lat: pair.he_lat, lenFt: pair.length_ft, dispFt: pair.he_displaced_ft ?? 0, drawnFt: drawnLengthFt(pair) },
 ];
+/**
+ * The runway as it lies on the map: the distance between its two ends when
+ * that is shorter than its listed length (about 230 runways are listed up to
+ * twice as long as their ends are apart, so the takeoff run or the landing
+ * roll went past the far end, onto grass, roads or the apron).
+ */
+const drawnCache = new WeakMap<object, number>();
+function drawnLengthFt(pair: RunwayEndPair): number {
+  const hit = drawnCache.get(pair);
+  if (hit !== undefined) return hit;
+  const apart = calcCoordDistanceNm(pair.le_lon, pair.le_lat, pair.he_lon, pair.he_lat) * 6076.12;
+  const v = apart >= 1000 ? Math.min(pair.length_ft || apart, apart) : pair.length_ft;
+  drawnCache.set(pair, v);
+  return v;
+}
 const hdgDiff = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
 
 /**
@@ -405,7 +422,7 @@ export function getActiveRunwayForAirport(airport: Airport, simDay = 1, simMin =
   }
   // Kept to a tenth of a degree: whole degrees put a long landing roll tens of metres off the centreline
   const headingDegT = Math.round(best.hdg * 10) / 10;
-  const lenFt = best.lenFt || 8000;
+  const lenFt = best.drawnFt || best.lenFt || 8000;
   const dispFt = Math.max(0, Math.min(best.dispFt || 0, lenFt * 0.5));
   const [landLon, landLat] = dispFt > 0 ? offsetLatLonNm(best.lat, best.lon, headingDegT, dispFt / 6076.12) : [best.lon, best.lat];
   const assocList = navaidsByAirportIcao.get(airport.icao_code) ?? [];
@@ -428,10 +445,10 @@ export function getActiveRunwayForAirport(airport: Airport, simDay = 1, simMin =
     crosswindKts: Math.round(best.crosswind),
     approachType,
     associatedNavaid,
-    lengthNm: Math.max(0.5, lenFt / 6076.12),
+    lengthNm: Math.max(0.15, lenFt / 6076.12),
     landLon,
     landLat,
-    landingLengthNm: Math.max(0.4, (lenFt - dispFt) / 6076.12),
+    landingLengthNm: Math.max(0.12, (lenFt - dispFt) / 6076.12),
   };
 }
 
@@ -665,8 +682,11 @@ export const touchdownOffsetNm = (rwy: ActiveRunwaySelection) => Math.min(1000 /
  * 1,300 m on a long runway (an airliner slowing to exit speed), less on a short
  * one. The taxi network then picks the nearest exit there.
  */
-export const landingRollNm = (rwy: ActiveRunwaySelection) =>
-  Math.max(0.3, Math.min(0.7, (rwy.landingLengthNm - touchdownOffsetNm(rwy)) * 0.5));
+export const landingRollNm = (rwy: ActiveRunwaySelection) => {
+  const left = rwy.landingLengthNm - touchdownOffsetNm(rwy);
+  // never past the far end, however short the strip
+  return Math.min(left * 0.92, Math.max(0.3, Math.min(0.7, left * 0.5)));
+};
 /** Takeoff run to lift-off, nm: about 1,800 m on a long runway, at most 62% of a short one. */
 export const liftoffNm = (rwy: ActiveRunwaySelection) => Math.min(rwy.lengthNm * 0.62, 1.0);
 

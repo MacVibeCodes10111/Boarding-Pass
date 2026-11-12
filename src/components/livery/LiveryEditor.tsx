@@ -47,6 +47,7 @@ import { ColourPicker } from './ColourPicker';
 import { moderate } from '../../game/moderation';
 import { LOGO_TYPES, makeLogo } from './logoUpload';
 import { PRESET_LOGOS, presetLogo } from './presetLogos';
+import { LiveryManual } from './LiveryManual';
 
 type Tool = 'move' | 'hand' | 'brush' | 'eraser' | 'line' | 'fill' | 'shape' | 'text' | 'logo';
 const TOOL_LABEL: Record<Tool, string> = {
@@ -61,6 +62,20 @@ const TOOL_LABEL: Record<Tool, string> = {
   logo: 'Logo (O)',
 };
 const TOOL_KEYS: Record<string, Tool> = { v: 'move', h: 'hand', b: 'brush', e: 'eraser', l: 'line', g: 'fill', u: 'shape', t: 'text', o: 'logo' };
+const TOOL_NAME: Record<Tool, string> = { move: 'Move', hand: 'Pan', brush: 'Brush', eraser: 'Eraser', line: 'Line', fill: 'Fill', shape: 'Shape', text: 'Text', logo: 'Logo' };
+/** What the tool in hand does, shown under the picture. */
+const TOOL_HINT: Record<Tool, string> = {
+  move: 'Tap something on the aircraft to pick it, drag to move it.',
+  hand: 'Drag to look around.',
+  brush: 'Draw on the aircraft.',
+  eraser: 'Rub out brush strokes on the paint layer you picked.',
+  line: 'Drag for a straight line.',
+  fill: 'Tap a part of the aircraft to colour all of it.',
+  shape: 'Drag on the aircraft to draw the shape.',
+  text: 'Tap where the words go.',
+  logo: 'Tap where the logo goes.',
+};
+const HELP_SEEN_KEY = 'bp_pc_livery_help_seen_v1';
 const SHAPE_LABEL: Record<ShapeKind, string> = { rect: 'Rectangle', ellipse: 'Circle', triangle: 'Triangle', star: 'Star', chevron: 'Chevron' };
 const KIND_LABEL: Record<Layer['kind'], string> = { fill: 'Fill', band: 'Band', shape: 'Shape', path: 'Curve', text: 'Text', paint: 'Paint', logo: 'Logo' };
 
@@ -190,11 +205,16 @@ function Choice<T extends string>({ value, onChange, options, label }: { value: 
 }
 
 const iconBtn = (active: boolean): React.CSSProperties => ({
-  width: 40,
-  height: 40,
+  width: 58,
+  height: 48,
   display: 'grid',
   placeItems: 'center',
-  borderRadius: 9,
+  alignContent: 'center',
+  gap: 2,
+  fontSize: 10.5,
+  fontWeight: 600,
+  lineHeight: 1,
+  borderRadius: 10,
   border: `1px solid ${active ? C.brand : C.border}`,
   background: active ? `${C.brand}26` : C.raised,
   color: active ? C.brand : C.textSoft,
@@ -287,7 +307,6 @@ const docColours = (d: Livery) => {
   }
   return out.slice(0, 8);
 };
-const countStrokes = (d: Livery) => d.layers.reduce((n, l) => n + (l.kind === 'paint' ? l.strokes.length : 0), 0);
 
 // ----------------------------------------------------------------------------
 // The editor
@@ -405,7 +424,24 @@ export function LiveryEditor(props: {
       window.removeEventListener('keydown', onKey);
     };
   }, [menu]);
-  const [tab, setTab] = useState<'parts' | 'layers' | 'props' | 'styles'>('parts');
+  const [tab, setTab] = useState<'parts' | 'layers' | 'logos' | 'styles'>('parts');
+  const [help, setHelp] = useState(false);
+  const [helpSeen, setHelpSeen] = useState(() => {
+    try {
+      return localStorage.getItem(HELP_SEEN_KEY) === '1';
+    } catch {
+      return true;
+    }
+  });
+  const openHelp = () => {
+    setHelp(true);
+    setHelpSeen(true);
+    try {
+      localStorage.setItem(HELP_SEEN_KEY, '1');
+    } catch {
+      /* not remembered */
+    }
+  };
   const [stylesOpen, setStylesOpen] = useState(false);
   const [styleA, setStyleA] = useState(props.airlineColours?.a ?? '#1d4e89');
   const [styleB, setStyleB] = useState(props.airlineColours?.b ?? '#f5a623');
@@ -602,7 +638,10 @@ export function LiveryEditor(props: {
     if (tool === 'move') {
       const h = hit(px, py);
       const target = h ?? selLayer;
-      if (h) setSel(h.id);
+      if (h) {
+        setSel(h.id);
+        if (tab !== 'styles') setTab('layers');
+      }
       if (!target || target.kind === 'fill') return;
       if (target.locked) {
         flash(`${target.name} is locked. Unlock it in the layers to move it.`);
@@ -651,7 +690,7 @@ export function LiveryEditor(props: {
       const [x, y] = fromPx(geo, frame, px, py);
       const l = addLayer({ id: newId(), name: 'Text', opacity: 1, region, kind: 'text', frame, text: 'Text', font: 'sans', colour, x, y, size: small(region) ? 0.08 : 0.2, rot: 0 });
       if (l) {
-        setTab('props');
+        setTab('layers');
         setTool('move');
         window.setTimeout(() => document.getElementById('livery-text-input')?.focus(), 50);
       }
@@ -659,8 +698,8 @@ export function LiveryEditor(props: {
     }
     if (tool === 'logo') {
       if (!logoPick || !doc.logos[logoPick]) {
-        setTab('props');
-        flash('Upload a logo first (in the settings).');
+        setTab('logos');
+        flash('Pick or upload a logo first.');
         return;
       }
       const region = focus ?? regionAt(geo, px, py) ?? 'tail';
@@ -802,14 +841,23 @@ export function LiveryEditor(props: {
         redo();
         return;
       }
-      if (typing || mod || e.altKey) return;
+      if (typing || mod || e.altKey || help) return;
+      if (e.key === '?') return openHelp();
+      if (e.key === '[' || e.key === ']') return setBrushSize((v) => Math.min(0.4, Math.max(0.01, v * (e.key === ']' ? 1.25 : 0.8))));
+      if (e.key === '0') {
+        setZoom(1);
+        setFocus(null);
+        return;
+      }
+      if (e.key === '+' || e.key === '=') return setZoom((z) => Math.min(MAX_ZOOM, z * 1.25));
+      if (e.key === '-') return setZoom((z) => Math.max(1, z / 1.25));
       if ((e.key === 'Delete' || e.key === 'Backspace') && sel) {
         e.preventDefault();
         removeLayer(sel);
         return;
       }
       const t = TOOL_KEYS[e.key.toLowerCase()];
-      if (t) setTool(t);
+      if (t) pickTool(t);
       if (e.key === 'Escape' && !dirty.current) props.onClose();
     };
     window.addEventListener('keydown', onKey);
@@ -927,19 +975,28 @@ export function LiveryEditor(props: {
     </div>
   );
 
+  /** Picking a tool brings its settings into view. */
+  const pickTool = (t: Tool) => {
+    setTool(t);
+    if (tab === 'styles' && !phone) return;
+    if (t === 'logo') setTab('logos');
+    else if (t !== 'move' && t !== 'hand') setTab('parts');
+  };
   const tools = (
     <div style={{ display: 'flex', flexDirection: phone ? 'row' : 'column', gap: 6, overflowX: phone ? 'auto' : undefined, paddingBottom: phone ? 2 : 0, alignItems: 'center', scrollbarWidth: 'none', ...(phone ? { maskImage: 'linear-gradient(90deg, #000 88%, transparent)', WebkitMaskImage: 'linear-gradient(90deg, #000 88%, transparent)', paddingRight: 28 } : {}) }}>
       {(Object.keys(TOOL_LABEL) as Tool[]).map((t) => (
-        <button key={t} type="button" title={TOOL_LABEL[t]} aria-label={TOOL_LABEL[t]} aria-pressed={tool === t} onClick={() => setTool(t)} style={iconBtn(tool === t)}>
+        <button key={t} type="button" title={TOOL_LABEL[t]} aria-label={TOOL_LABEL[t]} aria-pressed={tool === t} onClick={() => pickTool(t)} style={iconBtn(tool === t)}>
           <ToolIcon tool={t} />
+          <span aria-hidden>{TOOL_NAME[t]}</span>
         </button>
       ))}
       <span style={{ position: 'relative' }}>
         <button type="button" title="Colour for new strokes, fills, shapes and text" aria-label="Colour" aria-expanded={colourOpen} onClick={() => setColourOpen((v) => !v)} style={iconBtn(colourOpen)}>
-          <span style={{ width: 22, height: 22, borderRadius: 6, background: colour, border: '2px solid #fff', boxShadow: '0 0 0 1px rgba(0,0,0,.4)' }} />
+          <span style={{ width: 20, height: 20, borderRadius: 6, background: colour, border: '2px solid #fff', boxShadow: '0 0 0 1px rgba(0,0,0,.4)' }} />
+          <span aria-hidden>Colour</span>
         </button>
         {colourOpen && (
-          <div style={{ position: phone ? 'fixed' : 'absolute', zIndex: 20, ...(phone ? { left: 10, right: 10, top: 120 } : { left: 50, top: 0, width: 260 }), background: C.panel, border: `1px solid ${C.border}`, borderRadius: 10, padding: 12, boxShadow: '0 14px 30px rgba(0,0,0,.5)', display: 'grid', gap: 8 }}>
+          <div style={{ position: phone ? 'fixed' : 'absolute', zIndex: 20, ...(phone ? { left: 10, right: 10, top: 120 } : { left: 66, bottom: 0, width: 260 }), background: C.panel, border: `1px solid ${C.border}`, borderRadius: 10, padding: 12, boxShadow: '0 14px 30px rgba(0,0,0,.5)', display: 'grid', gap: 8 }}>
             <ColourPicker label="Colour" value={colour} onChange={setColour} recent={recent} open />
             <Button size="sm" onClick={() => setColourOpen(false)}>
               Done
@@ -1029,7 +1086,7 @@ export function LiveryEditor(props: {
           Take out a white background
         </label>
       </div>
-      <div style={{ fontSize: 11.5, color: C.muted }}>PNG, JPG or WebP, kept at its own size up to 1024×1024 and 48 KB (made smaller if it’s bigger). Only upload pictures you own or have the right to use. Up to {MAX_LOGOS}. Your airline logo is set in Menu → Airline details.</div>
+      <div style={{ fontSize: 11.5, color: C.muted }}>PNG, JPG or WebP, up to {MAX_LOGOS}. Only upload pictures you own or have the right to use.</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
         <span style={{ fontSize: 12, fontWeight: 650, color: C.textSoft }}>Ready-made logos</span>
         <input type="color" aria-label="Preset main colour" value={presetA} onChange={(e) => setPresetA(e.target.value)} style={{ width: 26, height: 22, padding: 0, border: `1px solid ${C.border}`, borderRadius: 5 }} />
@@ -1066,21 +1123,20 @@ export function LiveryEditor(props: {
 
   const props_ = selLayer ? <LayerProps layer={selLayer} name={name} recent={recent} patch={(p) => patch(selLayer.id, p)} slide={(p) => patchSlider(selLayer.id, p)} done={sliderDone} logos={doc.logos} geo={geo} reg={reg} /> : null;
 
-  const settingsPanel = (
+  const toolSection = toolSettings && (
+    <div style={section}>
+      {head(TOOL_NAME[tool])}
+      {toolSettings}
+    </div>
+  );
+  const logosSection = (
+    <div style={section}>
+      {head('Logos')}
+      {logosPanel}
+    </div>
+  );
+  const layerSection = (
     <div style={{ display: 'grid', gap: 10 }}>
-      {toolSettings && (
-        <div style={section}>
-          {head(TOOL_LABEL[tool].replace(/ \(.\)$/, '').replace(/:.*$/, ''))}
-          {toolSettings}
-        </div>
-      )}
-      {(
-
-        <div style={section}>
-          {head('Logos')}
-          {logosPanel}
-        </div>
-      )}
       {selShared && (scope === 'model' || selShared.only || selShared.adj?.[model]) && (
         <div style={section}>
           {head(`On the ${model.toUpperCase()}`)}
@@ -1210,7 +1266,7 @@ export function LiveryEditor(props: {
   const partsPanel = (
     <div style={{ ...section, gap: 6 }}>
       {head('Parts', focus ? <Button size="sm" onClick={() => workOn(null)}>Whole aircraft</Button> : undefined)}
-      <div style={{ fontSize: 11.5, color: C.muted, marginTop: -2 }}>Tap a colour to paint a part, or Edit to zoom in and draw on it.</div>
+      <div style={{ fontSize: 11.5, color: C.muted, marginTop: -2 }}>Tap a colour to paint a part. Draw zooms in on it.</div>
       {partList.map((r) => {
         const f = partFill(r);
         const own = f && f.region === r;
@@ -1234,7 +1290,7 @@ export function LiveryEditor(props: {
                 <span style={{ fontSize: 11, color: C.faint }}>{f ? 'base colour' : 'unpainted'}</span>
               )}
               <Button size="sm" variant={focus === r ? 'primary' : undefined} aria-pressed={focus === r} title={`Zoom in and draw only on the ${partLabel(r).toLowerCase()}`} onClick={() => workOn(focus === r ? null : r)}>
-                {focus === r ? 'Done' : 'Edit'}
+                {focus === r ? 'Done' : 'Draw'}
               </Button>
             </div>
             {partOpen === r && <ColourPicker label={partLabel(r)} value={value} onChange={(c) => setPartColour(r, c)} recent={recent} open />}
@@ -1531,6 +1587,12 @@ export function LiveryEditor(props: {
         </Button>
       )}
       {!phone && <span style={{ flex: 1 }} />}
+      <span style={{ position: 'relative', display: 'inline-flex' }}>
+        <Button size="sm" onClick={openHelp} title="How the livery editor works (?)" aria-label="Help: the livery manual">
+          {phone ? '?' : 'Help'}
+        </Button>
+        {!helpSeen && <span aria-hidden style={{ position: 'absolute', top: -3, right: -3, width: 9, height: 9, borderRadius: 9, background: C.brand, border: `2px solid ${C.panel}` }} />}
+      </span>
       {!phone && (
         <Button size="sm" onClick={props.onClose}>
           Cancel
@@ -1554,64 +1616,82 @@ export function LiveryEditor(props: {
       {note ??
         (focus
           ? `Working on the ${REGION_LABEL[focus].toLowerCase()}: everything you draw stays on it.`
-          : phone
-            ? `${TOOL_LABEL[tool].replace(/ \(.\)$/, '').replace(/:.*$/, '')}. Zoom with + and −, then the hand to look around.`
-            : `${TOOL_LABEL[tool].replace(/ \(.\)$/, '')}. ${countStrokes(doc)} brush strokes. Ctrl/Cmd+scroll to zoom.`)}
+          : `${TOOL_NAME[tool]}: ${TOOL_HINT[tool]}`)}
     </div>
   );
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Livery editor" style={{ position: 'fixed', inset: 0, zIndex: 260, background: C.bg, display: 'flex', flexDirection: 'column', color: C.text }}>
       {topBar}
+      {help && <LiveryManual phone={phone} onClose={() => setHelp(false)} />}
       {phone ? (
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{ flex: 'none', display: 'grid', gap: 6, padding: '8px 10px 6px', borderBottom: `1px solid ${C.line}` }}>
             <div style={{ height: 'min(30vh, 210px)', display: 'flex' }}>{stage}</div>
             {tools}
             {status}
-            <Segmented<'parts' | 'layers' | 'props' | 'styles'>
+            <Segmented<'parts' | 'layers' | 'logos' | 'styles'>
               value={tab}
               onChange={setTab}
               options={[
                 { value: 'parts', label: 'Parts' },
                 { value: 'layers', label: 'Layers' },
-                { value: 'props', label: 'Edit' },
+                { value: 'logos', label: 'Logos' },
                 { value: 'styles', label: 'Styles' },
               ]}
             />
           </div>
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', display: 'grid', gap: 10, padding: 10, alignContent: 'start' }}>
             {tab === 'parts' ? (
-              partsPanel
+              <>
+                {toolSection}
+                {partsPanel}
+              </>
             ) : tab === 'layers' ? (
               <>
                 {layersPanel}
-                {selLayer && props_ && (
-                  <div style={section}>
-                    {head(`${KIND_LABEL[selLayer.kind]}: ${selLayer.name}`)}
-                    {props_}
-                  </div>
-                )}
+                {layerSection}
               </>
-            ) : tab === 'props' ? (
-              settingsPanel
+            ) : tab === 'logos' ? (
+              logosSection
             ) : (
               stylesPanel
             )}
           </div>
         </div>
       ) : (
-        <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '56px minmax(0, 1fr) 320px', gap: 12, padding: 12 }}>
+        <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '62px minmax(0, 1fr) 330px', gap: 12, padding: 12 }}>
           <div style={{ display: 'grid', alignContent: 'start', justifyItems: 'center' }}>{tools}</div>
           <div style={{ minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 8, position: 'relative' }}>
             {stage}
             {status}
             {stylesOpen && <div style={{ position: 'absolute', top: 10, left: 10, width: 'min(560px, 94%)', maxHeight: '90%', overflowY: 'auto', zIndex: 3, boxShadow: '0 12px 30px rgba(0,0,0,.45)', borderRadius: 10 }}>{stylesPanel}</div>}
           </div>
-          <div style={{ minHeight: 0, minWidth: 0, overflowY: 'auto', overflowX: 'hidden', display: 'grid', gap: 10, alignContent: 'start' }}>
-            {partsPanel}
-            {layersPanel}
-            {settingsPanel}
+          <div style={{ minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <Segmented<'parts' | 'layers' | 'logos'>
+              value={tab === 'styles' ? 'parts' : tab}
+              onChange={setTab}
+              options={[
+                { value: 'parts', label: 'Parts' },
+                { value: 'layers', label: `Layers ${doc.layers.length}` },
+                { value: 'logos', label: 'Logos' },
+              ]}
+            />
+            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', display: 'grid', gap: 10, alignContent: 'start' }}>
+              {tab === 'layers' ? (
+                <>
+                  {layersPanel}
+                  {layerSection}
+                </>
+              ) : tab === 'logos' ? (
+                logosSection
+              ) : (
+                <>
+                  {toolSection}
+                  {partsPanel}
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}

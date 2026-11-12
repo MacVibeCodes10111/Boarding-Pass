@@ -63,7 +63,7 @@ export function MainMenu(props: {
         <div style={{ height: 1, background: C.line, margin: '6px 10px' }} />
         {row('edit', 'Name, colours and logo', () => setDetails(true))}
         {row('fleet', 'Livery', away(props.onOpenLivery))}
-        {row('layers', 'Appearance', away(openAppearance))}
+        {row('palette', 'Appearance', away(openAppearance))}
         <div style={{ height: 1, background: C.line, margin: '6px 10px' }} />
         {row('help', 'How to play', away(props.onTour))}
         {row('letter', 'Credits', () => setCredits(true))}

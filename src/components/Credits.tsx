@@ -70,9 +70,9 @@ export function CreditsModal({ onClose }: { onClose: () => void }) {
             {link('https://www.geonames.org', 'GeoNames')}, under the Creative Commons Attribution 4.0 licence (CC BY 4.0). The game adds up the people living around each
             airport from its towns and cities.
           </Item>
-          <Item name="Cargo ramps:">
+          <Item name="Cargo ramps and runways:">
             Map data © {link('https://www.openstreetmap.org/copyright', 'OpenStreetMap contributors')}, under the Open Database Licence. Freighters park on the cargo
-            aprons and stands mapped there.
+            aprons and stands mapped there, and about 860 airports take their runways from it.
           </Item>
           <Item name="Aircraft pictures:">
             Made from the {link('https://www.airline-empires.com', 'Airline Empires')} community's free aircraft templates, by their artists, among them Atsuk0,

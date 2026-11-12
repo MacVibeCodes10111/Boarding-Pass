@@ -46,7 +46,7 @@ export interface Palette {
   scheme: 'dark' | 'light';
 }
 
-/** The original look (v2.5 on): deep navy, amber highlight, orange aircraft. */
+/** Night shift, the original look (v2.5 on): deep navy, amber highlight, orange aircraft. The map's own colours come from it too. */
 export const DEFAULT_PALETTE: Palette = {
   bg: '#0c1320',
   panel: '#131c2e',
@@ -79,6 +79,45 @@ export const DEFAULT_PALETTE: Palette = {
   scheme: 'dark',
 };
 
+/**
+ * Daylight, the look a new player gets (v3.2): soft and light. Cool off-white
+ * surfaces, slate text and a calm blue highlight.
+ */
+export const DAYLIGHT_PALETTE: Palette = {
+  bg: '#eef2f7',
+  panel: '#fbfcfe',
+  panelAlt: '#f1f4f9',
+  raised: '#e7ecf4',
+  line: '#e2e7ef',
+  lineSoft: '#ebeff5',
+  border: '#cfd7e3',
+  text: '#1c2533',
+  textSoft: '#2d3949',
+  textDim: '#4a586c',
+  muted: '#68768b',
+  faint: '#9aa6b7',
+  brand: '#3f72e8',
+  brandInk: '#ffffff',
+  accent: '#2f6596',
+  accentStrong: '#3a6ea5',
+  yellow: '#3f72e8',
+  green: '#12804f',
+  greenStrong: '#15935b',
+  amber: '#9a6200',
+  amberStrong: '#b87a10',
+  red: '#cf3a44',
+  redSoft: '#b9363f',
+  redDeep: '#fbe4e6',
+  purple: '#6d4fd6',
+  orange: '#c2660a',
+  fleet: '#e5486f',
+  friends: '#8b5cf6',
+  scheme: 'light',
+};
+
+/** How panels are drawn: 'glass' is the liquid glass look (clearer, brighter edges); missing is the standard one. */
+export type ThemeFinish = 'glass';
+
 export interface ThemeSpec {
   /** Preset id, or 'custom' once a colour has been changed. */
   preset: string;
@@ -88,6 +127,8 @@ export interface ThemeSpec {
   fleet: string | null;
   /** Friends' aircraft. Missing or null: the theme's own (themes saved before there was a choice have none). */
   friends?: string | null;
+  /** Liquid glass panels. Any theme can have it. */
+  finish?: ThemeFinish;
 }
 
 export interface ThemePreset extends ThemeSpec {
@@ -96,7 +137,9 @@ export interface ThemePreset extends ThemeSpec {
 }
 
 export const THEME_PRESETS: ThemePreset[] = [
-  { preset: 'night', name: 'Night shift', blurb: 'Deep navy with an amber highlight. The original.', base: '#0c1320', accent: '#f5a524', fleet: '#f97316', friends: '#e879f9' },
+  { preset: 'daylight', name: 'Daylight', blurb: 'Soft and light, with a calm blue.', base: DAYLIGHT_PALETTE.bg, accent: DAYLIGHT_PALETTE.brand, fleet: DAYLIGHT_PALETTE.fleet, friends: DAYLIGHT_PALETTE.friends },
+  { preset: 'dusk', name: 'Dusk', blurb: 'Soft slate with a lavender highlight.', base: '#232a3b', accent: '#a5b4fc', fleet: '#7dd3fc', friends: '#f9a8d4' },
+  { preset: 'night', name: 'Night shift', blurb: 'Deep navy and amber. The original.', base: '#0c1320', accent: '#f5a524', fleet: '#f97316', friends: '#e879f9' },
   { preset: 'studio-black', name: 'Studio black', blurb: 'Black and white, with one colour of your choice.', base: '#000000', accent: '#ff4f1f', fleet: null, friends: '#22d3ee' },
   { preset: 'studio-white', name: 'Studio white', blurb: 'White and black, with one colour of your choice.', base: '#ffffff', accent: '#2f54ff', fleet: null, friends: '#c026d3' },
   { preset: 'tarmac', name: 'Tarmac', blurb: 'Asphalt grey and taxiway yellow.', base: '#16171a', accent: '#ffd21f', fleet: null, friends: '#a78bfa' },
@@ -110,7 +153,7 @@ export const friendsColourOf = (spec: ThemeSpec): string =>
 /** Quick picks next to the colour picker. */
 export const POP_COLOURS = ['#ff3b30', '#ff4f1f', '#ff9500', '#ffd21f', '#34c759', '#00c7be', '#0a84ff', '#2f54ff', '#5e5ce6', '#bf5af2', '#ff2d92', '#ffffff', '#000000'];
 
-export const DEFAULT_THEME: ThemeSpec = { preset: 'night', base: DEFAULT_PALETTE.bg, accent: DEFAULT_PALETTE.brand, fleet: DEFAULT_PALETTE.fleet, friends: DEFAULT_PALETTE.friends };
+export const DEFAULT_THEME: ThemeSpec = { preset: 'daylight', base: DAYLIGHT_PALETTE.bg, accent: DAYLIGHT_PALETTE.brand, fleet: DAYLIGHT_PALETTE.fleet, friends: DAYLIGHT_PALETTE.friends };
 
 // ---------------------------------------------------------------------------
 // Colour maths (sRGB hex, HSL and HSV, WCAG contrast)
@@ -210,14 +253,15 @@ export const isLightColour = (hex: string) => luminance(hex) > 0.35;
 // Palette from a theme
 // ---------------------------------------------------------------------------
 export function buildPalette(spec: ThemeSpec): Palette {
-  const base = normHex(spec.base) ?? DEFAULT_PALETTE.bg;
-  const accent = normHex(spec.accent) ?? DEFAULT_PALETTE.brand;
+  const base = normHex(spec.base) ?? DAYLIGHT_PALETTE.bg;
+  const accent = normHex(spec.accent) ?? DAYLIGHT_PALETTE.brand;
   const fleet = (spec.fleet && normHex(spec.fleet)) || accent;
   const friends = friendsColourOf(spec);
   const brandInk = accent === DEFAULT_PALETTE.brand ? DEFAULT_PALETTE.brandInk : inkFor(accent);
 
-  // The original background keeps its hand-tuned surfaces and text exactly
+  // The two hand-tuned backgrounds keep their surfaces and text exactly
   if (base === DEFAULT_PALETTE.bg) return { ...DEFAULT_PALETTE, brand: accent, yellow: accent, brandInk, fleet, friends };
+  if (base === DAYLIGHT_PALETTE.bg) return { ...DAYLIGHT_PALETTE, brand: accent, yellow: accent, brandInk: accent === DAYLIGHT_PALETTE.brand ? DAYLIGHT_PALETTE.brandInk : inkFor(accent), fleet, friends };
 
   const light = isLightColour(base);
   const [h, s0, l0] = rgbToHsl(hexToRgb(base));
@@ -260,7 +304,7 @@ export function loadThemeSpec(): ThemeSpec {
     const v = JSON.parse(localStorage.getItem(THEME_KEY) ?? 'null');
     if (v && typeof v.base === 'string' && typeof v.accent === 'string' && normHex(v.base) && normHex(v.accent)) {
       const friends = typeof v.friends === 'string' ? normHex(v.friends) : null;
-      return { preset: typeof v.preset === 'string' ? v.preset : 'custom', base: normHex(v.base)!, accent: normHex(v.accent)!, fleet: v.fleet && normHex(v.fleet) ? normHex(v.fleet) : null, friends };
+      return { preset: typeof v.preset === 'string' ? v.preset : 'custom', base: normHex(v.base)!, accent: normHex(v.accent)!, fleet: v.fleet && normHex(v.fleet) ? normHex(v.fleet) : null, friends, ...(v.finish === 'glass' ? { finish: 'glass' as const } : {}) };
     }
   } catch {
     /* storage off: the default look */
@@ -276,7 +320,16 @@ export function saveThemeSpec(spec: ThemeSpec) {
   }
 }
 
-/** A theme passed in the address (from the website): ?theme=studio-black or ?bg=000000&hl=ff4f1f&ac=ff4f1f */
+/** True once a look has been picked on this device (a player who never picked one gets the default). */
+export function hasSavedTheme(): boolean {
+  try {
+    return localStorage.getItem(THEME_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/** A theme passed in the address (from the website): ?theme=studio-black or ?bg=000000&hl=ff4f1f&ac=ff4f1f (&glass=1 for liquid glass) */
 export function themeFromUrl(search: string): ThemeSpec | null {
   try {
     const q = new URLSearchParams(search);
@@ -284,8 +337,9 @@ export function themeFromUrl(search: string): ThemeSpec | null {
     const bg = q.get('bg') && normHex(q.get('bg')!);
     const hl = q.get('hl') && normHex(q.get('hl')!);
     const ac = q.get('ac') && normHex(q.get('ac')!);
-    if (bg && hl) return { preset: preset?.preset ?? 'custom', base: bg, accent: hl, fleet: ac || null };
-    if (preset) return { preset: preset.preset, base: preset.base, accent: preset.accent, fleet: preset.fleet, friends: preset.friends };
+    const finish = q.get('glass') === '1' ? { finish: 'glass' as const } : {};
+    if (bg && hl) return { preset: preset?.preset ?? 'custom', base: bg, accent: hl, fleet: ac || null, ...finish };
+    if (preset) return { preset: preset.preset, base: preset.base, accent: preset.accent, fleet: preset.fleet, friends: preset.friends, ...finish };
   } catch {
     /* ignore */
   }

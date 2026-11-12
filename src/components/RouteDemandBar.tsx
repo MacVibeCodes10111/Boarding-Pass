@@ -30,6 +30,8 @@ export function RouteDemandBar({ origin, destination, distanceNm, playerHubs, al
   const paxPct = Math.round((served.dailySeats / totalDem) * 100);
   const cargoDem = Math.max(0.5, demand.dailyCargoTons);
   const cargoPct = Math.round((served.dailyCargoTons / cargoDem) * 100);
+  const who = demand.kind === 'business' ? ', many on business' : demand.kind === 'leisure' ? ', mostly on holiday' : '';
+  const oneWay = demand.cargo.direction >= 1.2 ? 'More freight this way than back.' : demand.cargo.direction <= 0.84 ? 'Less freight this way than back.' : '';
   const bonuses = [
     demand.isHubToHub ? `hub to hub +${demand.hubBonusPct}%` : '',
     demand.connectingBoostPct > 0 ? `connections +${demand.connectingBoostPct}%` : '',
@@ -61,7 +63,7 @@ export function RouteDemandBar({ origin, destination, distanceNm, playerHubs, al
       )}
       {demand.marketPax !== null && (
         <div className="bp-route-market" style={{ fontSize: 11.5, color: C.muted, margin: '-2px 0 8px', lineHeight: 1.45 }}>
-          {demand.marketPax.toLocaleString()} travellers a day.{' '}
+          {demand.marketPax.toLocaleString()} travellers a day{who}.{' '}
           {rivals.length > 0
             ? `Flown by ${rivals
                 .slice(0, 4)
@@ -86,7 +88,16 @@ export function RouteDemandBar({ origin, destination, distanceNm, playerHubs, al
           ))}
         </div>
       )}
-      {row('Cargo per day', `${served.dailyCargoTons} of ${cargoDem} t (${cargoPct}%), market $${demand.refFares.cargoPerTon}/t`, cargoPct, '#c9a368')}
+      {row('Cargo per day', `you fly ${served.dailyCargoTons} of ${cargoDem} t (${cargoPct}%)`, cargoPct, '#c9a368')}
+      <div className="num" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 4, fontSize: 11.5, color: C.muted, margin: '-2px 0 8px' }}>
+        <span title="Mail and express. Any aircraft carries them; they sell best on overnight flights.">
+          Parcels <b style={{ color: C.textDim, fontWeight: 600 }}>{demand.cargo.parcels} t</b> at ${demand.refFares.parcelPerTon.toLocaleString()}/t
+        </span>
+        <span title="Pallets and containers. Freighters and widebodies carry it in full, smaller jets only part of a hold, turboprops none.">
+          Freight <b style={{ color: C.textDim, fontWeight: 600 }}>{demand.cargo.freight} t</b> at ${demand.refFares.cargoPerTon.toLocaleString()}/t
+        </span>
+        {!compact && oneWay && <span style={{ gridColumn: '1 / -1' }}>{oneWay}</span>}
+      </div>
     </div>
   );
 }
