@@ -159,6 +159,8 @@ function ClockButton(props: {
   onMapSpeed: (s: MapSpeed) => void;
   /** Desktop: the map time on the button too, and the panel under the floating bar. */
   wide?: boolean;
+  /** Sits in its own bubble: no outline of its own unless it's open or paused. */
+  bare?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
@@ -195,7 +197,7 @@ function ClockButton(props: {
           borderRadius: 10,
           cursor: 'pointer',
           background: open ? C.raised : paused ? `${C.brand}22` : 'transparent',
-          border: `1px solid ${paused ? C.brand : open ? C.border : C.line}`,
+          border: `1px solid ${paused ? C.brand : open ? C.border : props.bare ? 'transparent' : C.line}`,
           color: C.text,
           font: 'inherit',
           textAlign: 'left',
@@ -316,6 +318,9 @@ export function TopBar(props: {
   const w = props.weekSoFar;
   const career = props.gameMode !== 'sandbox';
   const { rate, debt } = props.money;
+  // Desktop and tablet: two floating bubbles (airline and money; look and clock), the map showing between them
+  const bubble = (children: React.ReactNode, extra?: React.CSSProperties) =>
+    phone ? children : <div className="bp-topbubble" style={{ ...glass(), display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, borderRadius: 18, pointerEvents: 'auto', ...extra }}>{children}</div>;
   return (
     <header
       className={phone ? 'bp-topbar bp-glass' : 'bp-topbar'}
@@ -323,10 +328,10 @@ export function TopBar(props: {
       style={
         phone
           ? { position: 'absolute', top: 0, left: 0, right: 0, height: 'var(--bp-top-h)', display: 'flex', alignItems: 'stretch', gap: 10, padding: '0 6px 0 0', zIndex: 50, borderRadius: 0, borderWidth: '0 0 1px 0' }
-          : // One floating glass bar across the top, its sections spread out along it
-            { ...glass(), position: 'absolute', top: 10, left: 10, right: 10, height: 54, display: 'flex', alignItems: 'center', gap: 6, padding: '0 8px 0 4px', borderRadius: 18, zIndex: 50 }
+          : { position: 'absolute', top: 10, left: 10, right: 10, height: 54, display: 'flex', alignItems: 'stretch', justifyContent: 'space-between', gap: 10, zIndex: 50, pointerEvents: 'none' }
       }
     >
+      {bubble(<>
       {/* Airline mark and name */}
       <button
         type="button"
@@ -367,7 +372,7 @@ export function TopBar(props: {
       {!phone && <Divider />}
       <div
         className="bp-topbar-strip bp-scroll-x"
-        style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'stretch', justifyContent: phone ? undefined : 'space-between', gap: phone ? 14 : 6, alignSelf: 'stretch' }}
+        style={{ flex: phone ? 1 : '0 1 auto', minWidth: 0, display: 'flex', alignItems: 'stretch', gap: phone ? 14 : 6, alignSelf: 'stretch' }}
       >
         <div className="bp-topcard" style={topCard(phone ? { gap: 12, padding: '0 2px' } : undefined)}>
           <div ref={moneyRef} style={{ position: 'relative', display: 'flex' }}>
@@ -460,9 +465,12 @@ export function TopBar(props: {
         </div>
 
       </div>
+      </>, { padding: '0 10px 0 4px' })}
+      {bubble(<>
       {!phone && <IconButton icon="palette" label="Appearance" size={38} iconSize={19} onClick={openAppearance} />}
       {/* Both clocks live behind one button */}
       <ClockButton
+        bare={!phone}
         econMin={props.econMin}
         econSpeed={props.econSpeed}
         onEconSpeed={props.onEconSpeed}
@@ -471,6 +479,7 @@ export function TopBar(props: {
         onMapSpeed={props.onMapSpeed}
         wide={wideClock}
       />
+      </>, { flex: 'none', padding: '0 7px', gap: 4 })}
     </header>
   );
 }
