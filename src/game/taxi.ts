@@ -14,7 +14,7 @@
 // ============================================================================
 import { LINEUP_MIN, VACATE_MIN } from './runwayUse';
 import type { LonLat } from './geo';
-import { cargoAreasFor, inRing, metresToRing } from './cargoAprons';
+import { cargoAreasFor, inRing, metresToRing, type CargoAreas } from './cargoAprons';
 import { filletPath } from './navdata';
 
 type XY = [number, number];
@@ -120,6 +120,10 @@ const HOLD_M = 75; // hold-short line distance from the runway centreline
 const ENTRY_LAT_M = 110; // how far from the centreline a runway entry/exit node may be
 
 const sub = (a: XY, b: XY): XY => [a[0] - b[0], a[1] - b[1]];
+/** Cargo stands an airport with cargo areas should have; more are laid out on its cargo ramp when the map has fewer. */
+const CARGO_STANDS_WANTED = 16;
+/** Fewest stands an airport is left with: below this, spots are laid out beside its taxiways. */
+const MIN_STANDS = 4;
 const dist = (a: XY, b: XY) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const unitFromHdg = (hdg: number): XY => [Math.sin(hdg * D2R), Math.cos(hdg * D2R)];
 const bearingOf = (from: XY, to: XY) => ((Math.atan2(to[0] - from[0], to[1] - from[1]) / D2R) + 360) % 360;
@@ -202,6 +206,8 @@ export class TaxiNetwork {
   realGates = false;
   /** Per stand: 0 any aircraft, 1 cargo stand (freighters first), 2 remote stand (freighters where no cargo areas are mapped). Null until known. */
   private standUse: number[] | null = null;
+  /** Runway centrelines in this frame (cargo stands keep off them). */
+  rwyLines: [XY, XY][] = [];
   private routes = new Map<string, TaxiRoute | null>();
   /** Planned taxis per movement, and the space–time they book (grid cell → [from, to, from, to…] minutes). */
   readonly trajs = new Map<string, TaxiTrajectory>();
@@ -641,33 +647,149 @@ export class TaxiNetwork {
     return this.findGate(m, m.visitStart, now, m.visit.startsWith('p') && now >= needFrom);
   }
 
+  /** How many stands are for passenger aircraft and for freighters (cargo or remote), once the cargo data has loaded. */
+  standCounts(): { passenger: number; cargo: number } | null {
+    const use = this.cargoStandUse();
+    if (!use) return null;
+    return { passenger: use.filter((u) => u === 0).length, cargo: use.filter((u) => u !== 0).length };
+  }
+
   /** Which stands are for cargo (worked out once the cargo data has loaded). */
   private cargoStandUse(): number[] | null {
     if (this.standUse) return this.standUse;
     const areas = cargoAreasFor(this.iata);
     if (areas === undefined || this.stands.length === 0) return null;
-    const ll = this.stands.map((s) => this.toLL(s.g));
-    let use: number[] = ll.map((p) =>
-      areas &&
-      (areas.a.some((ring) => inRing(p, ring)) ||
-        (areas.b ?? []).some((ring) => inRing(p, ring) || metresToRing(p, ring) < 150) ||
-        (areas.p ?? []).some((q) => Math.hypot((q[0] - p[0]) * Math.cos((p[1] * Math.PI) / 180), q[1] - p[1]) * 111_320 < 60))
-        ? 1
-        : 0
-    );
-    if (!use.includes(1) && this.stands.length >= 6) {
-      // No cargo areas mapped: the stands farthest from the middle of the others are the remote ones
-      const cx = this.stands.reduce((a, s) => a + s.g[0], 0) / this.stands.length;
-      const cy = this.stands.reduce((a, s) => a + s.g[1], 0) / this.stands.length;
-      const d = this.stands.map((s) => Math.hypot(s.g[0] - cx, s.g[1] - cy));
-      const cut = [...d].sort((a, b) => a - b)[Math.floor(d.length * 0.7)];
-      use = d.map((x) => (x >= cut ? 2 : 0));
+    const isCargo = (s: Stand) => {
+      const p = this.toLL(s.g);
+      return Boolean(
+        areas &&
+          (areas.a.some((ring) => inRing(p, ring)) ||
+            (areas.b ?? []).some((ring) => inRing(p, ring) || metresToRing(p, ring) < 150) ||
+            (areas.p ?? []).some((q) => Math.hypot((q[0] - p[0]) * Math.cos((p[1] * Math.PI) / 180), q[1] - p[1]) * 111_320 < 60))
+      );
+    };
+    // The map's gates are mostly at the terminals: where the cargo ramp has
+    // few or none, lay stands out on it so freighters don't park at the terminals
+    if (areas) {
+      const have = this.stands.filter(isCargo).length;
+      if (have < CARGO_STANDS_WANTED) this.addCargoStands(areas, CARGO_STANDS_WANTED - have);
+    }
+    let use: number[] = this.stands.map((s) => (isCargo(s) ? 1 : 0));
+    const n = this.stands.length;
+    /** Stand indices, farthest first by `d`. */
+    const farthest = (d: number[]) => d.map((_, i) => i).sort((x, y) => d[y] - d[x] || x - y);
+    if (!use.includes(1) && n >= 2) {
+      // No cargo stands: the stands farthest from the middle of the others are the remote ones,
+      // for freighters (at least one, so every airport has somewhere for them)
+      const cx = this.stands.reduce((a, s) => a + s.g[0], 0) / n;
+      const cy = this.stands.reduce((a, s) => a + s.g[1], 0) / n;
+      use = use.map(() => 0);
+      for (const i of farthest(this.stands.map((s) => Math.hypot(s.g[0] - cx, s.g[1] - cy))).slice(0, Math.max(1, Math.floor(n * 0.3)))) use[i] = 2;
+    }
+    if (areas && n >= 2 && !use.includes(0)) {
+      // Every stand is by the cargo areas (small airports): the half farthest from them take passengers
+      const fromCargo = this.stands.map((s) => {
+        const p = this.toLL(s.g);
+        const kx = Math.cos((p[1] * Math.PI) / 180) * 111_320;
+        return Math.min(
+          ...areas.a.map((r) => (inRing(p, r) ? 0 : metresToRing(p, r))),
+          ...(areas.b ?? []).map((r) => (inRing(p, r) ? 0 : metresToRing(p, r))),
+          ...(areas.p ?? []).map((q) => Math.hypot((q[0] - p[0]) * kx, (q[1] - p[1]) * 111_320)),
+          Infinity
+        );
+      });
+      for (const i of farthest(fromCargo).slice(0, Math.ceil(n / 2))) use[i] = 0;
     }
     this.standUse = use;
     return use;
   }
 
+  /**
+   * Adds up to `max` stands on the cargo aprons and beside the cargo buildings,
+   * each joined to the nearest taxiway (2026-11-13: freighters were parking at
+   * the terminals, because the map rarely has gates on the cargo ramp).
+   */
+  private addCargoStands(areas: CargoAreas, max: number) {
+    const nearRunway = (p: XY, d: number) => this.rwyLines.some(([a, b]) => projectOnSeg(p, a, b).d < d);
+    const nearestEdge = (p: XY, maxD: number) => {
+      let best: { e: Edge; d: number; q: XY } | null = null;
+      for (const e of this.edges) {
+        const pr = projectOnSeg(p, this.node(e.a), this.node(e.b));
+        if (pr.d <= maxD && (!best || pr.d < best.d)) best = { e, d: pr.d, q: pr.q };
+      }
+      return best;
+    };
+    const ringXY = (ring: LonLat[]) => ring.map((c) => this.toXY(c));
+    const inPoly = (p: XY, ring: XY[]) => {
+      let inn = false;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const a = ring[i];
+        const b = ring[j];
+        if (a[1] > p[1] !== b[1] > p[1] && p[0] < ((b[0] - a[0]) * (p[1] - a[1])) / (b[1] - a[1] || 1e-9) + a[0]) inn = !inn;
+      }
+      return inn;
+    };
+    const ringDist = (p: XY, ring: XY[]) => {
+      let d = Infinity;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) d = Math.min(d, projectOnSeg(p, ring[j], ring[i]).d);
+      return d;
+    };
+    const buildings = (areas.b ?? []).map(ringXY);
+    const added: Stand[] = [];
+    const tryAdd = (g: XY, minLead: number, maxLead: number) => {
+      if (added.length >= max) return;
+      if (Math.hypot(g[0], g[1]) > 6000 || nearRunway(g, 120) || buildings.some((r) => inPoly(g, r))) return;
+      if ([...this.stands, ...added].some((s) => dist(s.g, g) < 48)) return;
+      const hit = nearestEdge(g, maxLead);
+      if (!hit || hit.d < minLead || nearRunway(hit.q, 80)) return;
+      added.push({ ref: '', g, j: hit.q, ea: hit.e.a, eb: hit.e.b, clash: [] });
+    };
+    // On the cargo aprons, in a grid, then nose-in along the cargo buildings
+    for (const ring of areas.a.map(ringXY)) {
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (const [x, y] of ring) {
+        x0 = Math.min(x0, x);
+        x1 = Math.max(x1, x);
+        y0 = Math.min(y0, y);
+        y1 = Math.max(y1, y);
+      }
+      for (let x = x0 + 25; x < x1; x += 50) for (let y = y0 + 25; y < y1; y += 50) if (inPoly([x, y], ring) && ringDist([x, y], ring) >= 20) tryAdd([x, y], 25, 140);
+    }
+    for (const ring of buildings) {
+      const c: XY = [ring.reduce((a, p) => a + p[0], 0) / ring.length, ring.reduce((a, p) => a + p[1], 0) / ring.length];
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const a = ring[j];
+        const b = ring[i];
+        const L = dist(a, b);
+        if (L < 40) continue;
+        // the side facing away from the building's middle
+        let nx = -(b[1] - a[1]) / L;
+        let ny = (b[0] - a[0]) / L;
+        const mid: XY = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        if ((mid[0] - c[0]) * nx + (mid[1] - c[1]) * ny < 0) {
+          nx = -nx;
+          ny = -ny;
+        }
+        for (let s = 25; s <= L - 25; s += 50) tryAdd([a[0] + ((b[0] - a[0]) * s) / L + nx * 12, a[1] + ((b[1] - a[1]) * s) / L + ny * 12], 30, 160);
+      }
+    }
+    for (const p of areas.p ?? []) tryAdd(this.toXY(p), 20, 120);
+    if (!added.length) return;
+    const first = this.stands.length;
+    this.stands.push(...added);
+    // Stands whose parked aircraft would touch are used one at a time
+    const spots = this.stands.map((s) => parkingSpot(s, 25).c);
+    for (let a = first; a < this.stands.length; a++)
+      for (let b = 0; b < a; b++)
+        if (dist(spots[a], spots[b]) < 42) {
+          this.stands[a].clash.push(b);
+          this.stands[b].clash.push(a);
+        }
+  }
+
   private findGate(m: GateRequest, start: number, now: number, mayClear: boolean): number {
+    // first, as it can add cargo stands
+    const use = this.cargoStandUse();
     const n = this.stands.length;
     const end = m.visitEnd;
     const base = hashStr(m.pref) % n;
@@ -687,7 +809,6 @@ export class TaxiNetwork {
     };
     // Freighters park on cargo stands (or remote ones), passenger aircraft
     // keep off cargo stands; either uses any stand when its own are full
-    const use = this.cargoStandUse();
     const order = !use ? [-1] : m.cargo ? [1, 2, 0] : [0, 2, 1];
     for (const want of order)
       for (let k = 0; k < n; k++) {
@@ -986,7 +1107,8 @@ export function buildTaxiNetwork(
     c++;
   }
   const kept = edges.filter((e) => comp[e.a] === bestComp);
-  if (kept.length < 6) return null;
+  // Even a stub of taxiway will do (2026-11-13: it was 6 pieces, which left 185 small airports with no ground at all)
+  if (kept.length < 2) return null;
   net.edges = kept;
   net.adj = xs.map(() => []);
   kept.forEach((e, i) => {
@@ -996,6 +1118,7 @@ export function buildTaxiNetwork(
 
   // --- Stands ----------------------------------------------------------------
   const rwys = runways.map((r) => [net.toXY(r.a), net.toXY(r.b)] as [XY, XY]);
+  net.rwyLines = rwys;
   const nearRunway = (p: XY, d: number) => rwys.some(([a, b]) => projectOnSeg(p, a, b).d < d);
   const EG = 60;
   const egrid = new Map<string, number[]>();
@@ -1055,6 +1178,16 @@ export function buildTaxiNetwork(
     if (!hit || nearRunway(hit.q, 80)) continue;
     stands.push({ ref: c.ref, g, j: hit.q, ea: hit.e.a, eb: hit.e.b, clash: [] });
   }
+  // Off either end of a runway, along its line: approach and run-up areas, not parking
+  const offRunwayEndAny = (p: XY) =>
+    rwys.some(([a, b]) => {
+      const ab = sub(b, a);
+      const L = Math.hypot(ab[0], ab[1]) || 1;
+      const u: XY = [ab[0] / L, ab[1] / L];
+      const s0 = (p[0] - a[0]) * u[0] + (p[1] - a[1]) * u[1];
+      const lat = Math.abs(u[0] * (p[1] - a[1]) - u[1] * (p[0] - a[0]));
+      return lat < 250 && (s0 < 0 ? -s0 : s0 - L) > 0 && (s0 < 0 ? -s0 : s0 - L) < 900;
+    });
   net.realGates = stands.length >= 3;
   if (!net.realGates) {
     // No gates in the tiles (most smaller airports). Aircraft park on the
@@ -1078,16 +1211,7 @@ export function buildTaxiNetwork(
       return d;
     };
     const onApron = (p: XY, margin: number) => aprons.some((r) => inPoly(p, r) || ringDist(p, r) < margin);
-    // Off either end of a runway, along its line: approach and run-up areas, not parking
-    const offRunwayEnd = (p: XY) =>
-      rwys.some(([a, b]) => {
-        const ab = sub(b, a);
-        const L = Math.hypot(ab[0], ab[1]) || 1;
-        const u: XY = [ab[0] / L, ab[1] / L];
-        const s0 = (p[0] - a[0]) * u[0] + (p[1] - a[1]) * u[1];
-        const lat = Math.abs(u[0] * (p[1] - a[1]) - u[1] * (p[0] - a[0]));
-        return lat < 250 && (s0 < 0 ? -s0 : s0 - L) > 0 && (s0 < 0 ? -s0 : s0 - L) < 900;
-      });
+    const offRunwayEnd = offRunwayEndAny;
     for (let i = 0; i < xs.length; i++) {
       if (net.adj[i].length !== 1) continue;
       const g = P(i);
@@ -1123,6 +1247,53 @@ export function buildTaxiNetwork(
           }
         if (stands.length >= 120) break;
       }
+    }
+  }
+  if (stands.length < MIN_STANDS) {
+    // Still almost nowhere to park: small airports whose apron sits right by
+    // the runway (2026-11-13). First the map's own gates with a smaller
+    // runway margin, then spots beside the taxiways on the side away from the
+    // runway, as far from it as the airport allows.
+    const rwyDist = (p: XY) => rwys.reduce((m, [a, b]) => Math.min(m, projectOnSeg(p, a, b).d), Infinity);
+    const free = (g: XY) => !stands.some((st) => dist(st.g, g) < 45);
+    for (const c of candidates) {
+      if (stands.length >= MIN_STANDS * 2) break;
+      if (!inside(c.p) || !free(c.p) || rwyDist(c.p) < 50) continue;
+      const hit = nearestEdge(c.p, 250);
+      if (!hit || rwyDist(hit.q) < 30) continue;
+      stands.push({ ref: c.ref, g: c.p, j: hit.q, ea: hit.e.a, eb: hit.e.b, clash: [] });
+    }
+    // Taxiway points, farthest from the runways first (the map splits taxiways into short pieces)
+    const pts: { q: XY; e: Edge; d: number }[] = [];
+    for (const e of kept) {
+      const a = P(e.a);
+      const b = P(e.b);
+      const L = dist(a, b);
+      for (let t = 0; t <= L; t += 35) {
+        const q: XY = L ? [a[0] + ((b[0] - a[0]) * t) / L, a[1] + ((b[1] - a[1]) * t) / L] : a;
+        pts.push({ q, e, d: rwyDist(q) });
+      }
+    }
+    pts.sort((x, y) => y.d - x.d);
+    // the last pass is a last resort: at least one stand for passengers and one for freighters
+    for (const [jMin, gMin, ends, lead, loose] of [[150, 200, true, 50, false], [80, 130, true, 50, false], [30, 75, false, 50, false], [10, 45, false, 40, true]] as const) {
+      if (loose && stands.length >= 2) break;
+      for (const { q: j, e, d } of pts) {
+        if (stands.length >= MIN_STANDS * 2 || d < jMin) break;
+        // straight away from the nearest runway
+        let best: XY | null = null;
+        for (const [a, b] of rwys) {
+          const pr = projectOnSeg(j, a, b);
+          if (!best || pr.d < dist(j, best)) best = pr.q;
+        }
+        const away = best ? sub(j, best) : ([0, 1] as XY);
+        const l = Math.hypot(away[0], away[1]) || 1;
+        const g: XY = [j[0] + (away[0] / l) * lead, j[1] + (away[1] / l) * lead];
+        if (!inside(g) || rwyDist(g) < gMin || (ends && offRunwayEndAny(g)) || !free(g)) continue;
+        if (!loose && (nearestEdge(g, 30)?.d ?? Infinity) < 30) continue; // another taxiway runs there
+        stands.push({ ref: '', g, j, ea: e.a, eb: e.b, clash: [] });
+      }
+      if (stands.length >= MIN_STANDS) break;
     }
   }
   const collator = typeof Intl !== 'undefined' ? new Intl.Collator('en', { numeric: true }) : null;
@@ -1756,7 +1927,7 @@ export class TaxiRegistry {
         }
       });
       const old = this.sigs.get(ap.iata) ?? 0;
-      if (sig < 30 || sig <= old * 1.03) continue;
+      if (sig < 8 || sig <= old * 1.03) continue;
       this.sigs.set(ap.iata, sig);
       const net = buildTaxiNetwork(ap.iata, [ap.lon, ap.lat], ap.radiusM, mine, ap.runways);
       if (net) {

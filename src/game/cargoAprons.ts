@@ -32,6 +32,12 @@ export function loadCargoAprons(): void {
     });
 }
 
+/** Sets the cargo areas directly (tests). */
+export function setCargoAreasForTests(d: Record<string, CargoAreas>): void {
+  data = d;
+  started = true;
+}
+
 /** The airport's cargo areas; null when none are mapped, undefined while still loading. */
 export function cargoAreasFor(iata: string): CargoAreas | null | undefined {
   if (!data) return undefined;

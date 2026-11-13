@@ -13,6 +13,12 @@ import { getActiveRunwayForAirport, getFlightGeometryForDeparture, playerTaxiMin
 import { dayIndexOf, daysOrAll, MIN_PER_DAY } from './time';
 import type { Airport, RadarIconGroup, ScheduledFlight } from './types';
 import { ARR_PLAN_AHEAD_MIN, type GroundMove, type RunwayPoint } from './taxi';
+import { AIRCRAFT_BY_ID } from './aircraftCatalog';
+
+// IATA codes of freighters other airlines' flights can carry (friends' flights carry the game's own aircraft ids)
+const FREIGHTER_CODES = new Set(['74F', '74N', '74X', '74Y', '75F', '76F', '77F', '77X', '33X', '33F', 'M1F', 'ABX', 'ABY', '72F', '73F', '31F', '32F']);
+/** A freighter: parks on a cargo stand (2026-11-13: other airlines' and friends' freighters too). */
+const isFreighter = (typeCode: string) => FREIGHTER_CODES.has(typeCode) || Boolean(AIRCRAFT_BY_ID.get(typeCode)?.is_cargo);
 
 /** Aircraft length per silhouette group, metres (parking distance, drawing at true scale). */
 export const GROUP_LENGTH_M: Record<RadarIconGroup, number> = {
@@ -98,6 +104,7 @@ export function aiDepartureMove(t: AiTraffic, f: AiFlight, depDay: number, airpo
     visit: key,
     pref: t.airlines[f.airline]?.code ?? String(f.airline),
     halfLen: GROUP_LENGTH_M[f.group] / 2,
+    cargo: isFreighter(f.typeCode),
     kind: 'dep',
     // The runway in use at takeoff
     rwy: depRunway(airport, depDay, f.depUtcMin + aiTaxiMin(f), f.depLane ?? 0, aiRunwayFt(f)),
@@ -121,6 +128,7 @@ export function aiArrivalMove(t: AiTraffic, f: AiFlight, depDay: number, airport
     visit: key,
     pref: t.airlines[f.airline]?.code ?? String(f.airline),
     halfLen: GROUP_LENGTH_M[f.group] / 2,
+    cargo: isFreighter(f.typeCode),
     kind: 'arr',
     rwy: arrStop(airport, depDay, arrMin, f.arrLane ?? 0, aiRunwayFt(f)),
     flowRwy: depRunway(airport, depDay, arrMin),
