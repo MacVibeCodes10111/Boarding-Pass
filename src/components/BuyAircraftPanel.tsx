@@ -226,7 +226,6 @@ function ModelView(props: BuyAircraftPanelProps & { onBack: () => void }) {
   // where new aircraft go: the airline itself, or the one subsidiary that can fly the type (passenger types
   // to the regional brand, freighters to the cargo brand), all of them or some
   const fit = props.subsidiaries.find((b) => brandAllows(b.kind, m));
-  const cantFly = props.subsidiaries.filter((b) => b !== fit);
   const [toBrandRaw, setToBrand] = useState(0);
   const toBrand = fit ? Math.min(toBrandRaw, count) : 0;
   const split = fit && toBrand > 0 ? { kind: fit.kind, n: toBrand } : undefined;
@@ -336,7 +335,6 @@ function ModelView(props: BuyAircraftPanelProps & { onBack: () => void }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {fit.name}
-                    {fit.kind === 'regional' && <span style={{ fontWeight: 500, color: C.muted }}> · crews {Math.round((1 - REGIONAL_CREW_SHARE) * 100)}% cheaper</span>}
                   </span>
                   <Stepper value={toBrand} min={0} max={count} onChange={setToBrand} />
                 </div>
@@ -351,11 +349,6 @@ function ModelView(props: BuyAircraftPanelProps & { onBack: () => void }) {
                     All to {fit.name.length > 18 ? 'brand' : fit.name}
                   </Button>
                 </div>
-              </div>
-            )}
-            {cantFly.length > 0 && (
-              <div style={{ fontSize: 12, color: C.faint, marginTop: 6 }}>
-                {cantFly.map((b) => `${b.name} flies ${b.kind === 'cargo' ? 'freighters only' : 'regional jets and turboprops'}.`).join(' ')}
               </div>
             )}
           </Field>

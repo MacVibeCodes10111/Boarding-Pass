@@ -8,7 +8,6 @@ import type { BrandKind, PlayerAircraft, Subsidiary } from '../game/types';
 import { Button, C, DISPLAY, Field, ModalShell, inputStyle, well } from '../ui/kit';
 
 const TITLE: Record<BrandKind, string> = { regional: 'Regional brand', cargo: 'Cargo brand' };
-const LIKE: Record<BrandKind, string> = { regional: 'Like American Eagle or Delta Connection.', cargo: 'Like Delta Cargo or Lufthansa Cargo.' };
 
 export function SubsidiariesModal(props: {
   airlineName: string;
@@ -21,16 +20,12 @@ export function SubsidiariesModal(props: {
 }) {
   return (
     <ModalShell onClose={props.onClose} maxWidth={480} zIndex={260} label="Subsidiaries">
-      <h2 style={{ margin: '0 36px 4px 0', fontFamily: DISPLAY, fontSize: 24 }}>Subsidiaries</h2>
-      <p style={{ margin: '0 0 14px', fontSize: 13, color: C.textDim, lineHeight: 1.45 }}>
-        Brands that fly part of your fleet under their own name, callsign and livery. They share {props.airlineName}’s money, bank and flight numbers.
-      </p>
+      <h2 style={{ margin: '0 36px 14px 0', fontFamily: DISPLAY, fontSize: 24 }}>Subsidiaries</h2>
       <div style={{ display: 'grid', gap: 12 }}>
         {BRAND_KINDS.map((kind) => (
           <BrandCard key={kind} kind={kind} {...props} sub={props.subsidiaries.find((s) => s.kind === kind)} aircraft={props.fleet.filter((a) => a.brand === kind).length} />
         ))}
       </div>
-      <div style={{ fontSize: 12, color: C.faint, marginTop: 12 }}>Move aircraft into a brand from Fleet: select them, or open one with Manage.</div>
     </ModalShell>
   );
 }
@@ -79,8 +74,6 @@ function BrandCard(props: {
           <div style={{ fontSize: 17, fontWeight: 700, marginTop: 4 }}>{sub.name}</div>
           <div className="num" style={{ fontSize: 12.5, color: C.muted }}>Callsign {sub.callsign}</div>
         </>
-      ) : !editing ? (
-        <div style={{ fontSize: 13, color: C.textDim, marginTop: 4 }}>{LIKE[kind]}</div>
       ) : null}
       <div style={{ fontSize: 12.5, color: C.textDim, marginTop: 6 }}>{BRAND_RULE[kind]}</div>
 

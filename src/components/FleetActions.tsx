@@ -9,7 +9,7 @@ import { DEFAULT_LEASE_WEEKS, LEASE_OPTIONS, buyoutPrice, dailyLeaseOf, leaseCre
 import { COLLATERAL_SHARE } from '../game/career';
 import { calcAircraftResaleUsd } from '../game/tiers';
 import { formatMoneyM } from '../game/time';
-import { REGIONAL_CREW_SHARE, REGIONAL_MAX_SEATS, brandBlocker } from '../game/subsidiaries';
+import { REGIONAL_MAX_SEATS, brandBlocker } from '../game/subsidiaries';
 import type { AircraftModel, BrandKind, CabinConfig, PlayerAircraft, ScheduledFlight, Subsidiary } from '../game/types';
 import { reRegisterSequence, validRegistration } from '../game/registrations';
 import { Button, C, Field, ModalShell, Segmented, inputStyle, well } from '../ui/kit';
@@ -97,7 +97,6 @@ export function ManageAircraftModal(props: {
               </option>
             ))}
           </select>
-          {ac.brand === 'regional' && <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>Its crews cost {Math.round((1 - REGIONAL_CREW_SHARE) * 100)}% less.</div>}
         </Field>
       )}
 

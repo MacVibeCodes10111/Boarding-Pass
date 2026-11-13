@@ -488,48 +488,51 @@ function SubsidiariesCard(props: {
       return { ...b, items, aircraft: items.length, profit: profitOf(items) };
     });
   }, [props.airlineName, props.subsidiaries, props.fleet, props.schedule, props.econById]);
+  const line = (r: (typeof rows)[number]) => (
+    <div className="num" style={{ display: 'flex', alignItems: 'baseline', gap: 10, fontSize: 13 }}>
+      <span style={{ flex: 1, minWidth: 0, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+      <span style={{ color: C.muted, whiteSpace: 'nowrap' }}>{r.aircraft === 1 ? '1 aircraft' : `${r.aircraft} aircraft`}</span>
+      <span style={{ minWidth: 72, textAlign: 'right', whiteSpace: 'nowrap', color: r.profit >= 0 ? C.green : C.red, fontWeight: 600 }} title="Flight profit a week, before lease rent">
+        {signedUsd(r.profit)}
+      </span>
+    </div>
+  );
+  const title = (text: string) => <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700 }}>{text}</div>;
+  if (!props.subsidiaries.length)
+    return (
+      <section aria-label="Subsidiaries" style={{ background: well(), borderRadius: 14, padding: '12px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+        {title('Subsidiaries')}
+        <Button size="sm" variant="primary" onClick={props.onManage}>
+          Set up
+        </Button>
+      </section>
+    );
   return (
-    <section aria-label="Subsidiaries" style={{ background: well(), borderRadius: 14, padding: '12px 14px', marginBottom: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: props.subsidiaries.length ? 8 : 0 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>Subsidiaries</div>
-          {!props.subsidiaries.length && <div style={{ fontSize: 12.5, color: C.muted }}>A regional brand and a cargo brand, under your airline’s name.</div>}
-        </div>
-        <Button size="sm" variant={props.subsidiaries.length ? undefined : 'primary'} onClick={props.onManage}>
-          {props.subsidiaries.length ? 'Manage' : 'Set up'}
+    <section aria-label="Main airline and subsidiaries" style={{ background: well(), borderRadius: 14, padding: '12px 14px', marginBottom: 12 }}>
+      <div style={{ marginBottom: 6 }}>{title('Main airline')}</div>
+      {line(rows[0])}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.line}` }}>
+        {title('Subsidiaries')}
+        <Button size="sm" onClick={props.onManage}>
+          Manage
         </Button>
       </div>
-      {props.subsidiaries.length > 0 && (
-        <>
-          {rows.map((r) => (
-            <div key={r.key} className="num" style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '5px 0', borderTop: `1px solid ${C.line}`, fontSize: 13 }}>
-              <span style={{ flex: 1, minWidth: 0, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
-              <span style={{ color: C.muted, whiteSpace: 'nowrap' }}>{r.aircraft === 1 ? '1 aircraft' : `${r.aircraft} aircraft`}</span>
-              <span style={{ width: 92, textAlign: 'right', whiteSpace: 'nowrap', color: r.profit >= 0 ? C.green : C.red, fontWeight: 600 }} title="Flight profit a week, before lease rent">
-                {signedUsd(r.profit)}
-              </span>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 320px), 1fr))', gap: 12, marginTop: 8 }}>
+        {rows.slice(1).map((r) => (
+          <div key={r.key}>
+            {line(r)}
+            {/* the brand's own livery, smaller than the airline's above */}
+            <div style={{ position: 'relative', marginTop: 6 }}>
+              <BrandLivery kind={r.key as BrandKind} fleet={r.items} />
+              {props.onLivery && (
+                <Button size="sm" onClick={() => props.onLivery!(r.key as BrandKind)} style={{ position: 'absolute', right: 8, bottom: 8 }}>
+                  Edit livery
+                </Button>
+              )}
             </div>
-          ))}
-          {/* each brand's own livery, smaller than the airline's above */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10, marginTop: 8 }}>
-            {rows
-              .filter((r) => r.key !== 'main')
-              .map((r) => (
-                <div key={r.key} style={{ position: 'relative' }}>
-                  <BrandLivery kind={r.key as BrandKind} fleet={r.items} />
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                    <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
-                    {props.onLivery && (
-                      <Button size="sm" onClick={() => props.onLivery!(r.key as BrandKind)}>
-                        Edit livery
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
           </div>
-        </>
-      )}
+        ))}
+      </div>
     </section>
   );
 }
