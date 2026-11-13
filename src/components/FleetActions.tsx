@@ -9,7 +9,7 @@ import { DEFAULT_LEASE_WEEKS, LEASE_OPTIONS, buyoutPrice, dailyLeaseOf, leaseCre
 import { COLLATERAL_SHARE } from '../game/career';
 import { calcAircraftResaleUsd } from '../game/tiers';
 import { formatMoneyM } from '../game/time';
-import { REGIONAL_MAX_SEATS, brandBlocker } from '../game/subsidiaries';
+import { brandBlocker } from '../game/subsidiaries';
 import type { AircraftModel, BrandKind, CabinConfig, PlayerAircraft, ScheduledFlight, Subsidiary } from '../game/types';
 import { reRegisterSequence, validRegistration } from '../game/registrations';
 import { Button, C, Field, ModalShell, Segmented, inputStyle, well } from '../ui/kit';
@@ -93,7 +93,7 @@ export function ManageAircraftModal(props: {
             {props.subsidiaries.map((b) => (
               <option key={b.kind} value={b.kind} disabled={Boolean(brandBlocker(b.kind, ac.model))}>
                 {b.name}
-                {brandBlocker(b.kind, ac.model) ? (b.kind === 'cargo' ? ' · freighters only' : ` · up to ${REGIONAL_MAX_SEATS} seats`) : ''}
+                {brandBlocker(b.kind, ac.model) ? (b.kind === 'cargo' ? ' · freighters only' : ' · up to A320 size') : ''}
               </option>
             ))}
           </select>

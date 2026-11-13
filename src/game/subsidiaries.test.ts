@@ -16,12 +16,12 @@ const both: Subsidiary[] = [
 ];
 
 describe('subsidiaries', () => {
-  it('the regional brand flies regional jets and turboprops of up to 100 seats; the cargo brand freighters', () => {
-    for (const id of ['e175', 'crj-900', 'dash8-q400', 'atr-72-600', 'e190', 'c208b-ex']) expect(brandAllows('regional', m(id))).toBe(true);
-    for (const id of ['a320neo', 'e195-e2', 'e190-e2', 'atr-72-600f', 'b777f']) expect(brandAllows('regional', m(id))).toBe(false);
+  it('the regional brand flies passenger aircraft up to A320 size; the cargo brand freighters', () => {
+    for (const id of ['e175', 'crj-900', 'dash8-q400', 'atr-72-600', 'e190', 'c208b-ex', 'e190-e2', 'e195-e2', 'a220-300', 'a319-100', 'a320-200', 'a320neo', 'b737-max8']) expect(brandAllows('regional', m(id))).toBe(true);
+    for (const id of ['a321neo', 'b737-max9', 'b757-200', 'a350-900ulr', 'atr-72-600f', 'b777f']) expect(brandAllows('regional', m(id))).toBe(false);
     for (const id of ['b777f', 'atr-72-600f', 'e190f']) expect(brandAllows('cargo', m(id))).toBe(true);
     for (const id of ['a320neo', 'e175']) expect(brandAllows('cargo', m(id))).toBe(false);
-    expect(brandBlocker('regional', m('a320neo'))).toMatch(/too big/);
+    expect(brandBlocker('regional', m('a321neo'))).toMatch(/too big/);
     expect(brandBlocker('cargo', m('a320neo'))).toMatch(/freighters only/);
     expect(brandBlocker('regional', m('e175'))).toBeNull();
   });
@@ -54,7 +54,7 @@ describe('subsidiaries', () => {
   });
 
   it('aircraft leave a brand that is gone or can’t fly their type', () => {
-    const fleet = [ac('e175', 'regional'), ac('b777f', 'cargo'), ac('a320neo', 'regional'), ac('a320neo')];
+    const fleet = [ac('e175', 'regional'), ac('b777f', 'cargo'), ac('a321neo', 'regional'), ac('a320neo')];
     const tidy = tidyFleetBrands(fleet, both);
     expect(tidy.map((a) => a.brand)).toEqual(['regional', 'cargo', undefined, undefined]);
     expect(tidyFleetBrands(tidy, both)).toBe(tidy);

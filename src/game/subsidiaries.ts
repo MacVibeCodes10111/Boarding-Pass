@@ -5,7 +5,7 @@
 //   and credit line, and their flights keep the airline's flight numbers; each
 //   has its own name, radio callsign and livery.
 //   The regional brand pays its crews less (as real regional airlines do), but
-//   flies only regional jets and turboprops of up to 100 seats. The cargo brand
+//   flies only passenger aircraft up to A320 size (165 seats). The cargo brand
 //   flies freighters only and costs the same.
 // ============================================================================
 import { normaliseLivery, type Livery } from './livery';
@@ -13,22 +13,22 @@ import { moderate } from './moderation';
 import type { AircraftModel, BrandKind, PlayerAircraft, Subsidiary } from './types';
 
 export const BRAND_KINDS: BrandKind[] = ['regional', 'cargo'];
-/** The regional brand's biggest aircraft, in usual seats. */
-export const REGIONAL_MAX_SEATS = 100;
+/** The regional brand's biggest aircraft, in usual seats: an A320neo's (2026-11-13: E2s, A220s, A319s and A320-sized jets fly too). */
+export const REGIONAL_MAX_SEATS = 165;
 /** What the regional brand's crews cost, against the airline's own. */
 export const REGIONAL_CREW_SHARE = 0.8;
 
 export const BRAND_LABEL: Record<BrandKind, string> = { regional: 'Regional', cargo: 'Cargo' };
 /** What it flies, in a few words. */
 export const BRAND_RULE: Record<BrandKind, string> = {
-  regional: `Regional jets and turboprops of up to ${REGIONAL_MAX_SEATS} seats. Crews cost ${Math.round((1 - REGIONAL_CREW_SHARE) * 100)}% less.`,
+  regional: `Passenger aircraft up to A320 size (${REGIONAL_MAX_SEATS} seats). Crews cost ${Math.round((1 - REGIONAL_CREW_SHARE) * 100)}% less.`,
   cargo: 'Freighters only.',
 };
 
 /** True when a subsidiary of this kind may fly the type. */
 export function brandAllows(kind: BrandKind, m: Pick<AircraftModel, 'is_cargo' | 'category' | 'typical_seats'>): boolean {
   if (kind === 'cargo') return m.is_cargo;
-  return !m.is_cargo && (m.category === 'regional_jet' || m.category === 'turboprop') && m.typical_seats <= REGIONAL_MAX_SEATS;
+  return !m.is_cargo && m.category !== 'widebody' && m.category !== 'heavy_widebody' && m.typical_seats <= REGIONAL_MAX_SEATS;
 }
 
 /** Why the type can't join the subsidiary, or null when it can. */
@@ -36,7 +36,7 @@ export function brandBlocker(kind: BrandKind, m: Pick<AircraftModel, 'name' | 'i
   if (brandAllows(kind, m)) return null;
   if (kind === 'cargo') return `${m.name} is a passenger aircraft: the cargo brand flies freighters only.`;
   if (m.is_cargo) return `${m.name} is a freighter: the regional brand flies passenger aircraft.`;
-  return `${m.name} is too big for the regional brand: it flies regional jets and turboprops of up to ${REGIONAL_MAX_SEATS} seats.`;
+  return `${m.name} is too big for the regional brand: it flies aircraft up to A320 size (${REGIONAL_MAX_SEATS} seats).`;
 }
 
 /** The share of the usual crew cost an aircraft pays (less in the regional brand). */
