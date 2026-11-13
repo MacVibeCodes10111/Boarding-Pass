@@ -559,7 +559,7 @@ export function AirportDrawer({
 
             {/* Extras, folded */}
             {aircraft && routeValid && (
-              <details style={{ ...card, marginBottom: 10 }}>
+              <details open style={{ ...card, marginBottom: 10 }}>
                 <summary style={summaryStyle}>
                   <span style={{ flex: 1 }}>Week view</span>
                   <span className="num" style={{ fontSize: 12, color: liveConflict ? C.red : C.muted }}>

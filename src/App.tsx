@@ -2196,7 +2196,11 @@ export default function App() {
           single={`${subsidiaries.find((b) => b.kind === brandLivery.kind)!.name} livery`}
           liveries={[subsidiaries.find((b) => b.kind === brandLivery.kind)!.livery ?? liveries[0] ?? standardLivery(airlineColours ?? DEFAULT_AIRLINE_COLOURS)]}
           airlineName={subsidiaries.find((b) => b.kind === brandLivery.kind)!.name}
-          models={[...new Set(fleet.filter((a) => a.brand === brandLivery.kind).map((a) => a.model.id))]}
+          models={(() => {
+            const ids = [...new Set(fleet.filter((a) => a.brand === brandLivery.kind).map((a) => a.model.id))];
+            // before the brand has aircraft, show a type it would fly
+            return ids.length ? ids : [brandLivery.kind === 'cargo' ? 'b777f' : 'e175'];
+          })()}
           sampleReg={fleet.find((a) => a.brand === brandLivery.kind)?.tailNumber}
           airlineColours={airlineColours ?? DEFAULT_AIRLINE_COLOURS}
           airlineLogo={airlineLogo}
@@ -2465,6 +2469,7 @@ export default function App() {
           }}
           subsidiaries={subsidiaries}
           onSubsidiaries={() => setSubsOpen(true)}
+          onBrandLivery={(kind) => setBrandLivery({ kind, back: false })}
         />
       )}
       {panel === 'airports' && (

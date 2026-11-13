@@ -9,7 +9,7 @@ import type React from 'react';
 import type { WeekLedger } from '../game/clock';
 import type { FlightEconomics } from '../game/economics';
 import { computeAirlineStats, type AirlineStats, type RouteStat, type Slice } from '../game/stats';
-import type { Airport, PlayerAircraft, ScheduledFlight, Subsidiary } from '../game/types';
+import type { Airport, BrandKind, PlayerAircraft, ScheduledFlight, Subsidiary } from '../game/types';
 import { daysOrAll } from '../game/time';
 import { groupByBrand } from './BrandSections';
 import { Button, C, EmptyState, Segmented, SidePanel, well } from '../ui/kit';
@@ -436,14 +436,15 @@ function LiveryCard({ fleet, onEdit }: { fleet: PlayerAircraft[]; onEdit: () => 
   const ctx = useContext(LiveryContext);
   const pick = useMemo(() => {
     const n = new Map<string, { ac: PlayerAircraft; k: number }>();
-    for (const a of fleet) if (AIRCRAFT_PHOTOS[a.model.id]) n.set(a.model.id, { ac: a, k: (n.get(a.model.id)?.k ?? 0) + 1 });
+    // the airline's own aircraft: subsidiaries show theirs in their own card
+    for (const a of fleet) if (!a.brand && AIRCRAFT_PHOTOS[a.model.id]) n.set(a.model.id, { ac: a, k: (n.get(a.model.id)?.k ?? 0) + 1 });
     return [...n.values()].sort((a, b) => b.k - a.k)[0]?.ac;
   }, [fleet]);
   const model = pick?.model ?? AIRCRAFT_BY_ID.get('a320neo');
   if (!model) return null;
   return (
     <section aria-label="Livery" style={{ position: 'relative', marginBottom: 12, borderRadius: 14, overflow: 'hidden' }}>
-      <AircraftHero model={model} tailNumber={pick?.tailNumber ?? ''} liveryIndex={pick?.livery} brand={pick?.brand} photoWidth="min(72%, 620px)" style={{ borderRadius: 0, aspectRatio: '4 / 1' }} />
+      <AircraftHero model={model} tailNumber={pick?.tailNumber ?? ''} liveryIndex={pick?.livery} photoWidth="min(72%, 620px)" style={{ borderRadius: 0, aspectRatio: '4 / 1' }} />
       <Button size="sm" onClick={onEdit} style={{ position: 'absolute', right: 10, bottom: 10 }}>
         {ctx?.liveries.length ? 'Edit livery' : 'Design a livery'}
       </Button>
@@ -452,7 +453,27 @@ function LiveryCard({ fleet, onEdit }: { fleet: PlayerAircraft[]; onEdit: () => 
 }
 
 /** The airline and its subsidiaries: how many aircraft each flies and what they make in a week, with a way to manage them. */
-function SubsidiariesCard(props: { airlineName: string; subsidiaries: Subsidiary[]; fleet: PlayerAircraft[]; schedule: ScheduledFlight[]; econById: Map<string, FlightEconomics>; onManage: () => void }) {
+/** The brand's livery on its most common aircraft type (or a typical one before it has any), smaller than the airline's. */
+function BrandLivery(props: { kind: BrandKind; fleet: PlayerAircraft[] }) {
+  const pick = useMemo(() => {
+    const n = new Map<string, { ac: PlayerAircraft; k: number }>();
+    for (const a of props.fleet) if (AIRCRAFT_PHOTOS[a.model.id]) n.set(a.model.id, { ac: a, k: (n.get(a.model.id)?.k ?? 0) + 1 });
+    return [...n.values()].sort((a, b) => b.k - a.k)[0]?.ac;
+  }, [props.fleet]);
+  const model = pick?.model ?? AIRCRAFT_BY_ID.get(props.kind === 'cargo' ? 'b777f' : 'e175');
+  if (!model) return null;
+  return <AircraftHero model={model} tailNumber={pick?.tailNumber ?? ''} brand={props.kind} photoWidth="min(78%, 340px)" style={{ aspectRatio: '4 / 1', borderRadius: 10 }} />;
+}
+
+function SubsidiariesCard(props: {
+  airlineName: string;
+  subsidiaries: Subsidiary[];
+  fleet: PlayerAircraft[];
+  schedule: ScheduledFlight[];
+  econById: Map<string, FlightEconomics>;
+  onManage: () => void;
+  onLivery?: (kind: BrandKind) => void;
+}) {
   const rows = useMemo(() => {
     const tails = new Map(props.fleet.map((a) => [a.tailNumber, a]));
     const profitOf = (list: PlayerAircraft[]) => {
@@ -464,7 +485,7 @@ function SubsidiariesCard(props: { airlineName: string; subsidiaries: Subsidiary
     const all = [{ key: 'main', name: props.airlineName }, ...props.subsidiaries.map((b) => ({ key: b.kind, name: b.name }))];
     return all.map((b) => {
       const items = groups.find((g) => g.key === b.key)?.items ?? [];
-      return { ...b, aircraft: items.length, profit: profitOf(items) };
+      return { ...b, items, aircraft: items.length, profit: profitOf(items) };
     });
   }, [props.airlineName, props.subsidiaries, props.fleet, props.schedule, props.econById]);
   return (
@@ -478,16 +499,37 @@ function SubsidiariesCard(props: { airlineName: string; subsidiaries: Subsidiary
           {props.subsidiaries.length ? 'Manage' : 'Set up'}
         </Button>
       </div>
-      {props.subsidiaries.length > 0 &&
-        rows.map((r) => (
-          <div key={r.key} className="num" style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '5px 0', borderTop: `1px solid ${C.line}`, fontSize: 13 }}>
-            <span style={{ flex: 1, minWidth: 0, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
-            <span style={{ color: C.muted, whiteSpace: 'nowrap' }}>{r.aircraft === 1 ? '1 aircraft' : `${r.aircraft} aircraft`}</span>
-            <span style={{ width: 92, textAlign: 'right', whiteSpace: 'nowrap', color: r.profit >= 0 ? C.green : C.red, fontWeight: 600 }} title="Flight profit a week, before lease rent">
-              {signedUsd(r.profit)}
-            </span>
+      {props.subsidiaries.length > 0 && (
+        <>
+          {rows.map((r) => (
+            <div key={r.key} className="num" style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '5px 0', borderTop: `1px solid ${C.line}`, fontSize: 13 }}>
+              <span style={{ flex: 1, minWidth: 0, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+              <span style={{ color: C.muted, whiteSpace: 'nowrap' }}>{r.aircraft === 1 ? '1 aircraft' : `${r.aircraft} aircraft`}</span>
+              <span style={{ width: 92, textAlign: 'right', whiteSpace: 'nowrap', color: r.profit >= 0 ? C.green : C.red, fontWeight: 600 }} title="Flight profit a week, before lease rent">
+                {signedUsd(r.profit)}
+              </span>
+            </div>
+          ))}
+          {/* each brand's own livery, smaller than the airline's above */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10, marginTop: 8 }}>
+            {rows
+              .filter((r) => r.key !== 'main')
+              .map((r) => (
+                <div key={r.key} style={{ position: 'relative' }}>
+                  <BrandLivery kind={r.key as BrandKind} fleet={r.items} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: C.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+                    {props.onLivery && (
+                      <Button size="sm" onClick={() => props.onLivery!(r.key as BrandKind)}>
+                        Edit livery
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
           </div>
-        ))}
+        </>
+      )}
     </section>
   );
 }
@@ -514,6 +556,8 @@ export function StatsPanel(props: {
   /** The regional and cargo brands, and opening them to manage. */
   subsidiaries?: Subsidiary[];
   onSubsidiaries?: () => void;
+  /** Opens a subsidiary's livery editor. */
+  onBrandLivery?: (kind: BrandKind) => void;
 }) {
   const [weekMetric, setWeekMetric] = useState<WeekMetric>('net');
   const st = useMemo(
@@ -539,7 +583,7 @@ export function StatsPanel(props: {
     >
       {props.onLivery && <LiveryCard fleet={props.fleet} onEdit={props.onLivery} />}
       {props.onSubsidiaries && (
-        <SubsidiariesCard airlineName={props.airlineName} subsidiaries={props.subsidiaries ?? []} fleet={props.fleet} schedule={props.schedule} econById={props.econById} onManage={props.onSubsidiaries} />
+        <SubsidiariesCard airlineName={props.airlineName} subsidiaries={props.subsidiaries ?? []} fleet={props.fleet} schedule={props.schedule} econById={props.econById} onManage={props.onSubsidiaries} onLivery={props.onBrandLivery} />
       )}
       {st.departures === 0 ? (
         <EmptyState
