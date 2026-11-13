@@ -8,7 +8,8 @@
 import { useMemo, useState } from 'react';
 import { AircraftPhoto, hasAircraftPhoto } from './AircraftPhoto';
 import { cabinSeatTotal } from '../game/economics';
-import type { AircraftModel, PlayerAircraft } from '../game/types';
+import type { AircraftModel, PlayerAircraft, Subsidiary } from '../game/types';
+import { BrandSections } from './BrandSections';
 import { Icon } from '../ui/icons';
 import { Button, C, Segmented, SearchInput } from '../ui/kit';
 
@@ -51,6 +52,9 @@ export function AircraftPicker(props: {
   iconForModel?: (m: AircraftModel) => string;
   onPick: (tail: string) => void;
   onBack: () => void;
+  /** With subsidiaries, aircraft are in one fold-out section for each brand. */
+  airlineName?: string;
+  subsidiaries?: Subsidiary[];
 }) {
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<Sort>('best');
@@ -74,8 +78,6 @@ export function AircraftPicker(props: {
     return [...shown].sort((a, b) => cmp[sort](a, b) || a.ac.tailNumber.localeCompare(b.ac.tailNumber));
   }, [props.rows, q, sort]);
 
-  const ready = list.filter((r) => !r.reason);
-  const notReady = list.filter((r) => r.reason);
 
   return (
     <div>
@@ -105,21 +107,31 @@ export function AircraftPicker(props: {
       </div>
 
       {list.length === 0 && <div style={{ fontSize: 13, color: C.muted, padding: '12px 0' }}>No aircraft match “{q}”.</div>}
-      <div role="list" style={{ display: 'grid', gap: 8 }}>
-        {ready.map((r) => (
-          <PickerCard key={r.ac.tailNumber} row={r} {...props} />
-        ))}
-      </div>
-      {notReady.length > 0 && (
-        <>
-          <div style={{ fontSize: 12, fontWeight: 650, color: C.muted, margin: '14px 0 8px' }}>Can’t fly this route</div>
-          <div role="list" style={{ display: 'grid', gap: 8 }}>
-            {notReady.map((r) => (
-              <PickerCard key={r.ac.tailNumber} row={r} {...props} />
-            ))}
-          </div>
-        </>
-      )}
+      <BrandSections place="picker" items={list} acOf={(r) => r.ac} airlineName={props.airlineName ?? ''} subsidiaries={props.subsidiaries ?? []}>
+        {(rows) => {
+          const ready = rows.filter((r) => !r.reason);
+          const notReady = rows.filter((r) => r.reason);
+          return (
+            <div style={{ marginBottom: 8 }}>
+              <div role="list" style={{ display: 'grid', gap: 8 }}>
+                {ready.map((r) => (
+                  <PickerCard key={r.ac.tailNumber} row={r} {...props} />
+                ))}
+              </div>
+              {notReady.length > 0 && (
+                <>
+                  <div style={{ fontSize: 12, fontWeight: 650, color: C.muted, margin: '14px 0 8px' }}>Can’t fly this route</div>
+                  <div role="list" style={{ display: 'grid', gap: 8 }}>
+                    {notReady.map((r) => (
+                      <PickerCard key={r.ac.tailNumber} row={r} {...props} />
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        }}
+      </BrandSections>
     </div>
   );
 }

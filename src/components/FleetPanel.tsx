@@ -8,6 +8,7 @@ import type { AircraftModel, BrandKind, CabinConfig, PlayerAircraft, ScheduledFl
 import { Button, C, EmptyState, IconButton, SearchInput, Segmented, SidePanel, inputStyle } from '../ui/kit';
 import { useLayout } from '../ui/layout';
 import { BulkCabinModal, ManageAircraftModal, ReRegisterModal, ReplaceAircraftModal } from './FleetActions';
+import { BrandSections } from './BrandSections';
 
 /** Rows drawn per group before "Show more". */
 const ROW_PAGE = 40;
@@ -43,7 +44,7 @@ export interface FleetPanelProps {
   onClose: () => void;
 }
 
-type GroupBy = 'type' | 'base' | 'brand' | 'none';
+type GroupBy = 'type' | 'base' | 'none';
 type SortBy = 'least' | 'most' | 'reg' | 'type';
 type Show = 'all' | 'idle' | 'busy' | 'leased';
 
@@ -51,7 +52,8 @@ const PREFS_KEY = 'bp_fleet_view_v1';
 function readView(): { groupBy: GroupBy; sortBy: SortBy } {
   try {
     const v = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}');
-    return { groupBy: v.groupBy ?? 'type', sortBy: v.sortBy ?? 'least' };
+    // 'brand' grouping (briefly in 2026-11) is now the brand sections around every grouping
+    return { groupBy: ['type', 'base', 'none'].includes(v.groupBy) ? v.groupBy : 'type', sortBy: v.sortBy ?? 'least' };
   } catch {
     return { groupBy: 'type', sortBy: 'least' };
   }
@@ -90,7 +92,7 @@ export function FleetPanel(props: FleetPanelProps) {
     [fleet, schedule]
   );
 
-  const groups = useMemo(() => {
+  const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
     const rows = all.filter(({ ac, usage, circuit }) => {
       if (show === 'idle' && usage.flightCount > 0) return false;
@@ -105,23 +107,27 @@ export function FleetPanel(props: FleetPanelProps) {
       reg: (a, b) => a.ac.tailNumber.localeCompare(b.ac.tailNumber),
       type: (a, b) => a.ac.model.name.localeCompare(b.ac.model.name) || a.ac.tailNumber.localeCompare(b.ac.tailNumber),
     };
-    rows.sort(cmp[view.sortBy]);
-    const keyOf = (r: (typeof rows)[number]) => (view.groupBy === 'type' ? r.ac.model.name : view.groupBy === 'base' ? r.ac.hubIata : view.groupBy === 'brand' ? brandName(r.ac) : '');
-    const map = new Map<string, typeof rows>();
-    for (const r of rows) {
+    return rows.sort(cmp[view.sortBy]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [all, search, show, view, subsidiaries, props.airlineName]);
+  type Row = (typeof rows)[number];
+  /** Rows by type, base or none, inside each brand's section. */
+  const groupRows = (list: Row[]): [string, Row[]][] => {
+    const keyOf = (r: Row) => (view.groupBy === 'type' ? r.ac.model.name : view.groupBy === 'base' ? r.ac.hubIata : '');
+    const map = new Map<string, Row[]>();
+    for (const r of list) {
       const k = keyOf(r);
       if (!map.has(k)) map.set(k, []);
       map.get(k)!.push(r);
     }
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [all, search, show, view, subsidiaries, props.airlineName]);
+  };
 
   const idle = all.filter((r) => r.usage.flightCount === 0).length;
   const busy = all.filter((r) => r.usage.usedPct >= 85).length;
   const leased = all.filter((r) => r.ac.acquisition === 'leased').length;
-  const shown = groups.reduce((n, [, rows]) => n + rows.length, 0);
-  const shownTails = groups.flatMap(([, rows]) => rows.map((r) => r.ac.tailNumber));
+  const shown = rows.length;
+  const shownTails = rows.map((r) => r.ac.tailNumber);
   // Selected aircraft that still exist (sold ones drop out)
   const picked = fleet.filter((a) => selected.has(a.tailNumber));
   const pickedTails = picked.map((a) => a.tailNumber);
@@ -161,7 +167,6 @@ export function FleetPanel(props: FleetPanelProps) {
             <select aria-label="Group" value={view.groupBy} onChange={(e) => setView({ groupBy: e.target.value as GroupBy })} style={{ ...inputStyle, width: 'auto', padding: '6px 8px' }}>
               <option value="type">By type</option>
               <option value="base">By base</option>
-              {subsidiaries.length > 0 && <option value="brand">By brand</option>}
               <option value="none">One list</option>
             </select>
           </div>
@@ -248,11 +253,15 @@ export function FleetPanel(props: FleetPanelProps) {
             </div>
           )}
           {shown === 0 && <div style={{ padding: '4px 2px', fontSize: 13, color: C.muted }}>Nothing matches.</div>}
-          {groups.map(([groupKey, rows]) => (
-            <section key={groupKey || 'all'} style={{ marginBottom: 18 }}>
-              {groupKey && (
+          <BrandSections place="fleet" items={rows} acOf={(r) => r.ac} airlineName={props.airlineName} subsidiaries={subsidiaries}>
+          {(brandRows) => groupRows(brandRows).map(([groupName, rows]) => {
+            // limits are kept per brand and group
+            const groupKey = `${brandRows[0]?.ac.brand ?? 'main'}|${groupName}`;
+            return (
+            <section key={groupKey} style={{ marginBottom: 18 }}>
+              {groupName && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', margin: '0 2px 4px' }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.muted }}>{groupKey}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.muted }}>{groupName}</span>
                   <span className="num" style={{ fontSize: 12, color: C.faint }}>
                     {rows.length}
                   </span>
@@ -282,11 +291,6 @@ export function FleetPanel(props: FleetPanelProps) {
                     <div style={{ flex: '1 1 0', minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', minWidth: 0, fontSize: 14, fontWeight: 650, whiteSpace: 'nowrap' }}>
                         <span style={{ flex: 'none' }}>{ac.tailNumber}</span>
-                        {ac.brand && view.groupBy !== 'brand' && (
-                          <span title={`Flies for ${brandName(ac)}`} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', marginLeft: 6, padding: '1px 7px', borderRadius: 99, background: `${C.brand}1f`, color: C.brand, fontSize: 10.5, fontWeight: 700 }}>
-                            {brandName(ac)}
-                          </span>
-                        )}
                         {!ac.brand && ac.livery === 1 && (props.liveryNames?.length ?? 0) > 1 && (
                           <span style={{ minWidth: 0, overflow: 'hidden' }}>
                             <SpecialTag name={props.liveryNames![1]} />
@@ -331,7 +335,9 @@ export function FleetPanel(props: FleetPanelProps) {
                 </div>
               )}
             </section>
-          ))}
+            );
+          })}
+          </BrandSections>
         </>
       )}
 

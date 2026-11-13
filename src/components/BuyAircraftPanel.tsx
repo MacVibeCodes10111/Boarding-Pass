@@ -37,7 +37,8 @@ export interface BuyAircraftPanelProps {
   tailInput: string;
   onTailInputChange: (t: string) => void;
   /** Buy or lease `count` of the type; leases run `leaseWeeks`. */
-  onAcquire: (mode: 'owned' | 'leased', leaseWeeks: number, count: number, brand?: BrandKind) => void;
+  /** `split`: how many of them fly for a subsidiary (the rest for the airline itself). */
+  onAcquire: (mode: 'owned' | 'leased', leaseWeeks: number, count: number, split?: { kind: BrandKind; n: number }) => void;
   /** The airline's name, and its regional and cargo brands: new aircraft can join one. */
   airlineName: string;
   subsidiaries: Subsidiary[];
@@ -222,10 +223,14 @@ function ModelView(props: BuyAircraftPanelProps & { onBack: () => void }) {
   const sandbox = props.gameMode === 'sandbox';
   const [count, setCount] = useState(1);
   const [weeks, setWeeks] = useState(DEFAULT_LEASE_WEEKS);
-  // which brand new aircraft join: kept while it can fly this type
-  const brands = props.subsidiaries.filter((b) => brandAllows(b.kind, m));
-  const [brandPick, setBrandPick] = useState<BrandKind | null>(null);
-  const brand = brandPick && brands.some((b) => b.kind === brandPick) ? brandPick : undefined;
+  // where new aircraft go: the airline itself, or the one subsidiary that can fly the type (passenger types
+  // to the regional brand, freighters to the cargo brand), all of them or some
+  const fit = props.subsidiaries.find((b) => brandAllows(b.kind, m));
+  const cantFly = props.subsidiaries.filter((b) => b !== fit);
+  const [toBrandRaw, setToBrand] = useState(0);
+  const toBrand = fit ? Math.min(toBrandRaw, count) : 0;
+  const split = fit && toBrand > 0 ? { kind: fit.kind, n: toBrand } : undefined;
+  const brand = fit && toBrand === count ? fit.kind : undefined;
   const quote = leaseQuote(m, weeks, props.econMin);
   const canBuy = sandbox || props.cash >= m.base_price_usd * count;
   const cashForLease = sandbox || props.cash >= quote.deposit * count;
@@ -308,28 +313,62 @@ function ModelView(props: BuyAircraftPanelProps & { onBack: () => void }) {
             <Stepper value={count} min={1} max={50} onChange={setCount} />
           </Field>
         </div>
-        {brands.length > 0 && (
-          <Field label="Flies for">
-            <select aria-label="Flies for" value={brand ?? 'main'} onChange={(e) => setBrandPick(e.target.value === 'main' ? null : (e.target.value as BrandKind))} style={inputStyle}>
-              <option value="main">{props.airlineName}</option>
-              {brands.map((b) => (
-                <option key={b.kind} value={b.kind}>
-                  {b.name}
-                  {b.kind === 'regional' ? ` · crews ${Math.round((1 - REGIONAL_CREW_SHARE) * 100)}% cheaper` : ''}
-                </option>
-              ))}
-            </select>
+        {props.subsidiaries.length > 0 && (
+          <Field label={count > 1 ? 'Where they go' : 'Flies for'}>
+            {count === 1 || !fit ? (
+              <select aria-label="Flies for" value={toBrand ? fit!.kind : 'main'} onChange={(e) => setToBrand(e.target.value === 'main' ? 0 : count)} style={inputStyle}>
+                <option value="main">{props.airlineName}</option>
+                {props.subsidiaries.map((b) => (
+                  <option key={b.kind} value={b.kind} disabled={b !== fit}>
+                    {b.name}
+                    {b !== fit ? (b.kind === 'cargo' ? ' · freighters only' : ` · regional types only`) : b.kind === 'regional' ? ` · crews ${Math.round((1 - REGIONAL_CREW_SHARE) * 100)}% cheaper` : ''}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div style={{ display: 'grid', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 34 }}>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{props.airlineName}</span>
+                  <span className="num" style={{ width: 96, textAlign: 'center', fontSize: 15, fontWeight: 700 }}>
+                    {count - toBrand}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {fit.name}
+                    {fit.kind === 'regional' && <span style={{ fontWeight: 500, color: C.muted }}> · crews {Math.round((1 - REGIONAL_CREW_SHARE) * 100)}% cheaper</span>}
+                  </span>
+                  <Stepper value={toBrand} min={0} max={count} onChange={setToBrand} />
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <Button size="sm" onClick={() => setToBrand(0)}>
+                    All to {props.airlineName.length > 18 ? 'airline' : props.airlineName}
+                  </Button>
+                  <Button size="sm" onClick={() => setToBrand(Math.floor(count / 2))}>
+                    Half
+                  </Button>
+                  <Button size="sm" onClick={() => setToBrand(count)}>
+                    All to {fit.name.length > 18 ? 'brand' : fit.name}
+                  </Button>
+                </div>
+              </div>
+            )}
+            {cantFly.length > 0 && (
+              <div style={{ fontSize: 12, color: C.faint, marginTop: 6 }}>
+                {cantFly.map((b) => `${b.name} flies ${b.kind === 'cargo' ? 'freighters only' : 'regional jets and turboprops'}.`).join(' ')}
+              </div>
+            )}
           </Field>
         )}
         <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div style={{ display: 'grid', gap: 6, alignContent: 'start' }}>
-            <Button variant="primary" size="lg" block disabled={!usage.isValid || !canBuy} onClick={() => props.onAcquire('owned', weeks, count, brand)}>
+            <Button variant="primary" size="lg" block disabled={!usage.isValid || !canBuy} onClick={() => props.onAcquire('owned', weeks, count, split)}>
               Buy{count > 1 ? ` ${count}` : ''} · {formatMoneyM(m.base_price_usd * count)}
             </Button>
             {!canBuy && <div style={{ fontSize: 12, color: C.red }}>Not enough cash</div>}
           </div>
           <div style={{ display: 'grid', gap: 6, alignContent: 'start' }}>
-            <Button size="lg" block disabled={!usage.isValid || !canLease} onClick={() => props.onAcquire('leased', weeks, count, brand)}>
+            <Button size="lg" block disabled={!usage.isValid || !canLease} onClick={() => props.onAcquire('leased', weeks, count, split)}>
               Lease{count > 1 ? ` ${count}` : ''} · {formatMoneyM(quote.dailyRate * 7, 2)} a week{count > 1 ? ' each' : ''}
             </Button>
             <label className="num" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: cashForLease ? C.muted : C.red }}>

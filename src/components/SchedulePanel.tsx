@@ -3,7 +3,8 @@ import { useMemo, useState } from 'react';
 import type { FlightEconomics } from '../game/economics';
 import { calcAircraftScheduleUsage, getAircraftCircuitStatus, type AircraftCircuitStatus } from '../game/scheduling';
 import { daysOrAll, formatClockShort } from '../game/time';
-import type { Airport, PlayerAircraft, ScheduledFlight } from '../game/types';
+import type { Airport, PlayerAircraft, ScheduledFlight, Subsidiary } from '../game/types';
+import { BrandSection, groupByBrand, useFoldedBrands, type BrandKey } from './BrandSections';
 import { Icon } from '../ui/icons';
 import { Button, C, EmptyState, IconButton, Pill, SearchInput, Segmented, SidePanel, inputStyle } from '../ui/kit';
 import { legLocalText } from '../game/localTime';
@@ -20,6 +21,9 @@ export interface ScheduleTabProps {
   onClose: () => void;
   /** Starts the search filled in (an airport code from the map, v2.58). */
   initialSearch?: string;
+  /** With subsidiaries, flights are in one fold-out section for each brand. */
+  airlineName?: string;
+  subsidiaries?: Subsidiary[];
 }
 
 interface Rotation {
@@ -40,7 +44,8 @@ interface Group {
 }
 
 /** System schedule grouped by the owned hub each rotation starts from. */
-export function SchedulePanel({ schedule, fleet, hubs, primaryHub, airportByIata, econById, onEdit, onDelete, onClose, initialSearch }: ScheduleTabProps) {
+export function SchedulePanel({ schedule, fleet, hubs, primaryHub, airportByIata, econById, onEdit, onDelete, onClose, initialSearch, airlineName = '', subsidiaries = [] }: ScheduleTabProps) {
+  const [isFolded, toggleBrand] = useFoldedBrands('schedule');
   const [search, setSearch] = useState(initialSearch ?? '');
   const [tailFilter, setTailFilter] = useState('');
   const [groupBy, setGroupBy] = useState<GroupBy>('hub');
@@ -155,6 +160,19 @@ export function SchedulePanel({ schedule, fleet, hubs, primaryHub, airportByIata
       .sort((a, b) => a.used - b.used || a.key.localeCompare(b.key));
   }, [schedule, fleet, hubs, primaryHub, airportByIata, search, tailFilter, groupBy]);
   const visibleGroups = groups.filter((g) => g.rotations.length > 0);
+  /** The groups again inside one section for each brand (only with subsidiaries). */
+  const brandOf = (tail: string): BrandKey => {
+    const b = fleetByTail.get(tail)?.brand;
+    return b && subsidiaries.some((x) => x.kind === b) ? b : 'main';
+  };
+  const sections = subsidiaries.length
+    ? groupByBrand(fleet, (a) => a, airlineName, subsidiaries)
+        .map((b) => ({
+          ...b,
+          groups: visibleGroups.map((g) => ({ ...g, rotations: g.rotations.filter((r) => brandOf(r.outbound.tailNumber) === b.key) })).filter((g) => g.rotations.length > 0),
+        }))
+        .filter((b) => b.groups.length > 0)
+    : null;
 
   const weeklyProfit = useMemo(
     () => schedule.reduce((sum, fl) => sum + (econById.get(fl.id)?.profit ?? 0) * daysOrAll(fl.daysOfWeek).filter(Boolean).length, 0),
@@ -185,11 +203,21 @@ export function SchedulePanel({ schedule, fleet, hubs, primaryHub, airportByIata
             <SearchInput value={search} onChange={setSearch} placeholder="Search" style={{ flex: '1 1 160px' }} />
             <select aria-label="Aircraft" value={tailFilter} onChange={(e) => setTailFilter(e.target.value)} style={{ ...inputStyle, width: 'auto', maxWidth: 190, padding: '6px 8px' }}>
               <option value="">All aircraft</option>
-              {scheduledFleet.map(({ ac, usage }) => (
-                <option key={ac.tailNumber} value={ac.tailNumber}>
-                  {ac.tailNumber} · {ac.model.icao_code} · {usage.usedPct}%
-                </option>
-              ))}
+              {subsidiaries.length
+                ? groupByBrand(scheduledFleet, (r) => r.ac, airlineName, subsidiaries).map((g) => (
+                    <optgroup key={g.key} label={g.name}>
+                      {g.items.map(({ ac, usage }) => (
+                        <option key={ac.tailNumber} value={ac.tailNumber}>
+                          {ac.tailNumber} · {ac.model.icao_code} · {usage.usedPct}%
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))
+                : scheduledFleet.map(({ ac, usage }) => (
+                    <option key={ac.tailNumber} value={ac.tailNumber}>
+                      {ac.tailNumber} · {ac.model.icao_code} · {usage.usedPct}%
+                    </option>
+                  ))}
             </select>
             <Segmented<GroupBy>
               size="sm"
@@ -201,10 +229,11 @@ export function SchedulePanel({ schedule, fleet, hubs, primaryHub, airportByIata
               ]}
             />
           </div>
-          {visibleGroups.map((group) => {
+          {(sections ?? [{ key: 'main' as BrandKey, name: '', items: [], groups: visibleGroups }]).map((sec) => {
+            const list = sec.groups.map((group) => {
             const open = !collapsed.has(group.key) || Boolean(search.trim()) || Boolean(tailFilter);
             return (
-              <section key={group.key} style={{ marginBottom: open ? 18 : 4 }}>
+              <section key={`${sec.key}|${group.key}`} style={{ marginBottom: open ? 18 : 4 }}>
                 <button
                   type="button"
                   className="bp-group-toggle"
@@ -286,6 +315,14 @@ export function SchedulePanel({ schedule, fleet, hubs, primaryHub, airportByIata
                   </div>
                 )}
               </section>
+            );
+            });
+            if (!sections) return <div key="all">{list}</div>;
+            const aircraft = new Set(sec.groups.flatMap((g) => g.rotations.map((r) => r.outbound.tailNumber))).size;
+            return (
+              <BrandSection key={sec.key} name={sec.name} count={aircraft} open={!isFolded(sec.key)} onToggle={() => toggleBrand(sec.key)}>
+                {list}
+              </BrandSection>
             );
           })}
           {groups.every((g) => g.rotations.length === 0) && <div style={{ color: C.muted, fontSize: 13 }}>Nothing matches.</div>}

@@ -1314,7 +1314,7 @@ export default function App() {
     registrationsForNewAircraft(taken.map((a) => a.tailNumber), airlineIata, hubCountry, n, typedFirst);
 
   /** Buy or lease `count` aircraft of the selected type (leases for `leaseWeeks`). */
-  const acquireAircraft = (mode: 'owned' | 'leased', leaseWeeks = DEFAULT_LEASE_WEEKS, count = 1, brand?: BrandKind) => {
+  const acquireAircraft = (mode: 'owned' | 'leased', leaseWeeks = DEFAULT_LEASE_WEEKS, count = 1, split?: { kind: BrandKind; n: number }) => {
     const check = calculateCabinUsage(selectedModel, cabinDraft);
     if (!check.isValid) {
       showAlert(
@@ -1349,7 +1349,10 @@ export default function App() {
     if (!first || !validRegistration(first) || fleet.some((f) => f.tailNumber === first)) first = '';
     const regs = regFor(fleet, n, first || undefined);
     spend(cost);
-    const added: PlayerAircraft[] = regs.map((tail) => ({
+    // the last `split.n` of them fly for the subsidiary, the first ones for the airline itself
+    const sub = split && brandAllows(split.kind, selectedModel) ? subsidiaries.find((b) => b.kind === split.kind) : undefined;
+    const toSub = sub ? Math.max(0, Math.min(split!.n, regs.length)) : 0;
+    const added: PlayerAircraft[] = regs.map((tail, i) => ({
       tailNumber: tail,
       model: selectedModel,
       acquisition: mode,
@@ -1357,7 +1360,7 @@ export default function App() {
       cabin: { ...cabinDraft },
       acquiredMin: now,
       lease: mode === 'leased' ? { ...quote } : undefined,
-      ...(brand && brandAllows(brand, selectedModel) && subsidiaries.some((b) => b.kind === brand) ? { brand } : {}),
+      ...(sub && i >= regs.length - toSub ? { brand: sub.kind } : {}),
     }));
     const nextFleet = [...fleet, ...added];
     setFleet(nextFleet);
@@ -1365,9 +1368,9 @@ export default function App() {
     setTailInput(regFor(nextFleet)[0]);
     flashToast(
       n === 1
-        ? `${regs[0]} delivered to ${hubIata}. Open an airport on the map to schedule it.`
-        : `${n} ${selectedModel.name} delivered to ${hubIata}: ${regs[0]} to ${regs[n - 1]}.`,
-      4500
+        ? `${regs[0]} delivered to ${hubIata}${toSub ? ` for ${sub!.name}` : ''}. Open an airport on the map to schedule it.`
+        : `${n} ${selectedModel.name} delivered to ${hubIata}: ${regs[0]} to ${regs[n - 1]}.${toSub ? ` ${toSub === n ? 'All' : toSub} fly for ${sub!.name}.` : ''}`,
+      5000
     );
   };
 
@@ -2276,6 +2279,8 @@ export default function App() {
       )}
       {inspectedAirport && (
         <AirportDrawer
+          airlineName={airlineName}
+          subsidiaries={subsidiaries}
           airport={inspectedAirport}
           airportByIata={airportByIata}
           hubs={hubs}
@@ -2367,6 +2372,8 @@ export default function App() {
       )}
       {panel === 'schedule' && (
         <SchedulePanel
+          airlineName={airlineName}
+          subsidiaries={subsidiaries}
           schedule={schedule}
           fleet={fleet}
           hubs={hubs}
@@ -2456,6 +2463,8 @@ export default function App() {
             setLiveryStart(0);
             setLiveryOpen(true);
           }}
+          subsidiaries={subsidiaries}
+          onSubsidiaries={() => setSubsOpen(true)}
         />
       )}
       {panel === 'airports' && (

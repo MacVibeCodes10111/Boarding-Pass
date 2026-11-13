@@ -21,7 +21,7 @@ import {
 import { airportRestrictionFor, calcHubPurchasePriceUsd, calcHubSaleRefundUsd } from '../game/tiers';
 import { airportGateCode } from '../game/gateCode';
 import { formatClockShort, formatDurationHm, formatMoneyM } from '../game/time';
-import type { AircraftModel, Airport, Fares, PlayerAircraft, ScheduledFlight, WeekDays } from '../game/types';
+import type { AircraftModel, Airport, Fares, PlayerAircraft, ScheduledFlight, Subsidiary, WeekDays } from '../game/types';
 import { Button, C, DISPLAY, DayPicker, IconButton, Pill, Segmented, Stepper, face, inputStyle, glass, well } from '../ui/kit';
 import { ErrorBanner, FaresEditor } from './AircraftScheduleModal';
 import { RouteDemandBar } from './RouteDemandBar';
@@ -43,6 +43,9 @@ export interface RouteDraft {
 }
 
 export interface AirportDrawerProps {
+  /** The airline's name and its subsidiaries: the aircraft picker splits aircraft by brand. */
+  airlineName?: string;
+  subsidiaries?: Subsidiary[];
   airport: Airport;
   airportByIata: Map<string, Airport>;
   hubs: string[];
@@ -73,6 +76,8 @@ export interface AirportDrawerProps {
 }
 
 export function AirportDrawer({
+  airlineName,
+  subsidiaries,
   airport,
   airportByIata,
   hubs,
@@ -355,6 +360,8 @@ export function AirportDrawer({
                 setPicking(false);
               }}
               onBack={() => setPicking(false)}
+              airlineName={airlineName}
+              subsidiaries={subsidiaries}
             />
           </div>
         ) : fleet.length === 0 ? (
