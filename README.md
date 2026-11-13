@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 3.0.3. Free to play. See [Credits and licences](#credits-and-licences).
+Version 3.1.0. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -20,6 +20,19 @@ Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 3.1.0, the economy update:
+
+- **Flights cost money now:** fuel, crew, maintenance, airport fees and passenger service. Profits are smaller and the schedule shows each flight's costs. Hubs cost less than before, but growing is still a grind.
+- **Leases run on your credit line:** leasing an aircraft takes a quarter of its price from the same credit line loans use, and rent is 13% of the price a year. The bank shows how much credit you have left.
+- **Your career moves over by itself:** your rents are worked out again, the bank sends you a letter, and you get four weeks before you can go bust.
+- **Cargo is two kinds:** parcels (small, pay well, any aircraft, best overnight) and big freight (freighters only, long distances, stronger one way).
+- **Passengers choose more like real ones:** the class mix depends on distance and on whether a route is for business or holidays, better seats are worth more, and travellers trade down when a class isn't offered.
+- **Subsidiaries:** set up a regional brand (like American Eagle) and a cargo brand (like Delta Cargo) under your airline's name, each with its own name, callsign and livery. They share your money and bank. The regional brand flies regional jets and turboprops of up to 100 seats and pays its crews 20% less, and the cargo brand flies freighters only. When you buy several aircraft, you choose how many go to each. Fleet, the Schedule tab and the route planner put each brand's aircraft in its own fold-out section.
+- **New cabin editor** with a seat map, and a **livery editor** with named tools, Parts / Layers / Logos tabs and a Help manual.
+- **Real runways at about 860 more airports,** from OpenStreetMap.
+- **A new look:** one Account for cloud saves and Online, a tab for each airline on the home screen, glass panels, the clock at the bottom left and the map buttons at the top right. New airport badges on the map, and aircraft dots you can click.
+- **Fixes:** milestones pay only once their stage is open, you can collect every milestone payment at once, and scheduling and save loading are more reliable.
 
 Version 3.0.3:
 
