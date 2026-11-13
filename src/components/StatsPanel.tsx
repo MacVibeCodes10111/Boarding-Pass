@@ -3,6 +3,7 @@
 //   Headline figures for one scheduled week, the weekly results so far, and
 //   breakdowns of the fleet, network and routes. Charts are plain SVG.
 // ============================================================================
+import { COST_LINES } from '../game/costs';
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import type { WeekLedger } from '../game/clock';
@@ -589,12 +590,17 @@ export function StatsPanel(props: {
               <SplitBar
                 parts={[
                   { label: 'Passengers', value: st.paxRevenue },
-                  { label: 'Parcels', value: st.parcelRevenue },
-                  { label: 'Freight', value: st.freightRevenue },
+                  { label: 'Small parcels', value: st.parcelRevenue },
+                  { label: 'Big parcels', value: st.freightRevenue },
                 ].filter((p) => p.value > 0)}
               />
               <div className="num" style={{ fontSize: 11.5, color: C.faint, marginTop: 6 }}>
-                {num(st.parcelTons)} t of parcels and {num(st.freightTons)} t of freight a week
+                {num(st.parcelTons)} t of small parcels and {num(st.freightTons)} t of big parcels a week
+              </div>
+              <div style={{ fontSize: 12, color: C.muted, margin: '16px 0 6px' }}>Flight costs</div>
+              <SplitBar parts={COST_LINES.map((c) => ({ label: c.label, value: st.costLines[c.key] })).filter((p) => p.value > 0)} />
+              <div className="num" style={{ fontSize: 11.5, color: C.faint, marginTop: 6 }}>
+                Lease rents and loans come on top: see Bank
               </div>
             </Card>
 

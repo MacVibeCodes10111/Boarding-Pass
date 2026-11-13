@@ -53,58 +53,139 @@ export type AirportIconStatus = 'hub' | 'selected' | 'standard';
 
 // by ICAO gate code, 1 (A) to 6 (F)
 const STD_FILLS: Record<number, string> = { 1: '#334155', 2: '#334155', 3: '#1e40af', 4: '#1d4ed8', 5: '#0369a1', 6: '#0284c7' };
-const STD_RINGS: Record<number, string> = { 1: '#94a3b8', 2: '#94a3b8', 3: '#60a5fa', 4: '#38bdf8', 5: '#7dd3fc', 6: '#bae6fd' };
+/** Disc radius by level, in on-screen pixels (the badge is drawn at 2×). */
 const RADIUS_BY_TIER: Record<number, number> = { 1: 8.0, 2: 8.8, 3: 9.8, 4: 11.0, 5: 12.2, 6: 13.5 };
+/** Airport badges: 96 px canvases registered at pixelRatio 2 (48 px on screen before the zoom's icon size). */
+export const AIRPORT_ICON_PX = 96;
+export const AIRPORT_ICON_PIXEL_RATIO = 2;
 
-/** An airport badge for the map, showing its ICAO gate code letter (rank 1 = A to 6 = F). */
-export function createAirportMapIconImageData(status: AirportIconStatus, tier: number = 3): ImageData {
-  const size = 44;
+const hexRgb = (hex: string): [number, number, number] => {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map((x) => x + x).join('') : h.slice(0, 6);
+  const n = parseInt(full, 16);
+  return Number.isFinite(n) ? [(n >> 16) & 255, (n >> 8) & 255, n & 255] : [30, 64, 175];
+};
+/** `hex` mixed towards white (t > 0) or black (t < 0). */
+const shadeHex = (hex: string, t: number) => {
+  const [r, g, b] = hexRgb(hex);
+  const to = t > 0 ? 255 : 0;
+  const k = Math.abs(t);
+  return `rgb(${Math.round(r + (to - r) * k)}, ${Math.round(g + (to - g) * k)}, ${Math.round(b + (to - b) * k)})`;
+};
+
+/**
+ * An airport's "gate badge" for the map: a disc in the level's colour with its
+ * ICAO gate code letter, and a ring of six segments round it, as many lit as
+ * the level (A = 1 … F = 6). A hub has the airline's accent colour, a gold ring
+ * and a star; the selected airport a white halo. Drawn with paths on one canvas
+ * (no canvas-to-canvas copies: Safari has drawn those blank).
+ */
+export function createAirportMapIconImageData(status: AirportIconStatus, tier: number = 3, opts: { light?: boolean; accent?: string } = {}): ImageData {
+  const S = AIRPORT_ICON_PIXEL_RATIO;
+  const size = AIRPORT_ICON_PX;
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
   const c = size / 2;
-
-  const palette = {
-    selected: { fill: '#facc15', ring: '#fef08a', glow: 'rgba(250, 204, 21, 0.35)', text: '#090d16' },
-    hub: { fill: '#10b981', ring: '#6ee7b7', glow: 'rgba(16, 185, 129, 0.35)', text: '#052e16' },
-    standard: { fill: STD_FILLS[tier], ring: STD_RINGS[tier], glow: 'transparent', text: '#ffffff' },
-  }[status];
-  const r = RADIUS_BY_TIER[tier] ?? 11;
+  const level = Math.min(6, Math.max(1, Math.round(tier) || 3));
+  const R = (RADIUS_BY_TIER[level] ?? 11) * S;
+  const hub = status === 'hub';
+  const base = hub ? opts.accent ?? '#8fb8de' : STD_FILLS[level];
+  const GOLD = '#f5c542';
 
   const circle = (radius: number) => {
     ctx.beginPath();
     ctx.arc(c, c, radius, 0, Math.PI * 2);
   };
 
-  if (status !== 'standard') {
-    circle(r + 4);
-    ctx.fillStyle = palette.glow;
-    ctx.fill();
-    ctx.lineWidth = 1.8;
-    ctx.strokeStyle = palette.ring;
-    ctx.stroke();
-  }
-
-  circle(r);
-  ctx.fillStyle = palette.fill;
+  // 1. Soft shadow under the disc, so it reads on dark and light maps
+  ctx.save();
+  ctx.shadowColor = opts.light ? 'rgba(15, 23, 42, 0.42)' : 'rgba(0, 0, 0, 0.25)';
+  ctx.shadowBlur = 3 * S;
+  ctx.shadowOffsetY = 0.75 * S;
+  circle(R);
+  ctx.fillStyle = base;
   ctx.fill();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = '#090d16';
-  ctx.stroke();
+  ctx.restore();
 
-  if (status === 'standard') {
-    circle(r - 1.5);
-    ctx.lineWidth = 1.2;
-    ctx.strokeStyle = palette.ring;
+  // 2. The disc, lighter at the top and darker at the bottom
+  const grad = ctx.createLinearGradient(0, c - R, 0, c + R);
+  grad.addColorStop(0, shadeHex(base, 0.12));
+  grad.addColorStop(1, shadeHex(base, -0.12));
+  circle(R);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  if (opts.light) {
+    ctx.lineWidth = 1.5 * S;
+    ctx.strokeStyle = 'rgba(15, 23, 42, 0.75)';
     ctx.stroke();
   }
 
-  ctx.font = `900 ${Math.round(r * 1.02)}px Inter, system-ui, sans-serif`;
+  // 3. The level ring: six segments from 12 o'clock, clockwise, as many lit as the level
+  const ringW = 1.6 * S;
+  const ringR = R + 1.6 * S + ringW / 2;
+  const gap = 0.24;
+  const seg = (Math.PI * 2) / 6;
+  ctx.lineCap = 'butt';
+  for (let i = 0; i < 6; i++) {
+    const a0 = -Math.PI / 2 + i * seg + gap / 2;
+    ctx.beginPath();
+    ctx.arc(c, c, ringR, a0, a0 + seg - gap);
+    ctx.lineWidth = ringW;
+    ctx.strokeStyle = i < level ? 'rgba(255, 255, 255, 0.95)' : opts.light ? 'rgba(15, 23, 42, 0.28)' : 'rgba(255, 255, 255, 0.22)';
+    ctx.stroke();
+  }
+  let outer = ringR + ringW / 2;
+
+  // 5. A hub: a thin gold ring outside the level ring
+  if (hub) {
+    const goldR = outer + 1.3 * S;
+    circle(goldR);
+    ctx.lineWidth = 1.1 * S;
+    ctx.strokeStyle = GOLD;
+    ctx.stroke();
+    outer = goldR + 0.55 * S;
+  }
+
+  // 6. The selected airport: a white halo outside everything
+  if (status === 'selected') {
+    circle(outer + 2.2 * S);
+    ctx.lineWidth = 2 * S;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.stroke();
+  }
+
+  // 4. The letter, white with a thin dark outline
+  const letter = 'ABCDEF'[level - 1];
+  ctx.font = `800 ${Math.round(R * 1.1)}px Barlow, Inter, system-ui, sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = palette.text;
-  ctx.fillText('ABCDEF'[Math.min(6, Math.max(1, tier)) - 1], c, c + 0.5);
+  const ty = c + R * (hub ? 0.1 : 0.04);
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = Math.max(1.5, R * 0.13);
+  ctx.strokeStyle = 'rgba(9, 13, 22, 0.7)';
+  ctx.strokeText(letter, c, ty);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(letter, c, ty);
+
+  // 5. …and a small gold star over the disc's top edge
+  if (hub) {
+    const sr = Math.max(3 * S, R * 0.34);
+    const sy = c - R;
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + (i * Math.PI) / 5;
+      const rr = i % 2 === 0 ? sr : sr * 0.45;
+      ctx.lineTo(c + Math.cos(a) * rr, sy + Math.sin(a) * rr);
+    }
+    ctx.closePath();
+    ctx.fillStyle = GOLD;
+    ctx.fill();
+    ctx.lineWidth = 0.6 * S;
+    ctx.strokeStyle = 'rgba(9, 13, 22, 0.55)';
+    ctx.stroke();
+  }
   return ctx.getImageData(0, 0, size, size);
 }
 

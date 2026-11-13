@@ -18,6 +18,8 @@ import {
   goalValue,
   goalsOfStage,
   INSOLVENCY_WEEKS,
+  leaseCreditUsed,
+  totalOutstanding,
   MIN_PART_REPAYMENT,
   debtSummary,
   loanInterestLeft,
@@ -411,7 +413,49 @@ function DebtTracker({ career, fleet, cash, econMin, ledgerHistory, onOpenSettle
         <Stat label="Debt-free" value={d.debtFreeWeek ? `Week ${d.debtFreeWeek}` : d.overdraft ? 'Overdrawn' : 'Now'} sub={d.debtFreeWeek ? `in ${Math.max(0, d.debtFreeWeek - week)} weeks` : undefined} />
         <DebtChart history={ledgerHistory} now={d.total} week={week} />
       </div>
+      <CreditLineBar career={career} fleet={fleet} />
     </section>
+  );
+}
+
+/** The credit line as one bar: loans, leased aircraft and what is free. */
+function CreditLineBar({ career, fleet }: Pick<BankPanelProps, 'career' | 'fleet'>) {
+  const line = creditLine(career, fleet);
+  const loans = totalOutstanding(career);
+  const leases = leaseCreditUsed(fleet);
+  const used = loans + leases;
+  const over = Math.max(0, used - line);
+  const free = Math.max(0, line - used);
+  const scale = Math.max(1, line, used);
+  const part = (v: number, color: string, label: string) =>
+    v > 0 ? <div title={`${label} ${usdShort(v)}`} style={{ width: `${(v / scale) * 100}%`, background: color, minWidth: 2 }} /> : null;
+  const key = (color: string, label: string, v: number) => (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <span style={{ width: 9, height: 9, borderRadius: 3, background: color, flex: 'none' }} />
+      {label} <b className="num" style={{ color: C.text, fontWeight: 600 }}>{usdShort(v)}</b>
+    </span>
+  );
+  return (
+    <div style={{ marginTop: 12, padding: '12px 16px', borderRadius: 14, background: well() }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, fontWeight: 650 }}>Credit line</span>
+        <span className="num" style={{ fontSize: 12.5, color: C.muted }}>{usdShort(line)}</span>
+      </div>
+      <div style={{ display: 'flex', height: 10, borderRadius: 5, overflow: 'hidden', background: `${C.text}14` }} aria-hidden="true">
+        {part(loans, C.brand, 'Loans')}
+        {part(leases, C.accent, 'Leases')}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px', fontSize: 12, color: C.muted, marginTop: 8 }}>
+        {key(C.brand, 'Loans', loans)}
+        {key(C.accent, 'Leases', leases)}
+        {key(`${C.text}24`, 'Free', free)}
+      </div>
+      <div style={{ fontSize: 12, color: over > 0 ? C.amber : C.muted, marginTop: 8, lineHeight: 1.45 }}>
+        {over > 0
+          ? `Over the line by ${usdShort(over)}. No new loans or leases until there is room.`
+          : 'Loans and leased aircraft share this line. Each lease uses a quarter of the aircraft’s price. Aircraft you own add to the line.'}
+      </div>
+    </div>
   );
 }
 

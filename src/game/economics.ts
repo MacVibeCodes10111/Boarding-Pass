@@ -2,6 +2,7 @@
 // CABIN LAYOUT, PASSENGER + CARGO DEMAND & FLIGHT ECONOMICS
 // ============================================================================
 import { cargoDemand, FREIGHT_DAY, freightRate, freightShare, holdTons, PARCEL_DAY, parcelHourAppeal, parcelRate } from './cargo';
+import { flightCosts, type FlightCosts } from './costs';
 import { gameMarket, marketDemand, PLAYER_MARKET_SHARE, routeKind, type RouteKind } from './demand';
 import { daysOrAll } from './time';
 import type { AircraftModel, Airport, CabinConfig, Fares, PlayerAircraft, ScheduledFlight } from './types';
@@ -311,6 +312,8 @@ export interface FlightEconomics {
   totalPax: number;
   totalCap: number;
   revenue: number;
+  /** The five cost lines (see costs.ts); `cost` is their total. */
+  costs: Omit<FlightCosts, 'total'>;
   cost: number;
   profit: number;
 }
@@ -525,18 +528,14 @@ export function simulateFlightEconomics(
     Math.round(Math.max(0, Math.min(hold - soldParcelTons, freightCap, freightWanted * throughMult * priceElasticity(cargoFare, demand.refFares.cargoPerTon))) * 10) / 10;
   const parcelRevenue = Math.round(soldParcelTons * parcelFare);
   const freightRevenue = Math.round(soldFreightTons * cargoFare);
-  const myCargo = aircraft.model.cargo_cap_tons || 0;
 
   const paxRevenue =
     sold.econ * fares.econ + sold.prem * fares.prem + sold.bus * fares.bus + sold.first * fares.first;
   const cargoRevenue = parcelRevenue + freightRevenue;
   const revenue = paxRevenue + cargoRevenue;
 
-  const flightHours = blockTimeMin / 60;
-  const fuelCost = flightHours * aircraft.model.fuel_burn_kg_hr * 0.82;
-  const landingFee = (aircraft.model.mtow_kg / 1000) * 14.5;
-  const maintCrewCost = flightHours * Math.max(45, aircraft.model.typical_seats || myCargo * 3) * 4.2;
-  const cost = Math.round(fuelCost + landingFee + maintCrewCost);
+  const costs = flightCosts(aircraft.model, { blockMin: blockTimeMin, seatsFitted: mySeatTotal, cargoTons: soldParcelTons + soldFreightTons, ticketRevenue: paxRevenue });
+  const cost = costs.total;
 
   return {
     sold,
@@ -558,6 +557,7 @@ export function simulateFlightEconomics(
     totalPax: sold.econ + sold.prem + sold.bus + sold.first,
     totalCap: mySeatTotal,
     revenue: Math.round(revenue),
+    costs: { fuel: costs.fuel, crew: costs.crew, maintenance: costs.maintenance, airport: costs.airport, service: costs.service },
     cost,
     profit: Math.round(revenue - cost),
   };

@@ -1,3 +1,4 @@
+import { COST_LINES } from '../game/costs';
 import { useMemo, useState } from 'react';
 import type { FlightEconomics } from '../game/economics';
 import { calcAircraftScheduleUsage, getAircraftCircuitStatus, type AircraftCircuitStatus } from '../game/scheduling';
@@ -222,7 +223,9 @@ export function SchedulePanel({ schedule, fleet, hubs, primaryHub, airportByIata
                     {group.rotations.slice(0, limits[group.key] ?? ROW_PAGE).map(({ outbound, returnLeg, chainSummary }) => {
                       const ac = fleetByTail.get(outbound.tailNumber);
                       const econOut = econById.get(outbound.id);
-                      const profit = (econOut?.profit ?? 0) + (returnLeg ? econById.get(returnLeg.id)?.profit ?? 0 : 0);
+                      const econBack = returnLeg ? econById.get(returnLeg.id) : undefined;
+                      const profit = (econOut?.profit ?? 0) + (econBack?.profit ?? 0);
+                      const money = `Each ${returnLeg ? 'round trip' : 'departure'}: ${usd((econOut?.revenue ?? 0) + (econBack?.revenue ?? 0))} revenue, less ${COST_LINES.map((c) => `${c.label.toLowerCase()} ${usd((econOut?.costs[c.key] ?? 0) + (econBack?.costs[c.key] ?? 0))}`).join(', ')}`;
                       const local = [
                         legLocalText(outbound.depTimeMin, outbound.arrTimeMin, outbound.origin.iata_code, outbound.destination.iata_code),
                         returnLeg ? legLocalText(returnLeg.depTimeMin, returnLeg.arrTimeMin, returnLeg.origin.iata_code, returnLeg.destination.iata_code) : '',
@@ -258,7 +261,7 @@ export function SchedulePanel({ schedule, fleet, hubs, primaryHub, airportByIata
                               {chainSummary ? ` · ${chainSummary.replace(/^(Open chain|Chain): /, '')}` : ''}
                             </div>
                           </div>
-                          <div className="num" style={{ flex: 'none', fontSize: 14, fontWeight: 600, color: profit >= 0 ? C.green : C.red, textAlign: 'right' }}>
+                          <div className="num" title={money} style={{ flex: 'none', fontSize: 14, fontWeight: 600, color: profit >= 0 ? C.green : C.red, textAlign: 'right' }}>
                             {usd(profit)}
                           </div>
                           <IconButton

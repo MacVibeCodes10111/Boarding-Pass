@@ -91,13 +91,17 @@ export function airportRestrictionFor(model: AircraftModel, airport: Airport): s
   return gateRestriction(model, airport);
 }
 
+/** Hub prices since the 2026-11 economy rework: flights earn about a third of what they did, so hubs cost 60% of the old
+ *  price. A big hub is still well over a year of one narrowbody's profit. */
+export const HUB_PRICE_SCALE = 0.6;
+
 export function calcHubPurchasePriceUsd(airport: Airport): number {
   const isLarge = airport.type === 'large_airport';
   const sizeBase = isLarge ? 12_000_000 : 2_800_000;
   const demandComponent = Math.pow(Math.max(10, airport.demand_weight), 1.08) * 145_000;
   const rwyComponent = (airport.runway_count || 1) * (isLarge ? 2_200_000 : 750_000);
   const tierMult = 0.75 + 0.1 * getAirportMaxAircraftTier(airport.max_runway_length_ft).tier;
-  const rawPrice = (sizeBase + demandComponent + rwyComponent) * tierMult;
+  const rawPrice = (sizeBase + demandComponent + rwyComponent) * tierMult * HUB_PRICE_SCALE;
   return Math.round(rawPrice / 100_000) * 100_000;
 }
 

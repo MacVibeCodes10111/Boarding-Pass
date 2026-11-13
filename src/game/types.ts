@@ -233,6 +233,8 @@ export interface CareerState {
   bankruptcies?: number;
   /** v2.38+: economy minute each not-yet-paid milestone was first met (it must hold for a game day). */
   goalsSince?: Record<string, number>;
+  /** 2026-11 economy rework: until this economy minute a week closing overdrawn doesn't count towards insolvency. */
+  econGraceUntilMin?: number;
 }
 
 export interface SaveGameState {
@@ -256,6 +258,8 @@ export interface SaveGameState {
   savedAt: string;
   // --- v2.3+ ---
   appVersion?: string;
+  /** Economy rules the save was written under (missing = 1; see game/econMigrate.ts). */
+  econVersion?: number;
   /** Total economy minutes since the career began. */
   econMin?: number;
   /** Real time (ms since epoch) when this save was written; drives catch-up. */

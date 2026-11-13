@@ -8,9 +8,10 @@
 // ============================================================================
 import { ECONOMY_RATE, OVERDRAFT_RATE_PCT, econDayOfWeek, econWeekOf, ledgerNet, loanInterestShare, loanPrincipalLeft, type WeekLedger } from './clock';
 import type { FlightEconomics } from './economics';
+import { LEASE_WEEK_SHARE, leaseCreditUse } from './leasing';
 import { calcAircraftResaleUsd } from './tiers';
 import { MIN_PER_DAY, MIN_PER_WEEK, daysOrAll } from './time';
-import type { Airport, BankLetter, BankLoan, CareerState, PlayerAircraft, ScheduledFlight } from './types';
+import type { AircraftModel, Airport, BankLetter, BankLoan, CareerState, PlayerAircraft, ScheduledFlight } from './types';
 
 export const BANK = {
   name: 'Northgate Aviation Bank',
@@ -156,7 +157,32 @@ export function creditLine(c: CareerState, fleet: PlayerAircraft[]): number {
   return STANDINGS[standingIndex(c)].creditLine + Math.round(owned * COLLATERAL_SHARE);
 }
 
-export const availableCredit = (c: CareerState, fleet: PlayerAircraft[]) => Math.max(0, creditLine(c, fleet) - totalOutstanding(c));
+/** Credit used by leased aircraft: a quarter of each one's list price. */
+export const leaseCreditUsed = (fleet: PlayerAircraft[]) => fleet.reduce((s, a) => s + (a.acquisition === 'leased' ? leaseCreditUse(a.model) : 0), 0);
+/** Credit in use: loans outstanding plus leased aircraft. */
+export const creditUsed = (c: CareerState, fleet: PlayerAircraft[]) => totalOutstanding(c) + leaseCreditUsed(fleet);
+/** Credit still free for new loans and leases (0 when over the line). */
+export const availableCredit = (c: CareerState, fleet: PlayerAircraft[]) => Math.max(0, creditLine(c, fleet) - creditUsed(c, fleet));
+
+/**
+ * Why these aircraft can't be leased right now, or null. `freed` is credit
+ * released by aircraft going back in the same action (a like-for-like swap).
+ * Being over the line (an older save) only blocks new leases: nothing is taken back.
+ */
+export function leaseBlocker(c: CareerState, fleet: PlayerAircraft[], models: AircraftModel[], freed = 0): string | null {
+  if (models.length === 0) return null;
+  const need = models.reduce((s, m) => s + leaseCreditUse(m), 0);
+  const free = Math.max(0, creditLine(c, fleet) - creditUsed(c, fleet) + freed);
+  if (need <= free) return null;
+  const what = models.length === 1 ? 'This lease uses' : `These ${models.length} leases use`;
+  return `Not enough credit. ${what} ${usdShort(need)} of your credit line and you have ${usdShort(free)} free. Repay a loan, return a leased aircraft, own more aircraft or reach the next standing.`;
+}
+
+/** How many more of this type the airline can lease with the credit it has free. */
+export function maxLeasable(c: CareerState, fleet: PlayerAircraft[], model: AircraftModel): number {
+  const use = leaseCreditUse(model);
+  return use > 0 ? Math.floor(availableCredit(c, fleet) / use) : 0;
+}
 
 export function loanRatePct(c: CareerState, product: LoanProduct, econMin: number): number {
   const surcharge = econWeekOf(econMin) <= c.surchargeUntilWeek ? OVERDRAFT_SURCHARGE_PCT : 0;
@@ -184,7 +210,7 @@ export function borrowBlocker(c: CareerState, fleet: PlayerAircraft[], cash: num
   if (cash < 0) return 'New borrowing is suspended while your account is overdrawn.';
   if (activeLoans(c).length >= MAX_ACTIVE_LOANS) return `You can hold up to ${MAX_ACTIVE_LOANS} loans at once. Repay one first.`;
   const avail = availableCredit(c, fleet);
-  if (avail < MIN_LOAN) return 'Your credit line is fully used.';
+  if (avail < MIN_LOAN) return 'Your credit line is fully used by loans and leased aircraft.';
   if (amount < MIN_LOAN) return `The smallest loan is ${usdShort(MIN_LOAN)}.`;
   if (amount > avail) return `That is more than your available credit of ${usdShort(avail)}.`;
   return null;
@@ -290,12 +316,14 @@ export interface StageDef {
 export const STAGES: StageDef[] = [
   { stage: 1, name: 'Start-up carrier', bonus: 25_000_000 },
   { stage: 2, name: 'Regional operator', bonus: 100_000_000 },
-  { stage: 3, name: 'National carrier', bonus: 300_000_000 },
-  { stage: 4, name: 'International carrier', bonus: 800_000_000 },
-  { stage: 5, name: 'Global network', bonus: 2_000_000_000 },
+  { stage: 3, name: 'National carrier', bonus: 210_000_000 },
+  { stage: 4, name: 'International carrier', bonus: 400_000_000 },
+  { stage: 5, name: 'Global network', bonus: 800_000_000 },
 ];
 
 const M = 1_000_000;
+// Since the 2026-11 economy rework (profits about a third of before): weekly-profit targets and the
+// grants of stages 3 to 5 are lower. Targets only ever go down, so a milestone already met stays met.
 export const GOALS: GoalDef[] = [
   // Stage 1: first steps
   { id: 's1-aircraft', stage: 1, title: 'Take delivery of your first aircraft', hint: 'Open Buy and buy or lease an aircraft.', metric: 'aircraft', target: 1, reward: 8 * M, unit: 'aircraft' },
@@ -311,35 +339,35 @@ export const GOALS: GoalDef[] = [
   { id: 's2-intl1', stage: 2, title: 'Open your first international route', hint: 'Fly to an airport in another country.', metric: 'intlRoutes', target: 1, reward: 30 * M, unit: 'international routes' },
   { id: 's2-hub2', stage: 2, title: 'Open a second hub', hint: 'Open an airport and choose Buy as hub.', metric: 'hubs', target: 2, reward: 40 * M, unit: 'hubs' },
   { id: 's2-deps250', stage: 2, title: 'Fly 250 departures a week', hint: 'Daily flights count 7 times. Add frequencies on busy routes.', metric: 'departuresPerWeek', target: 250, reward: 40 * M, unit: 'departures a week' },
-  { id: 's2-week2m', stage: 2, title: 'Close a week with $2M net profit', hint: 'Shown as This week in the top bar.', metric: 'bestWeekNet', target: 2 * M, reward: 50 * M, unit: 'best week', money: true },
+  { id: 's2-week2m', stage: 2, title: 'Close a week with $1M net profit', hint: 'Shown as This week in the top bar.', metric: 'bestWeekNet', target: 1 * M, reward: 50 * M, unit: 'best week', money: true },
 
   // Stage 3: national carrier
-  { id: 's3-fleet20', stage: 3, title: 'Operate 20 aircraft', hint: 'Owned and leased aircraft both count.', metric: 'aircraft', target: 20, reward: 120 * M, unit: 'aircraft' },
-  { id: 's3-routes40', stage: 3, title: 'Fly 40 routes', hint: 'A route is any pair of airports you fly between.', metric: 'routes', target: 40, reward: 120 * M, unit: 'routes' },
-  { id: 's3-intl10', stage: 3, title: 'Fly 10 international routes', hint: 'Routes between airports in different countries.', metric: 'intlRoutes', target: 10, reward: 100 * M, unit: 'international routes' },
-  { id: 's3-widebody', stage: 3, title: 'Put a widebody into service', hint: 'Buy or lease a widebody and give it at least one flight.', metric: 'widebodies', target: 1, reward: 80 * M, unit: 'widebodies flying' },
-  { id: 's3-pax25k', stage: 3, title: 'Carry 25,000 passengers a week', hint: 'Bigger aircraft and more frequencies on strong routes.', metric: 'paxPerWeek', target: 25_000, reward: 100 * M, unit: 'passengers a week' },
-  { id: 's3-week10m', stage: 3, title: 'Close a week with $10M net profit', hint: 'Shown as This week in the top bar.', metric: 'bestWeekNet', target: 10 * M, reward: 150 * M, unit: 'best week', money: true },
-  { id: 's3-repay', stage: 3, title: 'Repay a loan in full', hint: 'Let a loan run its term, or repay it early from the Loans tab after at least a week.', metric: 'loansRepaid', target: 1, reward: 50 * M, unit: 'loans repaid' },
+  { id: 's3-fleet20', stage: 3, title: 'Operate 20 aircraft', hint: 'Owned and leased aircraft both count.', metric: 'aircraft', target: 20, reward: 85 * M, unit: 'aircraft' },
+  { id: 's3-routes40', stage: 3, title: 'Fly 40 routes', hint: 'A route is any pair of airports you fly between.', metric: 'routes', target: 40, reward: 85 * M, unit: 'routes' },
+  { id: 's3-intl10', stage: 3, title: 'Fly 10 international routes', hint: 'Routes between airports in different countries.', metric: 'intlRoutes', target: 10, reward: 70 * M, unit: 'international routes' },
+  { id: 's3-widebody', stage: 3, title: 'Put a widebody into service', hint: 'Buy or lease a widebody and give it at least one flight.', metric: 'widebodies', target: 1, reward: 55 * M, unit: 'widebodies flying' },
+  { id: 's3-pax25k', stage: 3, title: 'Carry 25,000 passengers a week', hint: 'Bigger aircraft and more frequencies on strong routes.', metric: 'paxPerWeek', target: 25_000, reward: 70 * M, unit: 'passengers a week' },
+  { id: 's3-week10m', stage: 3, title: 'Close a week with $4M net profit', hint: 'Shown as This week in the top bar.', metric: 'bestWeekNet', target: 4 * M, reward: 105 * M, unit: 'best week', money: true },
+  { id: 's3-repay', stage: 3, title: 'Repay a loan in full', hint: 'Let a loan run its term, or repay it early from the Loans tab after at least a week.', metric: 'loansRepaid', target: 1, reward: 35 * M, unit: 'loans repaid' },
 
   // Stage 4: international carrier
-  { id: 's4-fleet40', stage: 4, title: 'Operate 40 aircraft', hint: 'Owned and leased aircraft both count.', metric: 'aircraft', target: 40, reward: 300 * M, unit: 'aircraft' },
-  { id: 's4-owned15', stage: 4, title: 'Own 15 aircraft outright', hint: 'Leased aircraft do not count for this one.', metric: 'owned', target: 15, reward: 250 * M, unit: 'owned aircraft' },
-  { id: 's4-transatlantic', stage: 4, title: 'Open a transatlantic route', hint: 'Fly between North America and Europe.', metric: 'transatlantic', target: 1, reward: 150 * M, unit: 'transatlantic routes' },
-  { id: 's4-transpacific', stage: 4, title: 'Open a transpacific route', hint: 'Fly between North America and Asia or Oceania.', metric: 'transpacific', target: 1, reward: 150 * M, unit: 'transpacific routes' },
-  { id: 's4-hubs3', stage: 4, title: 'Run hubs on two continents', hint: 'Own at least one hub outside your home continent.', metric: 'hubContinents', target: 2, reward: 250 * M, unit: 'continents with a hub' },
-  { id: 's4-routes100', stage: 4, title: 'Fly 100 routes', hint: 'A route is any pair of airports you fly between.', metric: 'routes', target: 100, reward: 300 * M, unit: 'routes' },
-  { id: 's4-intl25', stage: 4, title: 'Fly 25 international routes', hint: 'Routes between airports in different countries.', metric: 'intlRoutes', target: 25, reward: 250 * M, unit: 'international routes' },
+  { id: 's4-fleet40', stage: 4, title: 'Operate 40 aircraft', hint: 'Owned and leased aircraft both count.', metric: 'aircraft', target: 40, reward: 150 * M, unit: 'aircraft' },
+  { id: 's4-owned15', stage: 4, title: 'Own 15 aircraft outright', hint: 'Leased aircraft do not count for this one.', metric: 'owned', target: 15, reward: 125 * M, unit: 'owned aircraft' },
+  { id: 's4-transatlantic', stage: 4, title: 'Open a transatlantic route', hint: 'Fly between North America and Europe.', metric: 'transatlantic', target: 1, reward: 75 * M, unit: 'transatlantic routes' },
+  { id: 's4-transpacific', stage: 4, title: 'Open a transpacific route', hint: 'Fly between North America and Asia or Oceania.', metric: 'transpacific', target: 1, reward: 75 * M, unit: 'transpacific routes' },
+  { id: 's4-hubs3', stage: 4, title: 'Run hubs on two continents', hint: 'Own at least one hub outside your home continent.', metric: 'hubContinents', target: 2, reward: 125 * M, unit: 'continents with a hub' },
+  { id: 's4-routes100', stage: 4, title: 'Fly 100 routes', hint: 'A route is any pair of airports you fly between.', metric: 'routes', target: 100, reward: 150 * M, unit: 'routes' },
+  { id: 's4-intl25', stage: 4, title: 'Fly 25 international routes', hint: 'Routes between airports in different countries.', metric: 'intlRoutes', target: 25, reward: 125 * M, unit: 'international routes' },
 
   // Stage 5: global network
-  { id: 's5-fleet100', stage: 5, title: 'Operate 100 aircraft', hint: 'Owned and leased aircraft both count.', metric: 'aircraft', target: 100, reward: 1000 * M, unit: 'aircraft' },
-  { id: 's5-routes250', stage: 5, title: 'Fly 250 routes', hint: 'A route is any pair of airports you fly between.', metric: 'routes', target: 250, reward: 1000 * M, unit: 'routes' },
-  { id: 's5-continents', stage: 5, title: 'Serve all six inhabited continents', hint: 'North and South America, Europe, Africa, Asia and Oceania.', metric: 'continents', target: 6, reward: 750 * M, unit: 'continents' },
-  { id: 's5-ultralong', stage: 5, title: 'Fly 10 routes over 5,000 nm', hint: 'Ultra long-haul needs widebodies with the range.', metric: 'ultraLong', target: 10, reward: 600 * M, unit: 'routes over 5,000 nm' },
-  { id: 's5-countries50', stage: 5, title: 'Serve 50 countries', hint: 'Count of countries your flights touch.', metric: 'countries', target: 50, reward: 600 * M, unit: 'countries' },
-  { id: 's5-heavy', stage: 5, title: 'Put a very large aircraft into service', hint: 'An A380 or 747 class aircraft with at least one flight.', metric: 'heavies', target: 1, reward: 400 * M, unit: 'very large aircraft flying' },
-  { id: 's5-pax250k', stage: 5, title: 'Carry 250,000 passengers a week', hint: 'Shown on each flight in your schedule.', metric: 'paxPerWeek', target: 250_000, reward: 1000 * M, unit: 'passengers a week' },
-  { id: 's5-week100m', stage: 5, title: 'Close a week with $100M net profit', hint: 'Shown as This week in the top bar.', metric: 'bestWeekNet', target: 100 * M, reward: 1500 * M, unit: 'best week', money: true },
+  { id: 's5-fleet100', stage: 5, title: 'Operate 100 aircraft', hint: 'Owned and leased aircraft both count.', metric: 'aircraft', target: 100, reward: 400 * M, unit: 'aircraft' },
+  { id: 's5-routes250', stage: 5, title: 'Fly 250 routes', hint: 'A route is any pair of airports you fly between.', metric: 'routes', target: 250, reward: 400 * M, unit: 'routes' },
+  { id: 's5-continents', stage: 5, title: 'Serve all six inhabited continents', hint: 'North and South America, Europe, Africa, Asia and Oceania.', metric: 'continents', target: 6, reward: 300 * M, unit: 'continents' },
+  { id: 's5-ultralong', stage: 5, title: 'Fly 10 routes over 5,000 nm', hint: 'Ultra long-haul needs widebodies with the range.', metric: 'ultraLong', target: 10, reward: 240 * M, unit: 'routes over 5,000 nm' },
+  { id: 's5-countries50', stage: 5, title: 'Serve 50 countries', hint: 'Count of countries your flights touch.', metric: 'countries', target: 50, reward: 240 * M, unit: 'countries' },
+  { id: 's5-heavy', stage: 5, title: 'Put a very large aircraft into service', hint: 'An A380 or 747 class aircraft with at least one flight.', metric: 'heavies', target: 1, reward: 160 * M, unit: 'very large aircraft flying' },
+  { id: 's5-pax250k', stage: 5, title: 'Carry 250,000 passengers a week', hint: 'Shown on each flight in your schedule.', metric: 'paxPerWeek', target: 250_000, reward: 400 * M, unit: 'passengers a week' },
+  { id: 's5-week100m', stage: 5, title: 'Close a week with $35M net profit', hint: 'Shown as This week in the top bar.', metric: 'bestWeekNet', target: 35 * M, reward: 600 * M, unit: 'best week', money: true },
 ];
 
 export const goalsOfStage = (stage: number) => GOALS.filter((g) => g.stage === stage);
@@ -382,6 +410,26 @@ export function welcomeLetter(airlineName: string, iata: string, hub: string, ec
       `${BANK.name} is pleased to confirm the opening of a corporate operating account for ${airlineName} (${iata}), based at ${hub}.`,
       `Your airline has been enrolled in the Bank's ${BANK.programme}. The programme sets a series of operating milestones in five stages. Each milestone met qualifies ${airlineName} for a performance grant, paid into your operating account on collection. Completing every milestone in a stage raises your standing with the Bank, increases your credit line and lowers the rates we are able to offer.`,
       `Your opening credit line is ${usdFull(s.creditLine)}, plus ${Math.round(COLLATERAL_SHARE * 100)}% of the resale value of any aircraft you own outright, at rates from ${s.ratePct}% a year. Our current facilities are set out under Loans.`,
+      `Loans and leased aircraft share this line: each aircraft you lease uses a quarter of its list price for as long as you keep it, and its rent is ${(LEASE_WEEK_SHARE * 100).toFixed(2)}% of that price a week. Buying aircraft outright raises the line, so owning more lets you lease more.`,
+      ...signOff,
+    ],
+    read: false,
+  };
+}
+
+/** The bank's letter to careers from before the 2026-11 economy rework. */
+export function economyLetter(airlineName: string, econMin: number): BankLetter {
+  return {
+    id: letterId(),
+    econMin,
+    kind: 'notice',
+    subject: 'Changes to how airlines earn and spend',
+    body: [
+      `Dear ${airlineName} management,`,
+      `The way airlines earn and spend has changed. Flights now show five costs: fuel, crew, maintenance, airport fees and passenger service. Older aircraft designs cost more to maintain.`,
+      `Lease rents are now ${(LEASE_WEEK_SHARE * 100).toFixed(2)}% of an aircraft's price each week, and every leased aircraft uses part of your credit line (a quarter of its price), the same line your loans use. Aircraft you own outright add to the line. Aircraft you already lease stay with you, even if that puts you over the line; you just can't add leases or loans until there is room.`,
+      `Passenger aircraft now carry small parcels only; big parcels need a freighter. Your cargo prices have been moved to match the new market rates.`,
+      `To give you time to adjust, the Bank will not start insolvency proceedings for the next four weeks. Interest on an overdrawn account is still charged.`,
       ...signOff,
     ],
     read: false,
@@ -609,6 +657,8 @@ export function settleCareerAdvance(
     bestWeekNet = Math.max(bestWeekNet, ledgerNet(w));
     if (!standard) continue;
     const endCash = w.cashEnd ?? cashAfter;
+    // After the 2026-11 economy rework old careers get a few weeks' grace: no notice, no insolvency
+    if (endCash < 0 && w.week * MIN_PER_WEEK <= (career.econGraceUntilMin ?? -1)) continue;
     if (endCash < 0) {
       overdrawn++;
       const until = w.week + OVERDRAFT_SURCHARGE_WEEKS;

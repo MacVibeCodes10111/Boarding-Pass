@@ -25,7 +25,8 @@ const shade = (dark: number) => `rgba(${C.scheme === 'light' ? '30,45,80' : '0,0
 const BLUR = 'blur(16px) saturate(1.2)';
 const GLASS_BLUR = 'blur(28px) saturate(1.9)';
 /** Glass finish: how see-through a surface is, its sheen, and the light caught on its edges. */
-const glassAlpha = (alpha: string) => hex2(parseInt(alpha, 16) * (C.scheme === 'light' ? 0.68 : 0.6));
+// Clear enough to see the map move behind, solid enough that text over a busy map stays easy to read
+const glassAlpha = (alpha: string) => hex2(parseInt(alpha, 16) * (C.scheme === 'light' ? 0.88 : 0.8));
 const glassSheen = () => `linear-gradient(180deg, #ffffff${C.scheme === 'light' ? '80' : '1c'} 0%, #ffffff${C.scheme === 'light' ? '26' : '08'} 34%, #ffffff00 100%)`;
 const glassEdge = () => (C.scheme === 'light' ? '#ffffffcc' : '#ffffff38');
 const glassRim = () => `inset 0 1px 0 ${C.scheme === 'light' ? '#ffffff' : '#ffffff4d'}, inset 0 -1px 0 #ffffff14`;
@@ -713,9 +714,9 @@ export function ModalShell({
       style={{
         position: 'fixed',
         inset: 0,
+        // No blur of its own: a blurring layer here stops the window's own blur working in Chrome, and the
+        // screen behind then shows through the window's text
         background: 'rgba(4, 7, 13, 0.62)',
-        backdropFilter: 'blur(3px)',
-        WebkitBackdropFilter: 'blur(3px)',
         display: 'flex',
         alignItems: 'flex-start',
         justifyContent: 'center',

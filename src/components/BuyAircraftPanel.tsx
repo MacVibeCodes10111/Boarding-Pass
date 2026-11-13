@@ -15,8 +15,9 @@ import { holdTakes } from '../game/cargo';
 import { cabinSeatTotal, calculateCabinUsage, getDefaultCabinForModel } from '../game/economics';
 import { getAircraftTierInfo } from '../game/tiers';
 import { formatMoneyM } from '../game/time';
-import type { AircraftModel, CabinConfig, GameMode } from '../game/types';
-import { DEFAULT_LEASE_WEEKS, LEASE_OPTIONS, leaseQuote } from '../game/leasing';
+import type { AircraftModel, CabinConfig, CareerState, GameMode, PlayerAircraft } from '../game/types';
+import { availableCredit, leaseBlocker, maxLeasable, usdShort } from '../game/career';
+import { DEFAULT_LEASE_WEEKS, LEASE_OPTIONS, leaseCreditUse, leaseQuote } from '../game/leasing';
 import { Icon } from '../ui/icons';
 import { Button, C, Chip, DISPLAY, Field, IconButton, SearchInput, Segmented, SidePanel, Stepper, inputStyle, well } from '../ui/kit';
 import { CabinEditor } from './CabinEditor';
@@ -37,6 +38,9 @@ export interface BuyAircraftPanelProps {
   /** Buy or lease `count` of the type; leases run `leaseWeeks`. */
   onAcquire: (mode: 'owned' | 'leased', leaseWeeks: number, count: number) => void;
   econMin: number;
+  /** The bank and the fleet: every lease uses part of the credit line (Career mode). */
+  career: CareerState;
+  fleet: PlayerAircraft[];
   iconForModel: (m: AircraftModel) => string;
   onClose: () => void;
 }
@@ -216,7 +220,12 @@ function ModelView(props: BuyAircraftPanelProps & { onBack: () => void }) {
   const [weeks, setWeeks] = useState(DEFAULT_LEASE_WEEKS);
   const quote = leaseQuote(m, weeks, props.econMin);
   const canBuy = sandbox || props.cash >= m.base_price_usd * count;
-  const canLease = sandbox || props.cash >= quote.deposit * count;
+  const cashForLease = sandbox || props.cash >= quote.deposit * count;
+  const creditUse = leaseCreditUse(m);
+  const creditFree = availableCredit(props.career, props.fleet);
+  const leaseRoom = sandbox ? Infinity : maxLeasable(props.career, props.fleet, m);
+  const creditNo = sandbox ? null : leaseBlocker(props.career, props.fleet, Array(count).fill(m));
+  const canLease = cashForLease && !creditNo;
   const top = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     top.current?.scrollIntoView({ block: 'start' });
@@ -300,9 +309,9 @@ function ModelView(props: BuyAircraftPanelProps & { onBack: () => void }) {
           </div>
           <div style={{ display: 'grid', gap: 6, alignContent: 'start' }}>
             <Button size="lg" block disabled={!usage.isValid || !canLease} onClick={() => props.onAcquire('leased', weeks, count)}>
-              Lease · ${quote.dailyRate.toLocaleString()}/day{count > 1 ? ' each' : ''}
+              Lease{count > 1 ? ` ${count}` : ''} · {formatMoneyM(quote.dailyRate * 7, 2)} a week{count > 1 ? ' each' : ''}
             </Button>
-            <label className="num" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: canLease ? C.muted : C.red }}>
+            <label className="num" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: cashForLease ? C.muted : C.red }}>
               <select value={String(weeks)} onChange={(e) => setWeeks(Number(e.target.value))} aria-label="Lease term" style={{ ...inputStyle, width: 'auto', padding: '2px 6px', fontSize: 12 }}>
                 {LEASE_OPTIONS.map((o) => (
                   <option key={o.weeks} value={o.weeks}>
@@ -310,8 +319,15 @@ function ModelView(props: BuyAircraftPanelProps & { onBack: () => void }) {
                   </option>
                 ))}
               </select>
-              {canLease ? `${formatMoneyM(quote.deposit * count, 2)} deposit` : 'Not enough for the deposit'}
+              {cashForLease ? `${formatMoneyM(quote.deposit * count, 2)} deposit` : 'Not enough for the deposit'}
             </label>
+            {!sandbox && (
+              <div className="num" style={{ fontSize: 12, color: C.muted, lineHeight: 1.45 }}>
+                ${quote.dailyRate.toLocaleString()} a day · uses {usdShort(creditUse * count)} credit · {usdShort(creditFree)} free
+                {leaseRoom < 50 && ` · room for ${leaseRoom}`}
+              </div>
+            )}
+            {creditNo && <div style={{ fontSize: 12, color: C.amber, lineHeight: 1.45 }}>{creditNo}</div>}
           </div>
         </div>
         {!usage.isValid && <div style={{ fontSize: 12.5, color: C.red }}>The cabin doesn’t fit.</div>}

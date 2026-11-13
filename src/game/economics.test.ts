@@ -2,7 +2,7 @@
 // share a route, and the two kinds of cargo.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { AIRCRAFT_BY_ID } from './aircraftCatalog';
-import { cargoDemand, freightShare, holdTons } from './cargo';
+import { PAX_HOLD_FOR_CARGO, cargoDemand, freightShare, holdTons } from './cargo';
 import { parseOurAirportsCsvFiles } from './csv';
 import { airlineAirportPositions, applyNetworkWeights, parseNetwork, routeKind, setNetwork } from './demand';
 import { buildCabinPreset, classMix, getRouteDemandAndFares, seatComfort, simulateFlightEconomics } from './economics';
@@ -114,58 +114,93 @@ describe('several flights on one route', () => {
 });
 
 describe('cargo', () => {
-  it('has parcels and freight on every route, and pays about twice as much for parcels', () => {
-    for (const [o, d] of [['JFK', 'LHR'], ['BOS', 'BTV'], ['MEM', 'ANC'], ['MAD', 'BCN']]) {
-      const r = getRouteDemandAndFares(ap(o), ap(d), calcDistanceNm(ap(o), ap(d)));
-      expect(r.cargo.parcels).toBeGreaterThan(0);
-      expect(r.cargo.freight).toBeGreaterThan(0);
-      expect(r.dailyCargoTons).toBeCloseTo(r.cargo.parcels + r.cargo.freight, 1);
-      expect(r.refFares.parcelPerTon / r.refFares.cargoPerTon).toBeGreaterThan(1.9);
+  const dem = (o: string, d: string) => cargoDemand(ap(o), ap(d), calcDistanceNm(ap(o), ap(d)));
+  const near = (v: number, want: number) => expect(Math.abs(v - want) / want).toBeLessThanOrEqual(0.15);
+
+  it('puts big parcels on freighters only', () => {
+    for (const m of AIRCRAFT_BY_ID.values()) expect(freightShare(m)).toBe(m.is_cargo ? 1 : 0);
+  });
+
+  it('never loads big parcels into a passenger aircraft; a freighter carries both, small first', () => {
+    for (const [id, o, d] of [['a320neo', 'JFK', 'LAX'], ['b777-300er', 'HKG', 'LHR'], ['b787-9', 'PVG', 'LAX'], ['atr-72-600', 'MAD', 'PMI']]) {
+      const ac = plane(id);
+      const fl = flight(ac, o, d, 'P');
+      const e = run(fl, [ac], [fl]);
+      expect(e.soldFreightTons).toBe(0);
+      expect(e.freightRevenue).toBe(0);
+      expect(e.soldParcelTons).toBeLessThanOrEqual(e.maxCargoTons + 0.05);
     }
-  });
-
-  it('sends more freight out of factory countries than back, and more through cargo hubs', () => {
-    const nm = calcDistanceNm(ap('PVG'), ap('LAX'));
-    expect(cargoDemand(ap('PVG'), ap('LAX'), nm).freight).toBeGreaterThan(cargoDemand(ap('LAX'), ap('PVG'), nm).freight * 1.5);
-    const hub = cargoDemand(ap('MEM'), ap('JFK'), calcDistanceNm(ap('MEM'), ap('JFK')));
-    const city = cargoDemand(ap('BNA'), ap('JFK'), calcDistanceNm(ap('BNA'), ap('JFK')));
-    expect(hub.freight).toBeGreaterThan(city.freight * 2);
-    expect(hub.parcels).toBeGreaterThan(city.parcels * 2);
-    // lorries take short hops over land
-    expect(cargoDemand(ap('MAD'), ap('BCN'), 261).freight).toBeLessThan(cargoDemand(ap('MAD'), ap('JFK'), 3100).freight);
-  });
-
-  it('loads freight by the kind of hold', () => {
-    expect(freightShare(AIRCRAFT_BY_ID.get('b777f')!)).toBe(1);
-    expect(freightShare(AIRCRAFT_BY_ID.get('b777-300er')!)).toBe(1);
-    expect(freightShare(AIRCRAFT_BY_ID.get('a320neo')!)).toBe(0.5);
     const big = plane('b777f');
     const fl = flight(big, 'HKG', 'ANC', 'A');
     const e = run(fl, [big], [fl]);
     expect(e.soldParcelTons).toBeGreaterThan(0);
-    expect(e.soldFreightTons).toBeGreaterThan(e.soldParcelTons);
+    expect(e.soldFreightTons).toBeGreaterThan(0);
     expect(e.soldCargoTons).toBeLessThanOrEqual(e.maxCargoTons + 0.05);
     expect(e.cargoRevenue).toBe(e.parcelRevenue + e.freightRevenue);
-    expect(e.profit).toBeGreaterThan(0);
-    const small = plane('a320neo');
-    const fs = flight(small, 'JFK', 'LAX', 'B');
-    const es = run(fs, [small], [fs]);
-    expect(es.soldFreightTons).toBeLessThanOrEqual(es.maxCargoTons * 0.5 + 0.05);
-    expect(es.soldParcelTons + es.soldFreightTons).toBeLessThanOrEqual(es.maxCargoTons + 0.05);
+    // small parcels fill first: all the small-parcel demand this departure can win is sold before any big parcels
+    const r = getRouteDemandAndFares(fl.origin, fl.destination, fl.distanceNm);
+    expect(r.cargo.parcels).toBeLessThan(e.maxCargoTons);
+    const onlySmall = run({ ...fl, fares: { ...fl.fares, cargoPerTon: fl.fares.cargoPerTon! * 100 } }, [big], [fl]);
+    expect(onlySmall.soldFreightTons).toBe(0);
+    expect(onlySmall.soldParcelTons).toBe(e.soldParcelTons);
+  });
+
+  it('pays more for small parcels than big ones', () => {
+    for (const nm of [100, 1000, 5000]) {
+      const r = getRouteDemandAndFares(ap('JFK'), ap('LHR'), nm).refFares;
+      expect(r.parcelPerTon).toBeGreaterThan(r.cargoPerTon * 1.5);
+    }
+  });
+
+  it('matches real cargo flows on the anchor routes', () => {
+    near(dem('JFK', 'LHR').parcels, 53);
+    near(dem('JFK', 'LHR').freight, 8);
+    near(dem('HKG', 'ANC').freight, 249);
+    near(dem('ANC', 'HKG').freight, 92);
+    near(dem('MEM', 'LAX').parcels, 58);
+  });
+
+  it('keeps big parcels realistic', () => {
+    expect(dem('JFK', 'ORD').freight).toBeLessThan(30);
+    expect(dem('LHR', 'MAD').freight).toBeLessThan(15);
+    expect(dem('BOG', 'MIA').freight).toBeGreaterThanOrEqual(150);
+    expect(dem('BOG', 'MIA').freight).toBeGreaterThanOrEqual(dem('MIA', 'BOG').freight * 3);
+    expect(dem('PVG', 'LAX').freight).toBeGreaterThan(dem('LAX', 'PVG').freight * 1.5);
+    // a hop of under 60 km goes by road
+    const hop = cargoDemand(ap('JFK'), ap('LGA'), calcDistanceNm(ap('JFK'), ap('LGA')));
+    expect(hop.parcels).toBe(0);
+    expect(hop.freight).toBe(0);
+  });
+
+  it('is the same both ways for small parcels, and never NaN or huge', () => {
+    const codes = [...AIRPORTS.keys()].filter((c) => net.airports.has(c));
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const pick = Array.from({ length: 200 }, () => codes[Math.floor(rnd() * codes.length)]);
+    for (let i = 0; i < pick.length; i++)
+      for (let j = i + 1; j < pick.length; j += 7) {
+        const a = dem(pick[i], pick[j]);
+        const b = dem(pick[j], pick[i]);
+        expect(Number.isFinite(a.parcels) && Number.isFinite(a.freight)).toBe(true);
+        expect(a.parcels).toBe(b.parcels);
+        expect(a.freight).toBeLessThanOrEqual(450);
+      }
+    for (const [o, d] of [['HKG', 'ANC'], ['PVG', 'ANC'], ['MEM', 'SDF'], ['HKG', 'PVG'], ['ICN', 'ANC'], ['DOH', 'HKG']]) expect(dem(o, d).freight).toBeLessThanOrEqual(450);
   });
 
   it('sells more parcels on an overnight flight than at midday', () => {
     const ac = plane('b737-800bcf');
-    // SDF is at about -86° east: 04:00 UTC is 22:15 there, 17:00 UTC is 11:15
-    const night = flight(ac, 'SDF', 'MEM', 'N', ALL, 240);
-    const noon = flight(ac, 'SDF', 'MEM', 'D', ALL, 1020);
+    // ATL is at about -84° east: 03:00 UTC is 21:25 there, 16:00 UTC is 10:25
+    const night = flight(ac, 'ATL', 'BNA', 'N', ALL, 180);
+    const noon = flight(ac, 'ATL', 'BNA', 'D', ALL, 960);
     expect(run(night, [ac], [night]).soldParcelTons).toBeGreaterThan(run(noon, [ac], [noon]).soldParcelTons);
   });
 
   it('carries less in a passenger hold near the end of its range, a freighter the same', () => {
     const pax = AIRCRAFT_BY_ID.get('b787-9')!;
-    expect(holdTons(pax, pax.range_nm * 0.5)).toBe(pax.cargo_cap_tons);
-    expect(holdTons(pax, pax.range_nm)).toBeCloseTo(pax.cargo_cap_tons * 0.6, 1);
+    // bags take most of a passenger hold
+    expect(holdTons(pax, pax.range_nm * 0.5)).toBeCloseTo(pax.cargo_cap_tons * PAX_HOLD_FOR_CARGO, 1);
+    expect(holdTons(pax, pax.range_nm)).toBeCloseTo(pax.cargo_cap_tons * PAX_HOLD_FOR_CARGO * 0.6, 1);
     const f = AIRCRAFT_BY_ID.get('b777f')!;
     expect(holdTons(f, f.range_nm)).toBe(f.cargo_cap_tons);
   });

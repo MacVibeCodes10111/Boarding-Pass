@@ -12,10 +12,12 @@ export interface RouteDemandBarProps {
   allSchedule: ScheduledFlight[];
   fleet: PlayerAircraft[];
   compact?: boolean;
+  /** The aircraft being scheduled: a passenger aircraft can't take big parcels, so that row is greyed. */
+  aircraft?: PlayerAircraft | null;
 }
 
 /** Daily passenger + cargo demand on a route vs. the capacity you already fly on it. */
-export function RouteDemandBar({ origin, destination, distanceNm, playerHubs, allSchedule, fleet, compact = false }: RouteDemandBarProps) {
+export function RouteDemandBar({ origin, destination, distanceNm, playerHubs, allSchedule, fleet, compact = false, aircraft }: RouteDemandBarProps) {
   const demand = useMemo(
     () => getRouteDemandAndFares(origin, destination, distanceNm, playerHubs, allSchedule),
     [origin, destination, distanceNm, playerHubs, allSchedule]
@@ -28,17 +30,21 @@ export function RouteDemandBar({ origin, destination, distanceNm, playerHubs, al
   const rivals = useMemo(() => airlinesOnPair(origin.iata_code, destination.iata_code), [origin.iata_code, destination.iata_code]);
   const totalDem = Math.max(1, demand.dailyPax.total);
   const paxPct = Math.round((served.dailySeats / totalDem) * 100);
-  const cargoDem = Math.max(0.5, demand.dailyCargoTons);
-  const cargoPct = Math.round((served.dailyCargoTons / cargoDem) * 100);
+  // Small parcels fill any hold; big parcels only what freighters fly
+  const smallDem = demand.cargo.parcels;
+  const bigDem = demand.cargo.freight;
+  const smallPct = smallDem > 0 ? Math.round((served.dailyCargoTons / smallDem) * 100) : 0;
+  const bigPct = bigDem > 0 ? Math.round((served.dailyFreightTons / bigDem) * 100) : 0;
+  const paxPlane = aircraft ? !aircraft.model.is_cargo : false;
   const who = demand.kind === 'business' ? ', many on business' : demand.kind === 'leisure' ? ', mostly on holiday' : '';
-  const oneWay = demand.cargo.direction >= 1.2 ? 'More freight this way than back.' : demand.cargo.direction <= 0.84 ? 'Less freight this way than back.' : '';
+  const oneWay = demand.cargo.direction >= 1.2 ? 'heavier this way' : demand.cargo.direction <= 0.83 ? 'lighter this way' : '';
   const bonuses = [
     demand.isHubToHub ? `hub to hub +${demand.hubBonusPct}%` : '',
     demand.connectingBoostPct > 0 ? `connections +${demand.connectingBoostPct}%` : '',
   ].filter(Boolean);
 
-  const row = (label: string, value: string, pct: number, color: string) => (
-    <div style={{ marginBottom: 8 }}>
+  const row = (label: string, value: string, pct: number, color: string, dim = false, title?: string) => (
+    <div style={{ marginBottom: 8, opacity: dim ? 0.45 : 1 }} title={title}>
       <div className="num" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
         <span style={{ color: C.textDim }}>{label}</span>
         <span style={{ color: pct > 100 ? C.amber : C.muted }}>{value}</span>
@@ -88,16 +94,24 @@ export function RouteDemandBar({ origin, destination, distanceNm, playerHubs, al
           ))}
         </div>
       )}
-      {row('Cargo per day', `you fly ${served.dailyCargoTons} of ${cargoDem} t (${cargoPct}%)`, cargoPct, '#c9a368')}
-      <div className="num" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 4, fontSize: 11.5, color: C.muted, margin: '-2px 0 8px' }}>
-        <span title="Mail and express. Any aircraft carries them; they sell best on overnight flights.">
-          Parcels <b style={{ color: C.textDim, fontWeight: 600 }}>{demand.cargo.parcels} t</b> at ${demand.refFares.parcelPerTon.toLocaleString()}/t
-        </span>
-        <span title="Pallets and containers. Freighters and widebodies carry it in full, smaller jets only part of a hold, turboprops none.">
-          Freight <b style={{ color: C.textDim, fontWeight: 600 }}>{demand.cargo.freight} t</b> at ${demand.refFares.cargoPerTon.toLocaleString()}/t
-        </span>
-        {!compact && oneWay && <span style={{ gridColumn: '1 / -1' }}>{oneWay}</span>}
-      </div>
+      {row(
+        'Small parcels per day',
+        smallDem > 0 ? `${smallDem} t at $${demand.refFares.parcelPerTon.toLocaleString()}/t · you fly ${served.dailyCargoTons} t` : 'none on this route',
+        smallPct,
+        '#c9a368',
+        false,
+        'Mail, express and loose cargo. Any aircraft carries them; they sell best on overnight flights.'
+      )}
+      {row(
+        'Big parcels per day',
+        bigDem > 0
+          ? `${bigDem} t at $${demand.refFares.cargoPerTon.toLocaleString()}/t · freighters only${!compact && oneWay ? ` · ${oneWay}` : ''}${paxPlane ? '' : ` · you fly ${served.dailyFreightTons} t`}`
+          : 'none on this route',
+        bigPct,
+        '#b98a52',
+        paxPlane,
+        'Pallets and containers. Only freighters carry them; they fill whatever room small parcels leave.'
+      )}
     </div>
   );
 }

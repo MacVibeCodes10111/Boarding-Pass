@@ -272,8 +272,9 @@ function AppearanceModal({ onClose, mapStyle, onMapStyle }: { onClose: () => voi
   const light = isLightColour(live.base);
 
   return (
-    <ModalShell onClose={onClose} maxWidth={640} zIndex={420} closeButton={false}>
-      <div role="dialog" aria-label="Appearance" style={{ padding: '22px 24px', maxHeight: 'calc(100dvh - 80px)', overflowY: 'auto' }}>
+    <ModalShell onClose={onClose} maxWidth={640} zIndex={420} closeButton={false} label="Appearance">
+      {/* Only the window itself scrolls (an inner scroller gave two scrollbars and cut off the bottom) */}
+      <div style={{ padding: '0 2px' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.text }}>Appearance</h2>

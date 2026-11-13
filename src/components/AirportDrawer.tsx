@@ -411,7 +411,7 @@ export function AirportDrawer({
               </div>
               {origin && routeValid && (
                 <div style={{ marginTop: 10 }}>
-                  <RouteDemandBar origin={origin} destination={airport} distanceNm={distanceNm} playerHubs={hubs} allSchedule={schedule} fleet={fleet} compact />
+                  <RouteDemandBar origin={origin} destination={airport} distanceNm={distanceNm} playerHubs={hubs} allSchedule={schedule} fleet={fleet} aircraft={aircraft} compact />
                 </div>
               )}
               {!routeValid && <div style={{ fontSize: 12.5, color: C.muted, marginTop: 8 }}>Pick where to fly from.</div>}
@@ -582,7 +582,7 @@ export function AirportDrawer({
                 <summary style={summaryStyle}>
                   <span style={{ flex: 1 }}>Fares</span>
                   <span className="num" style={{ fontSize: 12, color: C.muted }}>
-                    {aircraft?.model.is_cargo ? `parcels $${draft.fares.parcelPerTon ?? refFares?.parcelPerTon ?? '–'}/t, freight $${draft.fares.cargoPerTon ?? refFares?.cargoPerTon ?? '–'}/t` : `economy $${draft.fares.econ}, business $${draft.fares.bus}`}
+                    {aircraft?.model.is_cargo ? `small parcels $${draft.fares.parcelPerTon ?? refFares?.parcelPerTon ?? '–'}/t, big $${draft.fares.cargoPerTon ?? refFares?.cargoPerTon ?? '–'}/t` : `economy $${draft.fares.econ}, business $${draft.fares.bus}`}
                   </span>
                 </summary>
                 <div style={{ paddingTop: 10 }}>

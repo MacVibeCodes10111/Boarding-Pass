@@ -60,4 +60,18 @@ describe('the milestone programme', () => {
     expect(r.career.goalsMet).toContain('s5-fleet100');
     expect(r.goals).not.toContain('s5-fleet100');
   });
+
+  it('keeps a weekly-profit milestone met under the old, higher target, and its grant as written', () => {
+    const letter = { id: 'L1', econMin: 0, kind: 'milestone' as const, subject: 'Milestone met', body: [], reward: 150_000_000, collected: false, goalId: 's3-week10m', stage: 3 };
+    const old: CareerState = { ...freshCareer(), stagesMet: [1, 2], goalsMet: ['s3-week10m'], letters: [letter], bestWeekNet: 10_000_000 };
+    const r = review(old, { ...none, bestWeekNet: 500_000 }, 10 * GOAL_HOLD_MIN);
+    expect(r.career.goalsMet).toContain('s3-week10m');
+    expect(r.career.letters.find((l) => l.id === 'L1')?.reward).toBe(150_000_000);
+  });
+
+  it('only lowered the weekly-profit targets', () => {
+    expect(GOALS.find((g) => g.id === 's2-week2m')!.target).toBe(1_000_000);
+    expect(GOALS.find((g) => g.id === 's3-week10m')!.target).toBe(4_000_000);
+    expect(GOALS.find((g) => g.id === 's5-week100m')!.target).toBe(35_000_000);
+  });
 });

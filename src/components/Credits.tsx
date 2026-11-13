@@ -33,8 +33,8 @@ function Item({ name, children }: { name: React.ReactNode; children: React.React
 
 export function CreditsModal({ onClose }: { onClose: () => void }) {
   return (
-    <ModalShell onClose={onClose} maxWidth={640} zIndex={400}>
-      <div role="dialog" aria-label="Credits and licences" style={{ padding: '22px 24px', maxHeight: 'calc(100dvh - 80px)', overflowY: 'auto' }}>
+    <ModalShell onClose={onClose} maxWidth={640} zIndex={400} label="Credits and licences">
+      <div style={{ padding: '0 2px' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: C.text }}>Boarding Pass</h2>
           <span style={{ fontSize: 12.5, color: C.muted }}>version {APP_VERSION}</span>

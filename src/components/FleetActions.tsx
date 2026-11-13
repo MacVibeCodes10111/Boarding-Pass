@@ -5,7 +5,8 @@
 import { useMemo, useState, Fragment } from 'react';
 import { CABIN_PRESET_LABELS, calculateCabinUsage, cabinSeatTotal, type CabinPreset } from '../game/economics';
 import { checkReplacement, replacementSummary } from '../game/fleetOps';
-import { DEFAULT_LEASE_WEEKS, LEASE_OPTIONS, buyoutPrice, leaseQuote, leaseStatus, returnTerms, weeksText } from '../game/leasing';
+import { DEFAULT_LEASE_WEEKS, LEASE_OPTIONS, buyoutPrice, dailyLeaseOf, leaseCreditUse, leaseQuote, leaseStatus, returnTerms, weeksText } from '../game/leasing';
+import { COLLATERAL_SHARE } from '../game/career';
 import { calcAircraftResaleUsd } from '../game/tiers';
 import { formatMoneyM } from '../game/time';
 import type { AircraftModel, CabinConfig, PlayerAircraft, ScheduledFlight } from '../game/types';
@@ -47,6 +48,7 @@ export function ManageAircraftModal(props: {
   const leased = ac.acquisition === 'leased';
   const st = leaseStatus(ac, econMin);
   const rt = returnTerms(ac, econMin);
+  const credit = leaseCreditUse(ac.model);
   return (
     <ModalShell onClose={props.onClose} maxWidth={520}>
       <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>{ac.tailNumber}</h2>
@@ -78,21 +80,26 @@ export function ManageAircraftModal(props: {
         {leased ? (
           ac.lease ? (
             <>
-              <Row k="Lease" v={`$${ac.lease.dailyRate.toLocaleString()} a day`} />
+              <Row k="Rent" v={`${money(ac.lease.dailyRate * 7)} a week ($${ac.lease.dailyRate.toLocaleString()} a day)`} />
               <Row k="Term" v={`${ac.lease.termWeeks} weeks, ${weeksText(st.weeksLeft)}`} />
+              <Row k="Credit in use" v={money(credit)} />
               <Row k="Deposit" v={money(ac.lease.deposit)} />
-              <Row k="Back if returned now" v={money(rt.refund)} strong />
+              <Row k="Back if returned now" v={`${money(rt.refund)} · frees ${money(credit)} of credit`} strong />
               {rt.early && <Row k="Kept for ending early" v={money(rt.forfeit)} />}
-              <Row k="Buy-out" v={money(buyoutPrice(ac, econMin))} strong />
+              <Row k="Buy-out" v={`${money(buyoutPrice(ac, econMin))} · frees ${money(credit)} of credit`} strong />
             </>
           ) : (
             <>
-              <Row k="Lease" v={`$${ac.model.daily_lease_usd.toLocaleString()} a day`} />
-              <Row k="Buy-out" v={money(buyoutPrice(ac, econMin))} strong />
+              <Row k="Rent" v={`${money(dailyLeaseOf(ac) * 7)} a week ($${dailyLeaseOf(ac).toLocaleString()} a day)`} />
+              <Row k="Credit in use" v={money(credit)} />
+              <Row k="Buy-out" v={`${money(buyoutPrice(ac, econMin))} · frees ${money(credit)} of credit`} strong />
             </>
           )
         ) : (
-          <Row k="Owned · sells for" v={money(calcAircraftResaleUsd(ac.model))} strong />
+          <>
+            <Row k="Owned · sells for" v={money(calcAircraftResaleUsd(ac.model))} strong />
+            <Row k="Adds to your credit line" v={money(Math.round(calcAircraftResaleUsd(ac.model) * COLLATERAL_SHARE))} />
+          </>
         )}
       </div>
 

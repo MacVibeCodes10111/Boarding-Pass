@@ -9,6 +9,10 @@
 // whole deposit. A leased aircraft can be bought out: the list price less half
 // the lease paid so far, but never under 80% of the list price (so buying out
 // and selling straight on never makes money), and the deposit comes back.
+//
+// Rent is a share of the list price (LEASE_WEEK_SHARE), and every leased
+// aircraft uses part of the airline's credit line (LEASE_CREDIT_SHARE of its
+// price), the same line loans use (see availableCredit in career.ts).
 // ============================================================================
 import { MIN_PER_WEEK } from './time';
 import type { AircraftModel, LeaseTerms, PlayerAircraft } from './types';
@@ -31,17 +35,26 @@ export const DEPOSIT_WEEKS = 8;
 /** Buy-outs never cost less than this share of the list price. */
 export const BUYOUT_FLOOR = 0.8;
 
+/** Rent a week as a share of the list price, on the 26-week term (13% of the price a game year). */
+export const LEASE_WEEK_SHARE = 0.0025;
+/** Credit a lease uses, as a share of the list price (loans and leases share one credit line). */
+export const LEASE_CREDIT_SHARE = 0.25;
+/** Standard daily rent of a type (the 26-week rate). */
+export const leaseBaseDaily = (m: AircraftModel) => Math.round((m.base_price_usd * LEASE_WEEK_SHARE) / 7);
+/** Credit line a leased aircraft of this type uses. */
+export const leaseCreditUse = (m: AircraftModel) => Math.round(m.base_price_usd * LEASE_CREDIT_SHARE);
+
 export const leaseOption = (weeks: number) => LEASE_OPTIONS.find((o) => o.weeks === weeks) ?? LEASE_OPTIONS[1];
 
 /** Terms for a new lease of `model`. */
 export function leaseQuote(model: AircraftModel, weeks: number, econMin: number): LeaseTerms {
   const o = leaseOption(weeks);
-  const dailyRate = Math.round(model.daily_lease_usd * o.rateMult);
+  const dailyRate = Math.round(leaseBaseDaily(model) * o.rateMult);
   return { termWeeks: o.weeks, dailyRate, startMin: econMin, deposit: dailyRate * 7 * DEPOSIT_WEEKS };
 }
 
 /** Daily lease payment of an aircraft (0 when owned). Leases from before v2.38 pay the standard rate. */
-export const dailyLeaseOf = (ac: PlayerAircraft) => (ac.acquisition === 'leased' ? ac.lease?.dailyRate ?? ac.model.daily_lease_usd : 0);
+export const dailyLeaseOf = (ac: PlayerAircraft) => (ac.acquisition === 'leased' ? ac.lease?.dailyRate ?? leaseBaseDaily(ac.model) : 0);
 
 export function leaseStatus(ac: PlayerAircraft, econMin: number) {
   const l = ac.lease;

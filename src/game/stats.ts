@@ -3,6 +3,7 @@
 //   Everything the Stats page shows, worked out from the schedule as it stands
 //   (one scheduled week) plus the economy's closed weeks. Pure functions, no UI.
 // ============================================================================
+import type { CostLine } from './costs';
 import { ledgerCashFlow, ledgerNet, type WeekLedger } from './clock';
 import type { FlightEconomics } from './economics';
 import { calcAircraftScheduleUsage } from './scheduling';
@@ -50,6 +51,8 @@ export interface AirlineStats {
   parcelTons: number;
   freightTons: number;
   cost: number;
+  /** The five cost lines a week (see costs.ts). */
+  costLines: Record<CostLine, number>;
   profit: number;
   /** Seat-nautical-miles offered and flown (ASM/RPM in nm). */
   seatNm: number;
@@ -104,6 +107,7 @@ export function computeAirlineStats(args: {
   const depsByHub = new Map<string, number>();
   let departures = 0, pax = 0, seats = 0, cargoTons = 0, revenue = 0, paxRevenue = 0, cargoRevenue = 0, cost = 0;
   let parcelRevenue = 0, freightRevenue = 0, parcelTons = 0, freightTons = 0;
+  const costLines: Record<CostLine, number> = { fuel: 0, crew: 0, maintenance: 0, airport: 0, service: 0 };
   let seatNm = 0, paxNm = 0, nmFlown = 0, blockMin = 0;
   const cabinSeats = { econ: 0, prem: 0, bus: 0, first: 0 };
 
@@ -134,6 +138,7 @@ export function computeAirlineStats(args: {
       parcelTons += e.soldParcelTons * n;
       freightTons += e.soldFreightTons * n;
       cost += e.cost * n;
+      for (const k of Object.keys(costLines) as CostLine[]) costLines[k] += (e.costs?.[k] ?? 0) * n;
       seatNm += e.totalCap * fl.distanceNm * n;
       paxNm += e.totalPax * fl.distanceNm * n;
       cabinSeats.econ += e.cap.econ * n;
@@ -221,6 +226,7 @@ export function computeAirlineStats(args: {
     parcelTons: Math.round(parcelTons * 10) / 10,
     freightTons: Math.round(freightTons * 10) / 10,
     cost,
+    costLines,
     profit: revenue - cost,
     seatNm,
     paxNm,

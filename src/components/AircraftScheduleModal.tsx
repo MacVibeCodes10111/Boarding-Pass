@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { MAX_FARE_MULT, getRouteDemandAndFares } from '../game/economics';
+import { MAX_FARE_MULT, getRouteDemandAndFares, simulateFlightEconomics } from '../game/economics';
+import { COST_LINES, ageFactor } from '../game/costs';
 import { calcAircraftScheduleUsage, findScheduleConflict, flightsForTail, isFlightNumberTaken } from '../game/scheduling';
 import { airportRestrictionFor, calcAircraftResaleUsd, getAircraftTierInfo } from '../game/tiers';
 import { MIN_PER_DAY, daysOrAll, formatClockShort, formatDurationHm, formatMoneyM, snapToFiveMin } from '../game/time';
@@ -230,7 +231,9 @@ export function AircraftScheduleModal({
             playerHubs={playerHubs}
             allSchedule={allSchedule}
             fleet={fleet}
+            aircraft={aircraft}
           />
+          <FlightMoney flight={selectedFlight} aircraft={aircraft} allSchedule={allSchedule} fleet={fleet} playerHubs={playerHubs} />
 
           <ScheduleTimeline
             aircraft={aircraft}
@@ -258,7 +261,7 @@ export function AircraftScheduleModal({
             </div>
 
             <div>
-              <label style={{ ...labelStyle }}>{isCargo ? 'Freight rate' : 'Fares'}</label>
+              <label style={{ ...labelStyle }}>{isCargo ? 'Cargo rates' : 'Fares'}</label>
               <FaresEditor fares={editFares} onChange={setEditFares} cargoOnly={isCargo} refFares={refFares} />
             </div>
           </div>
@@ -274,6 +277,44 @@ export function AircraftScheduleModal({
         </>
       )}
     </ModalShell>
+  );
+}
+
+/** What one departure of the flight earns and costs, with the five cost lines. */
+function FlightMoney({ flight, aircraft, allSchedule, fleet, playerHubs }: { flight: ScheduledFlight; aircraft: PlayerAircraft; allSchedule: ScheduledFlight[]; fleet: PlayerAircraft[]; playerHubs: string[] }) {
+  const e = useMemo(() => simulateFlightEconomics(flight, aircraft, { hubs: playerHubs, schedule: allSchedule, fleet }), [flight, aircraft, allSchedule, fleet, playerHubs]);
+  const usd = (v: number) => `${v < 0 ? '−' : ''}$${Math.abs(Math.round(v)).toLocaleString()}`;
+  const older = ageFactor(aircraft.model) > 1.3;
+  const line = (k: string, v: string, opts: { strong?: boolean; color?: string; note?: string } = {}) => (
+    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12.5, padding: '2px 0', fontWeight: opts.strong ? 650 : 400 }}>
+      <span style={{ color: opts.strong ? C.text : C.textDim }}>
+        {k}
+        {opts.note && <span style={{ color: C.amber, fontSize: 11.5 }}> · {opts.note}</span>}
+      </span>
+      <span className="num" style={{ color: opts.color ?? (opts.strong ? C.text : C.muted) }}>{v}</span>
+    </div>
+  );
+  return (
+    <div style={{ borderTop: `1px solid ${C.line}`, padding: '10px 0 0', marginBottom: 14 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+        Each {flight.flightNumber} departure
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', columnGap: 24 }}>
+        <div>
+          {!aircraft.model.is_cargo && line('Tickets', usd(e.paxRevenue))}
+          {line('Small parcels', usd(e.parcelRevenue))}
+          {aircraft.model.is_cargo && line('Big parcels', usd(e.freightRevenue))}
+          {line('Revenue', usd(e.revenue), { strong: true })}
+        </div>
+        <div>
+          {COST_LINES.filter((c) => !(c.key === 'service' && aircraft.model.is_cargo)).map((c) =>
+            line(c.label, usd(-e.costs[c.key]), c.key === 'maintenance' && older ? { note: 'Older design: costs more to maintain.' } : {})
+          )}
+          {line('Costs', usd(-e.cost), { strong: true })}
+        </div>
+      </div>
+      <div style={{ marginTop: 4 }}>{line('Profit before lease rent', usd(e.profit), { strong: true, color: e.profit >= 0 ? C.green : C.red })}</div>
+    </div>
   );
 }
 
@@ -300,7 +341,7 @@ export function ErrorBanner({ message }: { message: string }) {
 
 const FARE_LABELS = { econ: 'Economy', prem: 'Premium', bus: 'Business', first: 'First' } as const;
 
-/** Fare inputs for the four cabins plus the parcel and freight rates. */
+/** Fare inputs for the four cabins plus the small-parcel rate (and the big-parcel rate on a freighter). */
 export function FaresEditor({ fares, onChange, cargoOnly, refFares }: { fares: Fares; onChange: (f: Fares) => void; cargoOnly: boolean; refFares?: Fares }) {
   const classes = cargoOnly ? [] : (['econ', 'prem', 'bus', 'first'] as const);
   // Nobody buys at three times the market fare; the box stops at five times it
@@ -314,13 +355,15 @@ export function FaresEditor({ fares, onChange, cargoOnly, refFares }: { fares: F
         </label>
       ))}
       <label style={{ display: 'block' }}>
-        <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginBottom: 3 }}>Parcels $/t</span>
+        <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginBottom: 3 }}>Small parcels $/t</span>
         <NumberField value={fares.parcelPerTon ?? refFares?.parcelPerTon ?? 800} min={25} max={cap(refFares?.parcelPerTon)} onChange={(v) => onChange({ ...fares, parcelPerTon: v })} />
       </label>
-      <label style={{ display: 'block' }}>
-        <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginBottom: 3 }}>Freight $/t</span>
-        <NumberField value={fares.cargoPerTon ?? refFares?.cargoPerTon ?? 350} min={25} max={cap(refFares?.cargoPerTon)} onChange={(v) => onChange({ ...fares, cargoPerTon: v })} />
-      </label>
+      {cargoOnly && (
+        <label style={{ display: 'block' }}>
+          <span style={{ display: 'block', fontSize: 11.5, color: C.muted, marginBottom: 3 }}>Big parcels $/t</span>
+          <NumberField value={fares.cargoPerTon ?? refFares?.cargoPerTon ?? 350} min={25} max={cap(refFares?.cargoPerTon)} onChange={(v) => onChange({ ...fares, cargoPerTon: v })} />
+        </label>
+      )}
     </div>
   );
 }

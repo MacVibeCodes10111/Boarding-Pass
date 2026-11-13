@@ -52,6 +52,7 @@ import {
 } from './game/clock';
 import { parseOurAirportsCsvFiles, parseRunwaysExtra, parseOurAirportsNavaidsCsv } from './game/csv';
 import { buildCabinPreset, computeNetworkEconomics, getDefaultCabinForModel, getRouteDemandAndFares, calculateCabinUsage, type CabinPreset } from './game/economics';
+import { ECON_VERSION, normaliseEconomy } from './game/econMigrate';
 import { checkReplacement, type BulkScheduleResult } from './game/fleetOps';
 import { DEFAULT_LEASE_WEEKS, buyoutPrice, leaseQuote, returnTerms } from './game/leasing';
 import { reRegisterSequence, registrationsForNewAircraft, validRegistration } from './game/registrations';
@@ -64,6 +65,7 @@ import {
   drawLoan,
   freshCareer,
   hydrateCareer,
+  leaseBlocker,
   partRepaymentPreview,
   productById,
   repayLoanEarly,
@@ -878,6 +880,7 @@ export default function App() {
     schedule,
     savedAt: new Date().toLocaleString(),
     appVersion: APP_VERSION,
+    econVersion: ECON_VERSION,
     econMin: econRef.current.min,
     lastRealTs: Date.now(),
     econPaused: econSpeed === 'paused',
@@ -1032,7 +1035,11 @@ export default function App() {
 
   const loadCareer = (raw: SaveGameState) => {
     setTourOpen(false);
-    const s = hydrateSave(raw, airportByIataRef.current);
+    const hydrated = hydrateSave(raw, airportByIataRef.current);
+    // Careers from before the 2026-11 economy rework: new rents and cargo prices, a letter, a few weeks' grace
+    const startMin = hydrated.econMin ?? econMinFromLegacy(hydrated.simDay, hydrated.simMin);
+    const econ = normaliseEconomy(hydrated, hydrateCareer(hydrated.career), startMin);
+    const s = econ.save;
     setActiveSaveId(s.saveId);
     setAirlineName(s.airlineName);
     // a career saved before liveries (or with none yet) starts in the standard livery; one the player made plain white stays so
@@ -1054,13 +1061,12 @@ export default function App() {
     setEconSpeed(s.econPaused ? 'paused' : 'normal');
 
     // Economy catch-up for the time the career wasn't open (7×, capped at 4 weeks)
-    const startMin = s.econMin ?? econMinFromLegacy(s.simDay, s.simMin);
     const startLedger = s.ledgerCurrent ?? freshLedger(econWeekOf(startMin));
     const awayMs = s.lastRealTs ? Date.now() - s.lastRealTs : 0;
     const { gameMinutes, capped } = s.econPaused ? { gameMinutes: 0, capped: false } : catchUpGameMinutes(awayMs);
     // Bank: saves from before v2.8 start the programme now, with a welcome letter
     setReplacedAi(s.replacesAiAirline ?? null);
-    let savedCareer = hydrateCareer(s.career);
+    let savedCareer = econ.career;
     if (!s.career && s.gameMode === 'standard') savedCareer = { ...savedCareer, letters: [welcomeLetter(s.airlineName, s.airlineIata, s.hubIata, startMin)] };
     if (gameMinutes > 0) {
       const rates = computeEconomyRates(s.schedule, computeNetworkEconomics({ hubs: s.hubs!, schedule: s.schedule, fleet: s.fleet }), s.fleet);
@@ -1263,6 +1269,12 @@ export default function App() {
     const quote = leaseQuote(selectedModel, leaseWeeks, now);
     const each = mode === 'owned' ? selectedModel.base_price_usd : quote.deposit;
     const cost = each * n;
+    // Every lease uses part of the credit line (Career mode); a bulk order is all or nothing
+    const leaseNo = mode === 'leased' && gameMode !== 'sandbox' ? leaseBlocker(career, fleet, Array(n).fill(selectedModel)) : null;
+    if (leaseNo) {
+      showAlert('Not enough credit', leaseNo);
+      return;
+    }
     if (!canAfford(cost)) {
       showAlert(
         'Not enough cash',
@@ -1574,6 +1586,14 @@ export default function App() {
     const quote = leaseQuote(model, leaseWeeks, now);
     const cost = (mode === 'owned' ? model.base_price_usd : quote.deposit) * olds.length;
     const t = disposalTerms(olds);
+    if (mode === 'leased' && gameMode !== 'sandbox') {
+      // The old aircraft go in the same action: leased ones free their credit (owned ones sold take their collateral with them)
+      const no = leaseBlocker(career, fleet.filter((f) => !tails.includes(f.tailNumber)), olds.map(() => model));
+      if (no) {
+        showAlert('Not enough credit', no);
+        return;
+      }
+    }
     if (!canAfford(cost - t.sale - t.refund)) {
       showAlert('Not enough cash', `Replacing ${olds.length} aircraft costs ${formatMoneyM(cost, 2)}, and the old ones bring in ${formatMoneyM(t.sale + t.refund, 2)}.`, `You have ${formatMoneyM(cash, 2)}.`);
       return;
@@ -2225,6 +2245,8 @@ export default function App() {
         <BuyAircraftPanel
           catalog={BUILTIN_AIRCRAFT}
           cash={cash}
+          career={career}
+          fleet={fleet}
           gameMode={gameMode}
           hubIata={hubIata}
           selectedModel={selectedModel}

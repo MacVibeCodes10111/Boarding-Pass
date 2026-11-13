@@ -5,6 +5,7 @@ import { interpolateCoordPair, offsetLatLonNm } from '../game/geo';
 import {
   MAP_ICON_PIXEL_RATIO,
   RADAR_GROUPS,
+  AIRPORT_ICON_PIXEL_RATIO,
   createAirportMapIconImageData,
   createRadarGroupImageData,
   iconKey,
@@ -440,10 +441,10 @@ function buildPlanePopupHtml(raw: Record<string, any>): string {
   const isCargo = Number(raw.isCargo) === 1;
   const load = isCargo
     ? `<div style="display:flex;justify-content:space-between"><span>Cargo</span><b style="font-variant-numeric:tabular-nums">${p.soldCargoTons} of ${p.maxCargoTons} t (${p.cargoLoadPct}%)</b></div>${progressBar(Number(raw.cargoLoadPct), C.brand)}
-       <div style="display:flex;gap:10px;font-size:11.5px;color:${C.muted};font-variant-numeric:tabular-nums;flex-wrap:wrap"><span>Parcels ${p.soldParcelTons} t</span><span>Freight ${p.soldFreightTons} t</span></div>`
+       <div style="display:flex;gap:10px;font-size:11.5px;color:${C.muted};font-variant-numeric:tabular-nums;flex-wrap:wrap"><span>Small parcels ${p.soldParcelTons} t</span><span>Big parcels ${p.soldFreightTons} t</span></div>`
     : `<div style="display:flex;justify-content:space-between"><span>Passengers</span><b style="font-variant-numeric:tabular-nums">${p.totalPax} of ${p.totalCap} (${p.loadFactorPct}%)</b></div>${progressBar(Number(raw.loadFactorPct), C.brand)}
        <div style="display:flex;gap:10px;font-size:11.5px;color:${C.muted};font-variant-numeric:tabular-nums;flex-wrap:wrap">
-         ${Number(raw.capFirst) ? `<span>First ${p.soldFirst}/${p.capFirst}</span>` : ''}${Number(raw.capBus) ? `<span>Business ${p.soldBus}/${p.capBus}</span>` : ''}${Number(raw.capPrem) ? `<span>Premium ${p.soldPrem}/${p.capPrem}</span>` : ''}<span>Economy ${p.soldEcon}/${p.capEcon}</span><span>Cargo ${p.soldCargoTons}/${p.maxCargoTons} t</span>
+         ${Number(raw.capFirst) ? `<span>First ${p.soldFirst}/${p.capFirst}</span>` : ''}${Number(raw.capBus) ? `<span>Business ${p.soldBus}/${p.capBus}</span>` : ''}${Number(raw.capPrem) ? `<span>Premium ${p.soldPrem}/${p.capPrem}</span>` : ''}<span>Economy ${p.soldEcon}/${p.capEcon}</span><span>Small parcels ${p.soldCargoTons}/${p.maxCargoTons} t</span>
        </div>`;
   return `<div style="${popupCss()}min-width:280px">
     <div class="bp-pop-head" style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
@@ -1214,10 +1215,11 @@ function createWxTagImageData(label: keyof typeof WX_TAG_COLORS): ImageData {
 
 /** The game's icons and layers, added to a freshly loaded map style. */
 function installMapContent(map: any, styleId: MapStyleId, threeD: boolean) {
+  // Airport badges, drawn for the map they sit on (a darker shadow and an outline on the light map)
+  const badge = { light: styleId === 'light', accent: C.accent };
   [1, 2, 3, 4, 5, 6].forEach((t) => {
-    putImage(map, `ap-icon-standard-${t}`, createAirportMapIconImageData('standard', t));
-    putImage(map, `ap-icon-hub-${t}`, createAirportMapIconImageData('hub', t));
-    putImage(map, `ap-icon-selected-${t}`, createAirportMapIconImageData('selected', t));
+    for (const status of ['standard', 'hub', 'selected'] as const)
+      putImage(map, `ap-icon-${status}-${t}`, createAirportMapIconImageData(status, t, badge), AIRPORT_ICON_PIXEL_RATIO);
   });
   RADAR_GROUPS.forEach((g) => putImage(map, mapImageName(iconKey.group(g)), createRadarGroupImageData(g, C.fleet), MAP_ICON_PIXEL_RATIO));
   RADAR_GROUPS.forEach((g) => putImage(map, `ai-${g}`, createRadarGroupImageData(g, aiTintFor(styleId)), MAP_ICON_PIXEL_RATIO));
@@ -1241,8 +1243,13 @@ function setMapProjection(map: any, globe: boolean) {
 }
 
 function putImage(map: any, name: string, data: ImageData, pixelRatio = 1) {
-  if (map.hasImage(name)) map.updateImage(name, data);
-  else map.addImage(name, data, { pixelRatio });
+  if (map.hasImage(name)) {
+    // updateImage needs the same size: a badge from an older build is replaced instead
+    const old = map.getImage?.(name);
+    if (old && (old.data?.width !== data.width || old.pixelRatio !== pixelRatio)) map.removeImage(name);
+    else return map.updateImage(name, data);
+  }
+  map.addImage(name, data, { pixelRatio });
 }
 
 export function LiveMap(props: LiveMapProps) {
