@@ -61,13 +61,14 @@ export function ageFactor(m: CostModel): number {
 }
 
 /** The five costs of one flight, whole dollars. */
-export function flightCosts(m: CostModel, f: { blockMin: number; seatsFitted: number; cargoTons: number; ticketRevenue: number }): FlightCosts {
+/** `crewShare`: the part of the usual crew cost paid (0.8 in a regional subsidiary; see game/subsidiaries.ts). */
+export function flightCosts(m: CostModel, f: { blockMin: number; seatsFitted: number; cargoTons: number; ticketRevenue: number; crewShare?: number }): FlightCosts {
   const h = Math.max(0, f.blockMin) / 60;
   const t = m.mtow_kg / 1000;
   const commuter = isCommuter(m);
   const fuel = Math.round(h * m.fuel_burn_kg_hr * COST.fuel);
   const attendants = commuter || m.is_cargo ? 0 : Math.ceil(Math.max(0, f.seatsFitted) / 50);
-  const crew = Math.round(h * ((commuter ? COMMUTER_PILOTS : PILOTS[m.category] ?? PILOTS.narrowbody) + attendants * COST.cabinCrew));
+  const crew = Math.round(h * ((commuter ? COMMUTER_PILOTS : PILOTS[m.category] ?? PILOTS.narrowbody) + attendants * COST.cabinCrew) * (f.crewShare ?? 1));
   const maintenance = Math.round((h * t * COST.maintHour + t * COST.maintCycle) * ageFactor(m));
   const airport = Math.round(t * COST.landing + Math.max(0, f.cargoTons) * COST.cargoHandling);
   const service = Math.round(COST.paxService * Math.max(0, f.ticketRevenue));

@@ -113,7 +113,10 @@ import type {
   RadarIconGroup,
   SaveGameState,
   ScheduledFlight,
+  BrandKind,
+  Subsidiary,
 } from './game/types';
+import { brandAllows, brandBlocker, tidyFleetBrands } from './game/subsidiaries';
 import { APP_VERSION } from './version';
 import { MainMenu } from './components/MainMenu';
 import { CloudHost } from './components/CloudPanel';
@@ -133,7 +136,8 @@ import { initLayout } from './ui/layout';
 import { DEFAULT_AIRLINE_COLOURS, MAX_SPECIAL, normaliseLogo, standardLivery, airlineBadge, specialLabel, tidyFleetLiveries, normaliseAirlineColours, normaliseLiveries, type AirlineColours, type Livery } from './game/livery';
 import { applyAirlineTheme } from './ui/airlineTheme';
 import { moderate } from './game/moderation';
-import { LiveryContext } from './components/AircraftPhoto';
+import { LiveryContext, type LiveryCtx } from './components/AircraftPhoto';
+import { SubsidiariesModal } from './components/Subsidiaries';
 
 const STANDARD_START_CASH = 150_000_000;
 const SANDBOX_START_CASH = 9_999_999_999;
@@ -261,7 +265,14 @@ export default function App() {
   useEffect(() => applyAirlineTheme(screen === 'home' ? undefined : airlineColours), [airlineColours, screen]);
   /** The airline's logo, from its livery (the logo picked to show in the corner). */
   const [airlineLogo, setAirlineLogo] = useState<string | undefined>(undefined);
-  const liveryCtx = useMemo(() => (liveries.length || airlineLogo ? { liveries, name: airlineName, logo: airlineLogo } : null), [liveries, airlineName, airlineLogo]);
+  /** The airline's regional and cargo brands (one of each at most; see game/subsidiaries.ts). */
+  const [subsidiaries, setSubsidiaries] = useState<Subsidiary[]>([]);
+  const liveryCtx = useMemo<LiveryCtx | null>(() => {
+    const brands: LiveryCtx['brands'] = {};
+    // a brand without a livery of its own wears the main one, with its own name on the side
+    for (const b of subsidiaries) if (b.livery ?? liveries[0]) brands[b.kind] = { name: b.name, livery: (b.livery ?? liveries[0])! };
+    return liveries.length || airlineLogo || subsidiaries.length ? { liveries, name: airlineName, logo: airlineLogo, brands } : null;
+  }, [liveries, airlineName, airlineLogo, subsidiaries]);
 
   const [liveryStart, setLiveryStart] = useState(0);
   const [airlineIata, setAirlineIata] = useState(LAUNCH.code ?? 'JT');
@@ -865,6 +876,7 @@ export default function App() {
   const currentSaveState = (isAutosave = false): SaveGameState => ({
     saveId: activeSaveId,
     liveries,
+    subsidiaries,
     airlineLogo,
     airlineColours,
     airlineName,
@@ -1001,6 +1013,7 @@ export default function App() {
     setMarketMine(null);
     // every airline starts in the standard livery
     setLiveries([standardLivery()]);
+    setSubsidiaries([]);
     setAirlineLogo(undefined);
     setAirlineColours(undefined);
     setCareer(gameMode === 'sandbox' ? freshCareer() : { ...freshCareer(), letters: [welcomeLetter(airlineName, airlineIata, hubIata, 0)] });
@@ -1033,6 +1046,52 @@ export default function App() {
     flashToast(`${tails.length === 1 ? tails[0] : `${tails.length} aircraft`} back in the main livery.`);
   };
 
+  /** Move aircraft into a subsidiary (kind) or back to the airline itself (null). Types the brand can't fly stay where they are. */
+  const setAircraftBrand = (tails: string[], kind: BrandKind | null) => {
+    const set = new Set(tails);
+    const picked = fleet.filter((a) => set.has(a.tailNumber));
+    if (!picked.length) return;
+    const who = (n: number, first: string) => (n === 1 ? first : `${n} aircraft`);
+    if (!kind) {
+      setFleet((f) => f.map((a) => (set.has(a.tailNumber) && a.brand ? (({ brand: _b, ...rest }) => rest)(a) : a)));
+      flashToast(`${who(picked.length, picked[0].tailNumber)} now ${picked.length === 1 ? 'flies' : 'fly'} for ${airlineName}.`);
+      return;
+    }
+    const sub = subsidiaries.find((b) => b.kind === kind);
+    if (!sub) return;
+    const ok = picked.filter((a) => brandAllows(kind, a.model));
+    if (!ok.length) {
+      showAlert(`Can\u2019t join ${sub.name}`, brandBlocker(kind, picked[0].model) ?? '', undefined, 'warning');
+      return;
+    }
+    const okSet = new Set(ok.map((a) => a.tailNumber));
+    setFleet((f) => f.map((a) => (okSet.has(a.tailNumber) ? { ...a, brand: kind } : a)));
+    flashToast(
+      ok.length < picked.length
+        ? `${ok.length} of ${picked.length} aircraft now fly for ${sub.name}. ${brandBlocker(kind, picked.find((a) => !okSet.has(a.tailNumber))!.model)}`
+        : `${who(ok.length, ok[0].tailNumber)} now ${ok.length === 1 ? 'flies' : 'fly'} for ${sub.name}.`,
+      ok.length < picked.length ? 6000 : 3000
+    );
+  };
+
+  /** Set up, rename or close a subsidiary (null closes it: its aircraft go back to the airline). */
+  const saveSubsidiary = (kind: BrandKind, next: { name: string; callsign: string } | null) => {
+    if (!next) {
+      const sub = subsidiaries.find((b) => b.kind === kind);
+      const left = subsidiaries.filter((b) => b.kind !== kind);
+      setSubsidiaries(left);
+      setFleet((f) => tidyFleetBrands(f, left));
+      if (sub) flashToast(`${sub.name} is closed. Its aircraft now fly for ${airlineName}.`);
+      return;
+    }
+    const had = subsidiaries.some((b) => b.kind === kind);
+    setSubsidiaries((list) => (had ? list.map((b) => (b.kind === kind ? { ...b, ...next } : b)) : [...list, { kind, ...next }].sort((a, b) => (a.kind === 'regional' ? -1 : b.kind === 'regional' ? 1 : 0))));
+    flashToast(had ? `Now flying as ${next.name}, callsign ${next.callsign}` : `${next.name} is set up. Move aircraft into it from the fleet.`);
+  };
+  /** The subsidiary whose livery is open in the editor, and whether closing it goes back to Subsidiaries. */
+  const [brandLivery, setBrandLivery] = useState<{ kind: BrandKind; back: boolean } | null>(null);
+  const [subsOpen, setSubsOpen] = useState(false);
+
   const loadCareer = (raw: SaveGameState) => {
     setTourOpen(false);
     const hydrated = hydrateSave(raw, airportByIataRef.current);
@@ -1053,6 +1112,7 @@ export default function App() {
     setHubIata(s.hubIata);
     setHubs(s.hubs!);
     setGameMode(s.gameMode as GameMode);
+    setSubsidiaries(s.subsidiaries ?? []);
     setFleet(tidyFleetLiveries(s.fleet, loadedLiveries));
     setSchedule(s.schedule);
     setMarket(normaliseMarket(s.market));
@@ -1254,7 +1314,7 @@ export default function App() {
     registrationsForNewAircraft(taken.map((a) => a.tailNumber), airlineIata, hubCountry, n, typedFirst);
 
   /** Buy or lease `count` aircraft of the selected type (leases for `leaseWeeks`). */
-  const acquireAircraft = (mode: 'owned' | 'leased', leaseWeeks = DEFAULT_LEASE_WEEKS, count = 1) => {
+  const acquireAircraft = (mode: 'owned' | 'leased', leaseWeeks = DEFAULT_LEASE_WEEKS, count = 1, brand?: BrandKind) => {
     const check = calculateCabinUsage(selectedModel, cabinDraft);
     if (!check.isValid) {
       showAlert(
@@ -1297,6 +1357,7 @@ export default function App() {
       cabin: { ...cabinDraft },
       acquiredMin: now,
       lease: mode === 'leased' ? { ...quote } : undefined,
+      ...(brand && brandAllows(brand, selectedModel) && subsidiaries.some((b) => b.kind === brand) ? { brand } : {}),
     }));
     const nextFleet = [...fleet, ...added];
     setFleet(nextFleet);
@@ -1623,6 +1684,8 @@ export default function App() {
         cabin: model.is_cargo ? old.cabin : getDefaultCabinForModel(model),
         acquiredMin: now,
         lease: mode === 'leased' ? { ...quote } : undefined,
+        // stays with its brand when the new type may fly for it
+        ...(old.brand && brandAllows(old.brand, model) ? { brand: old.brand } : {}),
       };
       done.push({ old, ac, flights: flights.map((fl) => ({ ...fl, tailNumber: regs[i] })) });
     });
@@ -1991,6 +2054,7 @@ export default function App() {
         mapDay={mapClock.day}
         mapMin={mapClock.min}
         airlineCallsign={airlineCallsign}
+        subsidiaries={subsidiaries}
         inspectedAirport={inspectedAirport ?? routeFrom}
         hidePlanes={Boolean(inspectedAirport)}
         onInspectAirport={onMapAirport}
@@ -2110,6 +2174,40 @@ export default function App() {
           onClose={() => setLiveryOpen(false)}
         />
       )}
+      {subsOpen && (
+        <SubsidiariesModal
+          airlineName={airlineName}
+          airlineCallsign={airlineCallsign}
+          subsidiaries={subsidiaries}
+          fleet={fleet}
+          onSave={saveSubsidiary}
+          onEditLivery={(kind) => {
+            setSubsOpen(false);
+            setBrandLivery({ kind, back: true });
+          }}
+          onClose={() => setSubsOpen(false)}
+        />
+      )}
+      {brandLivery && subsidiaries.some((b) => b.kind === brandLivery.kind) && (
+        <LiveryEditor
+          single={`${subsidiaries.find((b) => b.kind === brandLivery.kind)!.name} livery`}
+          liveries={[subsidiaries.find((b) => b.kind === brandLivery.kind)!.livery ?? liveries[0] ?? standardLivery(airlineColours ?? DEFAULT_AIRLINE_COLOURS)]}
+          airlineName={subsidiaries.find((b) => b.kind === brandLivery.kind)!.name}
+          models={[...new Set(fleet.filter((a) => a.brand === brandLivery.kind).map((a) => a.model.id))]}
+          sampleReg={fleet.find((a) => a.brand === brandLivery.kind)?.tailNumber}
+          airlineColours={airlineColours ?? DEFAULT_AIRLINE_COLOURS}
+          airlineLogo={airlineLogo}
+          onSave={(l) => {
+            const kind = brandLivery.kind;
+            setSubsidiaries((list) => list.map((b) => (b.kind === kind ? { ...b, livery: l[0] } : b)));
+            flashToast(`${subsidiaries.find((b) => b.kind === kind)!.name} livery saved`);
+          }}
+          onClose={() => {
+            if (brandLivery.back) setSubsOpen(true);
+            setBrandLivery(null);
+          }}
+        />
+      )}
       {menuOpen && (
         <MainMenu
           onAccount={() => {
@@ -2122,6 +2220,7 @@ export default function App() {
             setLiveryStart(0);
             setLiveryOpen(true);
           }}
+          onSubsidiaries={() => setSubsOpen(true)}
           onAirlineDetails={(nameRaw, callRaw) => {
             const name = nameRaw.trim().replace(/\s+/g, ' ');
             const call = callRaw.trim().toUpperCase().replace(/\s+/g, ' ');
@@ -2235,6 +2334,9 @@ export default function App() {
           }}
           liveryNames={liveries.map((l, i) => l.name || (i ? 'Second livery' : 'Main livery'))}
           onSetLivery={setAircraftLivery}
+          airlineName={airlineName}
+          subsidiaries={subsidiaries}
+          onSetBrand={setAircraftBrand}
           onReplace={replaceAircraft}
           onBuy={() => setPanel('buy')}
           iconForModel={iconForModel}
@@ -2256,6 +2358,8 @@ export default function App() {
           tailInput={tailInput}
           onTailInputChange={setTailInput}
           onAcquire={acquireAircraft}
+          airlineName={airlineName}
+          subsidiaries={subsidiaries}
           econMin={econ.min}
           iconForModel={iconForModel}
           onClose={closePanel}
@@ -2378,9 +2482,11 @@ export default function App() {
             airlineLogo={airlineLogo}
             onSetLivery={(tail, i) => setAircraftLivery([tail], i)}
             onEditLivery={(i) => {
+              if (modalAircraft.brand && subsidiaries.some((b) => b.kind === modalAircraft.brand)) return setBrandLivery({ kind: modalAircraft.brand, back: false });
               setLiveryStart(i);
               setLiveryOpen(true);
             }}
+            brandName={subsidiaries.find((b) => b.kind === modalAircraft.brand)?.name}
           />
         )}
 

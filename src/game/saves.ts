@@ -5,6 +5,7 @@ import { AIRCRAFT_BY_ID } from './aircraftCatalog';
 import { MAX_FARE_MULT, getDefaultCabinForModel, getRouteDemandAndFares } from './economics';
 import { normaliseMarket } from './marketSave';
 import { isProtectedSave, openProtectedSave, protectSave } from './saveCrypt';
+import { normaliseSubsidiaries, tidyFleetBrands } from './subsidiaries';
 import { daysOrAll } from './time';
 import type { Airport, PlayerAircraft, SaveGameState, ScheduledFlight } from './types';
 
@@ -72,11 +73,15 @@ function cabinFrom(cabin: PlayerAircraft['cabin'] | undefined, model: PlayerAirc
 const TRADE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export function hydrateSave(raw: SaveGameState, airportByIata: Map<string, Airport>): SaveGameState {
-  const fleet: PlayerAircraft[] = (raw.fleet ?? []).map((ac) => {
-    const model = AIRCRAFT_BY_ID.get(ac.model?.id) ?? ac.model;
-    const { trade, ...rest } = ac;
-    return { ...rest, model, cabin: cabinFrom(ac.cabin, model), ...(typeof trade === 'string' && TRADE_ID.test(trade) ? { trade } : {}) };
-  });
+  const subsidiaries = normaliseSubsidiaries(raw.subsidiaries);
+  const fleet: PlayerAircraft[] = tidyFleetBrands(
+    (raw.fleet ?? []).map((ac) => {
+      const model = AIRCRAFT_BY_ID.get(ac.model?.id) ?? ac.model;
+      const { trade, ...rest } = ac;
+      return { ...rest, model, cabin: cabinFrom(ac.cabin, model), ...(typeof trade === 'string' && TRADE_ID.test(trade) ? { trade } : {}) };
+    }),
+    subsidiaries
+  );
   const tails = new Set(fleet.map((a) => a.tailNumber));
   const saved = raw.savedAirports ?? {};
   const link = (ap: Airport) => airportByIata.get(ap.iata_code) ?? saved[ap.iata_code] ?? ap;
@@ -100,6 +105,7 @@ export function hydrateSave(raw: SaveGameState, airportByIata: Map<string, Airpo
     schedule,
     savedAirports: undefined,
     market: normaliseMarket(raw.market),
+    subsidiaries,
   };
 }
 

@@ -9,7 +9,8 @@ import { DEFAULT_LEASE_WEEKS, LEASE_OPTIONS, buyoutPrice, dailyLeaseOf, leaseCre
 import { COLLATERAL_SHARE } from '../game/career';
 import { calcAircraftResaleUsd } from '../game/tiers';
 import { formatMoneyM } from '../game/time';
-import type { AircraftModel, CabinConfig, PlayerAircraft, ScheduledFlight } from '../game/types';
+import { REGIONAL_CREW_SHARE, REGIONAL_MAX_SEATS, brandBlocker } from '../game/subsidiaries';
+import type { AircraftModel, BrandKind, CabinConfig, PlayerAircraft, ScheduledFlight, Subsidiary } from '../game/types';
 import { reRegisterSequence, validRegistration } from '../game/registrations';
 import { Button, C, Field, ModalShell, Segmented, inputStyle, well } from '../ui/kit';
 import { CabinEditor } from './CabinEditor';
@@ -41,6 +42,10 @@ export function ManageAircraftModal(props: {
   onReplace: () => void;
   onSchedule: () => void;
   onClose: () => void;
+  /** Which brand it flies for: the airline itself or one of its subsidiaries. */
+  airlineName: string;
+  subsidiaries: Subsidiary[];
+  onSetBrand: (kind: BrandKind | null) => void;
 }) {
   const { aircraft: ac, econMin } = props;
   const [reg, setReg] = useState(ac.tailNumber);
@@ -75,6 +80,26 @@ export function ManageAircraftModal(props: {
         </div>
         {err && <div style={{ color: C.red, fontSize: 12, marginTop: 6 }}>{err}</div>}
       </Field>
+
+      {props.subsidiaries.length > 0 && (
+        <Field label="Flies for" style={{ marginBottom: 16 }}>
+          <select
+            aria-label="Flies for"
+            value={ac.brand ?? 'main'}
+            onChange={(e) => props.onSetBrand(e.target.value === 'main' ? null : (e.target.value as BrandKind))}
+            style={inputStyle}
+          >
+            <option value="main">{props.airlineName}</option>
+            {props.subsidiaries.map((b) => (
+              <option key={b.kind} value={b.kind} disabled={Boolean(brandBlocker(b.kind, ac.model))}>
+                {b.name}
+                {brandBlocker(b.kind, ac.model) ? (b.kind === 'cargo' ? ' · freighters only' : ` · up to ${REGIONAL_MAX_SEATS} seats`) : ''}
+              </option>
+            ))}
+          </select>
+          {ac.brand === 'regional' && <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>Its crews cost {Math.round((1 - REGIONAL_CREW_SHARE) * 100)}% less.</div>}
+        </Field>
+      )}
 
       <div style={{ borderRadius: 14, background: well(), padding: '10px 14px', marginBottom: 16 }}>
         {leased ? (

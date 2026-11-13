@@ -3,7 +3,8 @@ import { useMemo, useState } from 'react';
 import type { CabinPreset } from '../game/economics';
 import { leaseStatus, weeksText } from '../game/leasing';
 import { calcAircraftScheduleUsage, flightsForTail, getAircraftCircuitStatus } from '../game/scheduling';
-import type { AircraftModel, CabinConfig, PlayerAircraft, ScheduledFlight } from '../game/types';
+import { brandAllows } from '../game/subsidiaries';
+import type { AircraftModel, BrandKind, CabinConfig, PlayerAircraft, ScheduledFlight, Subsidiary } from '../game/types';
 import { Button, C, EmptyState, IconButton, SearchInput, Segmented, SidePanel, inputStyle } from '../ui/kit';
 import { useLayout } from '../ui/layout';
 import { BulkCabinModal, ManageAircraftModal, ReRegisterModal, ReplaceAircraftModal } from './FleetActions';
@@ -32,13 +33,17 @@ export interface FleetPanelProps {
   /** The airline's liveries by name: with two, aircraft can wear the second (special) one. */
   liveryNames?: string[];
   onSetLivery?: (tails: string[], index: number) => void;
+  /** The airline's name, and its regional and cargo brands: aircraft can fly for one of them. */
+  airlineName: string;
+  subsidiaries: Subsidiary[];
+  onSetBrand: (tails: string[], kind: BrandKind | null) => void;
   onReplace: (tails: string[], model: AircraftModel, mode: 'owned' | 'leased', leaseWeeks: number, dropClashing: boolean) => void;
   onBuy: () => void;
   iconForModel: (m: AircraftModel) => string;
   onClose: () => void;
 }
 
-type GroupBy = 'type' | 'base' | 'none';
+type GroupBy = 'type' | 'base' | 'brand' | 'none';
 type SortBy = 'least' | 'most' | 'reg' | 'type';
 type Show = 'all' | 'idle' | 'busy' | 'leased';
 
@@ -53,7 +58,8 @@ function readView(): { groupBy: GroupBy; sortBy: SortBy } {
 }
 
 export function FleetPanel(props: FleetPanelProps) {
-  const { fleet, schedule, iconForModel } = props;
+  const { fleet, schedule, iconForModel, subsidiaries } = props;
+  const brandName = (ac: PlayerAircraft) => (ac.brand && subsidiaries.find((b) => b.kind === ac.brand)?.name) || props.airlineName;
   const [search, setSearch] = useState('');
   const [view, setViewState] = useState(readView);
   const setView = (patch: Partial<typeof view>) => {
@@ -91,7 +97,7 @@ export function FleetPanel(props: FleetPanelProps) {
       if (show === 'busy' && usage.usedPct < 85) return false;
       if (show === 'leased' && ac.acquisition !== 'leased') return false;
       if (!q) return true;
-      return [ac.tailNumber, ac.model.name, ac.model.family, ac.model.icao_code, ac.hubIata, circuit.chainPath.join(' ')].some((s) => s.toLowerCase().includes(q));
+      return [ac.tailNumber, ac.model.name, ac.model.family, ac.model.icao_code, ac.hubIata, circuit.chainPath.join(' '), ac.brand ? brandName(ac) : ''].some((s) => s.toLowerCase().includes(q));
     });
     const cmp: Record<SortBy, (a: (typeof rows)[number], b: (typeof rows)[number]) => number> = {
       least: (a, b) => a.usage.usedPct - b.usage.usedPct || a.ac.tailNumber.localeCompare(b.ac.tailNumber),
@@ -100,7 +106,7 @@ export function FleetPanel(props: FleetPanelProps) {
       type: (a, b) => a.ac.model.name.localeCompare(b.ac.model.name) || a.ac.tailNumber.localeCompare(b.ac.tailNumber),
     };
     rows.sort(cmp[view.sortBy]);
-    const keyOf = (r: (typeof rows)[number]) => (view.groupBy === 'type' ? r.ac.model.name : view.groupBy === 'base' ? r.ac.hubIata : '');
+    const keyOf = (r: (typeof rows)[number]) => (view.groupBy === 'type' ? r.ac.model.name : view.groupBy === 'base' ? r.ac.hubIata : view.groupBy === 'brand' ? brandName(r.ac) : '');
     const map = new Map<string, typeof rows>();
     for (const r of rows) {
       const k = keyOf(r);
@@ -108,7 +114,8 @@ export function FleetPanel(props: FleetPanelProps) {
       map.get(k)!.push(r);
     }
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [all, search, show, view]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [all, search, show, view, subsidiaries, props.airlineName]);
 
   const idle = all.filter((r) => r.usage.flightCount === 0).length;
   const busy = all.filter((r) => r.usage.usedPct >= 85).length;
@@ -154,6 +161,7 @@ export function FleetPanel(props: FleetPanelProps) {
             <select aria-label="Group" value={view.groupBy} onChange={(e) => setView({ groupBy: e.target.value as GroupBy })} style={{ ...inputStyle, width: 'auto', padding: '6px 8px' }}>
               <option value="type">By type</option>
               <option value="base">By base</option>
+              {subsidiaries.length > 0 && <option value="brand">By brand</option>}
               <option value="none">One list</option>
             </select>
           </div>
@@ -216,6 +224,23 @@ export function FleetPanel(props: FleetPanelProps) {
                   {picked.every((a) => a.livery === 1) ? 'Main livery' : 'Special livery'}
                 </Button>
               )}
+              {subsidiaries.length > 0 && (
+                <select
+                  aria-label="Flies for"
+                  title="Which brand the selected aircraft fly for"
+                  value=""
+                  onChange={(e) => e.target.value && props.onSetBrand(pickedTails, e.target.value === 'main' ? null : (e.target.value as BrandKind))}
+                  style={{ ...inputStyle, width: 'auto', padding: '4px 8px', fontSize: 13 }}
+                >
+                  <option value="">Flies for…</option>
+                  <option value="main">{props.airlineName}</option>
+                  {subsidiaries.map((b) => (
+                    <option key={b.kind} value={b.kind} disabled={!picked.some((a) => brandAllows(b.kind, a.model))}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              )}
               <Button size="sm" variant="danger" onClick={() => props.onSellOrReturn(pickedTails)}>
                 Sell
               </Button>
@@ -253,11 +278,16 @@ export function FleetPanel(props: FleetPanelProps) {
                       onChange={() => toggle(ac.tailNumber)}
                       style={{ flex: 'none' }}
                     />
-                    <AircraftPhoto model={ac.model} width={phone ? 58 : 72} fallback={iconForModel(ac.model)} tailNumber={ac.tailNumber} liveryIndex={ac.livery} style={{ flex: 'none' }} />
+                    <AircraftPhoto model={ac.model} width={phone ? 58 : 72} fallback={iconForModel(ac.model)} tailNumber={ac.tailNumber} liveryIndex={ac.livery} brand={ac.brand} style={{ flex: 'none' }} />
                     <div style={{ flex: '1 1 0', minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', minWidth: 0, fontSize: 14, fontWeight: 650, whiteSpace: 'nowrap' }}>
                         <span style={{ flex: 'none' }}>{ac.tailNumber}</span>
-                        {ac.livery === 1 && (props.liveryNames?.length ?? 0) > 1 && (
+                        {ac.brand && view.groupBy !== 'brand' && (
+                          <span title={`Flies for ${brandName(ac)}`} style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', marginLeft: 6, padding: '1px 7px', borderRadius: 99, background: `${C.brand}1f`, color: C.brand, fontSize: 10.5, fontWeight: 700 }}>
+                            {brandName(ac)}
+                          </span>
+                        )}
+                        {!ac.brand && ac.livery === 1 && (props.liveryNames?.length ?? 0) > 1 && (
                           <span style={{ minWidth: 0, overflow: 'hidden' }}>
                             <SpecialTag name={props.liveryNames![1]} />
                           </span>
@@ -326,6 +356,9 @@ export function FleetPanel(props: FleetPanelProps) {
             setDialog(null);
             props.onOpenSchedule(dialogAc[0].tailNumber);
           }}
+          airlineName={props.airlineName}
+          subsidiaries={subsidiaries}
+          onSetBrand={(kind) => props.onSetBrand([dialogAc[0].tailNumber], kind)}
           onClose={() => setDialog(null)}
         />
       )}

@@ -506,7 +506,7 @@ export function AirportDrawer({
                     }}
                     style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, border: 'none', background: face(), color: C.text, cursor: 'pointer', textAlign: 'left' }}
                   >
-                    {aircraft && <AircraftPhoto model={aircraft.model} width={68} fallback={iconForModel?.(aircraft.model)} tailNumber={aircraft.tailNumber} liveryIndex={aircraft.livery} />}
+                    {aircraft && <AircraftPhoto model={aircraft.model} width={68} fallback={iconForModel?.(aircraft.model)} tailNumber={aircraft.tailNumber} liveryIndex={aircraft.livery} brand={aircraft.brand} />}
                     <span style={{ flex: 1, minWidth: 0 }}>
                       <span style={{ display: 'block', fontWeight: 650, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {aircraft ? `${aircraft.tailNumber} · ${aircraft.model.name}` : 'Choose an aircraft'}

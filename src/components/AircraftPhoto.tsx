@@ -9,10 +9,25 @@ import { AIRCRAFT_PHOTOS, aircraftArt } from '../game/aircraftPhotos';
 import { cloudSkyCss } from '../game/cloudSky';
 import { specialLabel, type Livery } from '../game/livery';
 import { holdPhoto, paintedPhoto } from '../game/liveryPaint';
-import type { AircraftModel } from '../game/types';
+import type { AircraftModel, BrandKind } from '../game/types';
 
-/** The player's liveries (up to two), so every picture of their aircraft is painted in its livery. */
-export const LiveryContext = createContext<{ liveries: Livery[]; name: string; logo?: string } | null>(null);
+export interface LiveryCtx {
+  liveries: Livery[];
+  name: string;
+  logo?: string;
+  /** The subsidiaries' own liveries and names: their aircraft are painted in them. */
+  brands?: Partial<Record<BrandKind, { name: string; livery: Livery }>>;
+}
+/** The player's liveries (up to two, and the subsidiaries'), so every picture of their aircraft is painted in its livery. */
+export const LiveryContext = createContext<LiveryCtx | null>(null);
+
+/** What one of the player's aircraft is painted in: the livery, the name on its side, and whether it's the special one. */
+export function paintOf(ctx: LiveryCtx | null, ac: { livery?: number; brand?: BrandKind }): { livery?: Livery; name: string; special: boolean } {
+  const b = ac.brand ? ctx?.brands?.[ac.brand] : undefined;
+  if (b) return { livery: b.livery, name: b.name, special: false };
+  const special = Boolean(ctx && ac.livery === 1 && ctx.liveries.length > 1);
+  return { livery: ctx ? ctx.liveries[special ? 1 : 0] : undefined, name: ctx?.name ?? '', special };
+}
 
 /** A made-up registration for pictures of a type rather than of one aircraft. */
 export const SAMPLE_REG = 'P4-ABC';
@@ -85,6 +100,8 @@ export function AircraftPhoto(props: {
   /** One of the player's aircraft: its registration, and which livery it wears. */
   tailNumber?: string;
   liveryIndex?: number;
+  /** The subsidiary it flies for: it wears that brand's livery and name. */
+  brand?: BrandKind;
   /** No "Special Livery" tag (where it's shown beside the picture already). */
   noTag?: boolean;
   /** The plain white picture, without the airline's livery. */
@@ -95,9 +112,8 @@ export function AircraftPhoto(props: {
   const size = AIRCRAFT_PHOTOS[props.model.id];
   const [failed, setFailed] = useState(false);
   const ctx = useContext(LiveryContext);
-  const special = Boolean(ctx && props.liveryIndex === 1 && ctx.liveries.length > 1);
-  const livery = ctx ? ctx.liveries[special ? 1 : 0] : undefined;
-  const src = usePaintedPhoto(props.model.id, props.plain ? undefined : livery, ctx?.name ?? '', props.tailNumber || SAMPLE_REG, typeof props.width === 'number' ? props.width : props.paintWidth ?? 1280);
+  const { livery, name: paintName, special } = paintOf(ctx, { livery: props.liveryIndex, brand: props.brand });
+  const src = usePaintedPhoto(props.model.id, props.plain ? undefined : livery, paintName, props.tailNumber || SAMPLE_REG, typeof props.width === 'number' ? props.width : props.paintWidth ?? 1280);
   if (!size || failed) {
     if (!props.fallback) return null;
     const s = props.iconSize ?? 24;
@@ -148,7 +164,7 @@ export function SpecialTag({ name }: { name?: string }) {
 }
 
 /** One of the player's aircraft in the airline's livery, on a sky of its own (picked by its tail number). */
-export function AircraftHero(props: { model: AircraftModel; tailNumber: string; liveryIndex?: number; photoWidth?: string; style?: React.CSSProperties }) {
+export function AircraftHero(props: { model: AircraftModel; tailNumber: string; liveryIndex?: number; brand?: BrandKind; photoWidth?: string; style?: React.CSSProperties }) {
   if (!AIRCRAFT_PHOTOS[props.model.id]) return null;
   return (
     <div
@@ -170,6 +186,7 @@ export function AircraftHero(props: { model: AircraftModel; tailNumber: string; 
         model={props.model}
         tailNumber={props.tailNumber}
         liveryIndex={props.liveryIndex}
+        brand={props.brand}
         width={props.photoWidth ?? 'min(86%, 720px)'}
         style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', maxWidth: '92%', maxHeight: '86%', filter: 'drop-shadow(0 10px 12px rgba(10,20,40,.28))' }}
       />

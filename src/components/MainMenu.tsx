@@ -32,6 +32,8 @@ export function MainMenu(props: {
   onAirlineLogo: (l: string | undefined) => void;
   /** Opens the livery editor. */
   onOpenLivery: () => void;
+  /** Opens the regional and cargo brands. */
+  onSubsidiaries: () => void;
 }) {
   const [saved, setSaved] = useState(false);
   const [credits, setCredits] = useState(false);
@@ -63,6 +65,7 @@ export function MainMenu(props: {
         <div style={{ height: 1, background: C.line, margin: '6px 10px' }} />
         {row('edit', 'Name, colours and logo', () => setDetails(true))}
         {row('fleet', 'Livery', away(props.onOpenLivery))}
+        {row('flag', 'Subsidiaries', away(props.onSubsidiaries))}
         {row('palette', 'Appearance', away(openAppearance))}
         <div style={{ height: 1, background: C.line, margin: '6px 10px' }} />
         {row('help', 'How to play', away(props.onTour))}

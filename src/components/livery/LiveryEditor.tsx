@@ -325,6 +325,8 @@ export function LiveryEditor(props: {
   airlineLogo?: string;
   onSave: (l: Livery[]) => void;
   onClose: () => void;
+  /** One livery only, with this heading (a subsidiary's livery): no second one to add. */
+  single?: string;
 }) {
   const layout = useLayout();
   const phone = layout === 'phone';
@@ -1500,7 +1502,7 @@ export function LiveryEditor(props: {
           ×
         </button>
       ) : (
-        <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: 22, marginRight: 6 }}>Livery</h2>
+        <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: 22, marginRight: 6 }}>{props.single ?? 'Livery'}</h2>
       )}
       {/* the livery: switch, add a second, rename, delete */}
       <span style={{ position: 'relative' }} data-menu>
@@ -1517,7 +1519,7 @@ export function LiveryEditor(props: {
               </button>
             ))}
             <div style={{ height: 1, background: C.line, margin: '4px 0' }} />
-            {docs.length < MAX_LIVERIES && (
+            {docs.length < MAX_LIVERIES && !props.single && (
               <button type="button" role="menuitem" style={menuItem(false)} onClick={() => { setMenu(null); addSecond(); }} title="A copy of this livery to start from; pick which aircraft wear it in each aircraft's window">
                 + Second livery
               </button>

@@ -31,6 +31,8 @@ export interface AircraftScheduleModalProps {
   onSetLivery?: (tailNumber: string, index: number) => void;
   /** Opens the livery editor on this aircraft's livery. */
   onEditLivery?: (index: number) => void;
+  /** The subsidiary it flies for, if any: it wears that brand's livery. */
+  brandName?: string;
   /** The airline's logo, shown beside the registration. */
   airlineLogo?: string;
 }
@@ -49,6 +51,7 @@ export function AircraftScheduleModal({
   liveryNames = [],
   onSetLivery,
   onEditLivery,
+  brandName,
   airlineLogo,
 }: AircraftScheduleModalProps) {
   const acFlights = useMemo(() => flightsForTail(allSchedule, aircraft.tailNumber), [allSchedule, aircraft.tailNumber]);
@@ -124,7 +127,7 @@ export function AircraftScheduleModal({
 
   return (
     <ModalShell onClose={onClose}>
-      <AircraftHero model={aircraft.model} tailNumber={aircraft.tailNumber} liveryIndex={aircraft.livery} style={{ marginBottom: 14 }} />
+      <AircraftHero model={aircraft.model} tailNumber={aircraft.tailNumber} liveryIndex={aircraft.livery} brand={aircraft.brand} style={{ marginBottom: 14 }} />
       {/* Header: what it is, then the few things you can do with it */}
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: '10px 12px' }}>
         {airlineLogo && <img src={airlineLogo} alt="" style={{ width: 40, height: 40, borderRadius: 10, background: '#fff', padding: 3, objectFit: 'contain', boxSizing: 'border-box' }} />}
@@ -133,12 +136,13 @@ export function AircraftScheduleModal({
             {aircraft.tailNumber} <span style={{ color: C.muted, fontWeight: 600 }}>{aircraft.model.name}</span>
           </h2>
           <div className="num" title={`${tierInfo.sizeLabel}, ICAO Code ${aircraftGateCode(aircraft.model)}, ${aircraft.model.turnaround_min} min turnaround`} style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>
+            {brandName ? `${brandName} · ` : ''}
             {aircraft.hubIata} · {usage.usedPct}% used · {usage.avgDailyHours} h a day
             {isCargo ? ` · ${aircraft.model.cargo_cap_tons} t` : ''}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-          {liveryNames.length > 1 && onSetLivery && (
+          {liveryNames.length > 1 && onSetLivery && !brandName && (
             <select
               aria-label="Livery this aircraft wears"
               value={Math.min(aircraft.livery ?? 0, liveryNames.length - 1)}

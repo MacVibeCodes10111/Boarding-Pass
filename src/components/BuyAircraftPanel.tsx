@@ -15,7 +15,8 @@ import { holdTakes } from '../game/cargo';
 import { cabinSeatTotal, calculateCabinUsage, getDefaultCabinForModel } from '../game/economics';
 import { getAircraftTierInfo } from '../game/tiers';
 import { formatMoneyM } from '../game/time';
-import type { AircraftModel, CabinConfig, CareerState, GameMode, PlayerAircraft } from '../game/types';
+import type { AircraftModel, BrandKind, CabinConfig, CareerState, GameMode, PlayerAircraft, Subsidiary } from '../game/types';
+import { REGIONAL_CREW_SHARE, brandAllows } from '../game/subsidiaries';
 import { availableCredit, leaseBlocker, maxLeasable, usdShort } from '../game/career';
 import { DEFAULT_LEASE_WEEKS, LEASE_OPTIONS, leaseCreditUse, leaseQuote } from '../game/leasing';
 import { Icon } from '../ui/icons';
@@ -36,7 +37,10 @@ export interface BuyAircraftPanelProps {
   tailInput: string;
   onTailInputChange: (t: string) => void;
   /** Buy or lease `count` of the type; leases run `leaseWeeks`. */
-  onAcquire: (mode: 'owned' | 'leased', leaseWeeks: number, count: number) => void;
+  onAcquire: (mode: 'owned' | 'leased', leaseWeeks: number, count: number, brand?: BrandKind) => void;
+  /** The airline's name, and its regional and cargo brands: new aircraft can join one. */
+  airlineName: string;
+  subsidiaries: Subsidiary[];
   econMin: number;
   /** The bank and the fleet: every lease uses part of the credit line (Career mode). */
   career: CareerState;
@@ -218,6 +222,10 @@ function ModelView(props: BuyAircraftPanelProps & { onBack: () => void }) {
   const sandbox = props.gameMode === 'sandbox';
   const [count, setCount] = useState(1);
   const [weeks, setWeeks] = useState(DEFAULT_LEASE_WEEKS);
+  // which brand new aircraft join: kept while it can fly this type
+  const brands = props.subsidiaries.filter((b) => brandAllows(b.kind, m));
+  const [brandPick, setBrandPick] = useState<BrandKind | null>(null);
+  const brand = brandPick && brands.some((b) => b.kind === brandPick) ? brandPick : undefined;
   const quote = leaseQuote(m, weeks, props.econMin);
   const canBuy = sandbox || props.cash >= m.base_price_usd * count;
   const cashForLease = sandbox || props.cash >= quote.deposit * count;
@@ -272,7 +280,7 @@ function ModelView(props: BuyAircraftPanelProps & { onBack: () => void }) {
       </div>
 
       {hasAircraftPhoto(m) ? (
-        <AircraftPhoto model={m} width="100%" paintWidth={560} plain={!showLivery} style={{ maxWidth: 560, margin: '0 auto' }} />
+        <AircraftPhoto model={m} width="100%" paintWidth={560} plain={!showLivery} brand={brand} style={{ maxWidth: 560, margin: '0 auto' }} />
       ) : (
         <img src={props.iconForModel(m)} alt="" style={{ width: 44, height: 44 }} />
       )}
@@ -300,15 +308,28 @@ function ModelView(props: BuyAircraftPanelProps & { onBack: () => void }) {
             <Stepper value={count} min={1} max={50} onChange={setCount} />
           </Field>
         </div>
+        {brands.length > 0 && (
+          <Field label="Flies for">
+            <select aria-label="Flies for" value={brand ?? 'main'} onChange={(e) => setBrandPick(e.target.value === 'main' ? null : (e.target.value as BrandKind))} style={inputStyle}>
+              <option value="main">{props.airlineName}</option>
+              {brands.map((b) => (
+                <option key={b.kind} value={b.kind}>
+                  {b.name}
+                  {b.kind === 'regional' ? ` · crews ${Math.round((1 - REGIONAL_CREW_SHARE) * 100)}% cheaper` : ''}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
         <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div style={{ display: 'grid', gap: 6, alignContent: 'start' }}>
-            <Button variant="primary" size="lg" block disabled={!usage.isValid || !canBuy} onClick={() => props.onAcquire('owned', weeks, count)}>
+            <Button variant="primary" size="lg" block disabled={!usage.isValid || !canBuy} onClick={() => props.onAcquire('owned', weeks, count, brand)}>
               Buy{count > 1 ? ` ${count}` : ''} · {formatMoneyM(m.base_price_usd * count)}
             </Button>
             {!canBuy && <div style={{ fontSize: 12, color: C.red }}>Not enough cash</div>}
           </div>
           <div style={{ display: 'grid', gap: 6, alignContent: 'start' }}>
-            <Button size="lg" block disabled={!usage.isValid || !canLease} onClick={() => props.onAcquire('leased', weeks, count)}>
+            <Button size="lg" block disabled={!usage.isValid || !canLease} onClick={() => props.onAcquire('leased', weeks, count, brand)}>
               Lease{count > 1 ? ` ${count}` : ''} · {formatMoneyM(quote.dailyRate * 7, 2)} a week{count > 1 ? ' each' : ''}
             </Button>
             <label className="num" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: cashForLease ? C.muted : C.red }}>

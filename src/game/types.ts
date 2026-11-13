@@ -140,6 +140,20 @@ export interface PlayerAircraft {
   livery?: number;
   /** The marketplace trade it was bought in (Update B), so a reversed trade can find it. */
   trade?: string;
+  /** The subsidiary it flies for (2026-11; none = the airline itself). It then wears that brand's livery. */
+  brand?: BrandKind;
+}
+
+/** A subsidiary's kind: a regional brand (like American Eagle) or a cargo brand (like Delta Cargo). */
+export type BrandKind = 'regional' | 'cargo';
+
+/** A brand that flies part of the fleet (see game/subsidiaries.ts). It shares the airline's money and flight numbers. */
+export interface Subsidiary {
+  kind: BrandKind;
+  name: string;
+  callsign: string;
+  /** Its own livery; none = the airline's main one. */
+  livery?: Livery;
 }
 
 export interface Fares {
@@ -290,6 +304,9 @@ export interface SaveGameState {
   // --- Update B ---
   /** What this career has applied from the marketplace (see game/market.ts). */
   market?: { applied: string[] };
+  // --- 2026-11 ---
+  /** Its regional and cargo brands (one of each at most). */
+  subsidiaries?: Subsidiary[];
 }
 
 /** Minimal leg description used by the conflict checker. */

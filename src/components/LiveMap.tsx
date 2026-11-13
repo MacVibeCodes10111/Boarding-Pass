@@ -51,7 +51,7 @@ import {
 import { CAMERA_READOUT_TITLE, isHeightDragStart } from '../game/platform';
 import { getAircraftTierInfo, getAirportMaxAircraftTier } from '../game/tiers';
 import { dayIndexOf, daysOrAll, formatClockShort, formatDurationHm, MIN_PER_DAY } from '../game/time';
-import type { Airport, PlayerAircraft, RadarIconGroup, ScheduledFlight } from '../game/types';
+import type { Airport, PlayerAircraft, RadarIconGroup, ScheduledFlight, Subsidiary } from '../game/types';
 import { C, MAP_C, useThemeVersion } from '../ui/kit';
 import { currentLayout, isTouchFirst } from '../ui/layout';
 import { loadCargoAprons } from '../game/cargoAprons';
@@ -61,8 +61,8 @@ import { cloudSkyCss } from '../game/cloudSky';
 import { friendLivery, friendsOnMap } from '../game/friendsMap';
 import { openFriendAirline } from './FriendAirline';
 import { paintedPhoto } from '../game/liveryPaint';
-import { liveryIndexOf, specialLabel } from '../game/livery';
-import { LiveryContext } from './AircraftPhoto';
+import { specialLabel } from '../game/livery';
+import { LiveryContext, paintOf } from './AircraftPhoto';
 
 const EMPTY_FC = { type: 'FeatureCollection', features: [] as any[] };
 
@@ -376,6 +376,8 @@ export interface LiveMapProps {
   mapDay: number;
   mapMin: number;
   airlineCallsign: string;
+  /** The airline's regional and cargo brands: their aircraft use the brand's callsign. */
+  subsidiaries?: Subsidiary[];
   inspectedAirport: Airport | null;
   /** Hide the aircraft in the air (while the route planner is open). Defaults to "an airport is inspected". */
   hidePlanes?: boolean;
@@ -450,7 +452,7 @@ function buildPlanePopupHtml(raw: Record<string, any>): string {
     <div class="bp-pop-head" style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
       <b style="font-size:15px;color:${C.brand}">${p.callsign}</b>${muted(`${p.flightNumber}, ${p.tailNumber}`)}
     </div>
-    <div style="margin:2px 0 8px">${muted(p.modelName)}</div>
+    <div style="margin:2px 0 8px">${muted(p.operatedBy ? `${p.operatedBy} · ${p.modelName}` : p.modelName)}</div>
     <div style="display:flex;justify-content:space-between;font-weight:600"><span>${p.originIata} ${muted(p.originCity)}</span><span>${p.destIata} ${muted(p.destCity)}</span></div>
     ${progressBar(Number(raw.progressPct), C.brand)}
     <div style="display:flex;justify-content:space-between;font-size:11.5px;color:${C.muted};font-variant-numeric:tabular-nums"><span>${p.depClock} UTC</span><span>${p.etaText} to go</span><span>${p.arrClock} UTC</span></div>
@@ -1263,6 +1265,7 @@ export function LiveMap(props: LiveMapProps) {
     mapDay,
     mapMin,
     airlineCallsign,
+    subsidiaries,
     inspectedAirport,
     previewOrigin,
     showWeatherRadar,
@@ -1487,13 +1490,13 @@ export function LiveMap(props: LiveMapProps) {
               }
               const lv = liveryRef.current;
               const ac = plane && latest.current.fleet.find((a) => a.tailNumber === plane.tailNumber);
-              const li = lv && ac ? liveryIndexOf(ac, lv.liveries) : 0;
-              const lvy = lv ? lv.liveries[li] : undefined;
-              if (tag && li === 1 && lvy) {
+              const paint = lv && ac ? paintOf(lv, ac) : { livery: lv?.liveries[0], name: lv?.name ?? '', special: false };
+              const lvy = paint.livery;
+              if (tag && paint.special && lvy) {
                 tag.textContent = `★ ${specialLabel(lvy)}`;
                 tag.style.display = 'block';
               }
-              if (heroImg && lvy) paintedPhoto(String(plane?.modelId), lvy, lv!.name, String(plane?.tailNumber ?? '')).then((u) => u && (heroImg.src = u));
+              if (heroImg && lvy) paintedPhoto(String(plane?.modelId), lvy, paint.name, String(plane?.tailNumber ?? '')).then((u) => u && (heroImg.src = u));
             }
             attachOrbit(map, popup);
             popup.on('close', () => {
@@ -2113,7 +2116,8 @@ export function LiveMap(props: LiveMapProps) {
         props: {
           flightId: fl.id,
           flightNumber: fl.flightNumber,
-          callsign: `${airlineCallsign} ${fl.flightNumber.replace(/\D+/g, '') || '1'}`,
+          callsign: `${(ac?.brand && subsidiaries?.find((b) => b.kind === ac.brand)?.callsign) || airlineCallsign} ${fl.flightNumber.replace(/\D+/g, '') || '1'}`,
+          operatedBy: (ac?.brand && subsidiaries?.find((b) => b.kind === ac.brand)?.name) || '',
           tailNumber: fl.tailNumber,
           modelName: ac?.model.name ?? 'Commercial Jet',
           modelId: ac?.model.id ?? '',
@@ -2147,7 +2151,7 @@ export function LiveMap(props: LiveMapProps) {
         },
       };
     });
-  }, [schedule, fleet, econById, airlineCallsign, planeIconScale]);
+  }, [schedule, fleet, econById, airlineCallsign, subsidiaries, planeIconScale]);
 
   const animState = useRef({ flightInfo, trackedFlightId, visible, aiTraffic: props.aiTraffic, aiDensity: props.aiDensity, planeIconScale });
   animState.current = { flightInfo, trackedFlightId, visible, aiTraffic: props.aiTraffic, aiDensity: props.aiDensity, planeIconScale };
