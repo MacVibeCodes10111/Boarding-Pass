@@ -9,10 +9,11 @@ import { liveryFromProfile } from '../../src/game/profile';
 import { AIRCRAFT_BY_ID } from '../../src/game/aircraftCatalog';
 import { paintedPhoto } from '../../src/game/liveryPaint';
 import { Button, C, DISPLAY, ModalShell, inputStyle } from '../../src/ui/kit';
+import { saveStats, type SaveStats } from './saveStats';
 import { act, actOnLogo, forgetPicture, listLogos, logoPicture, rpc, storageUsage, type Channel, type LogoRow, type Me } from './api';
 
 export interface Route {
-  page: 'dashboard' | 'reports' | 'airlines' | 'alliances' | 'market' | 'saves' | 'logos' | 'log' | 'team';
+  page: 'dashboard' | 'reports' | 'airlines' | 'alliances' | 'market' | 'rich' | 'saves' | 'logos' | 'log' | 'team';
   id: string;
 }
 interface Ctx {
@@ -28,7 +29,8 @@ export function Page(props: Ctx) {
   if (page === 'airlines') return id ? <Airline {...props} id={id} /> : <Airlines {...props} />;
   if (page === 'alliances') return id ? <Alliance {...props} id={id} /> : <Alliances {...props} />;
   if (page === 'market') return <Market {...props} />;
-  if (page === 'saves') return <Saves {...props} />;
+  if (page === 'rich') return <Rich {...props} />;
+  if (page === 'saves') return <Saves {...props} id={id} />;
   if (page === 'logos') return <Logos {...props} />;
   if (page === 'log') return <Log {...props} />;
   if (page === 'team') return <Team {...props} />;
@@ -1199,9 +1201,16 @@ function Sure(props: { title: string; lines: React.ReactNode[]; yes: string; dan
   );
 }
 
-function Saves({ channel, me }: Ctx) {
-  const [q, setQ] = useState('');
-  const [typed, setTyped] = useState('');
+function Saves({ channel, me, id }: Ctx & { id: string }) {
+  const first = (() => {
+    try {
+      return decodeURIComponent(id);
+    } catch {
+      return '';
+    }
+  })();
+  const [q, setQ] = useState(first);
+  const [typed, setTyped] = useState(first);
   const r = useLoad(() => (q.trim().length >= 2 ? rpc<J[]>('admin_saves', { p_channel: channel, p_q: q }) : Promise.resolve([] as J[])), [channel, q]);
   if (me.role !== 'owner') return <Muted>Only the owner can see cloud saves.</Muted>;
   return (
@@ -1256,6 +1265,21 @@ function SaveCard({ s, channel, onDone }: { s: J; channel: Channel; onDone: () =
       <Muted>
         Last synced {when(s.updatedAt)} · {mb(Number(s.bytes) || 0)} · save {s.saveId}
       </Muted>
+      {s.stats && (
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 8, fontSize: 13 }}>
+          {s.stats.cash !== undefined && (
+            <span>
+              Cash <b className="num">{usdFull(s.stats.cash)}</b>
+            </span>
+          )}
+          {s.stats.debt ? <span>Loans owed {usdFull(s.stats.debt)}</span> : null}
+          {s.stats.weeks ? <span>Week {s.stats.weeks}</span> : null}
+          {s.stats.fleet !== undefined && <span>{s.stats.fleet} aircraft</span>}
+          {s.stats.startedAt ? <span>Started {day(new Date(s.stats.startedAt).toISOString())}</span> : null}
+          {s.stats.mode === 'sandbox' && <Pill tone="muted">Sandbox</Pill>}
+          {s.stats.tampered && <Pill tone="red">Edited save</Pill>}
+        </div>
+      )}
 
       <div style={{ display: 'grid', gap: 8, marginTop: 12, padding: 10, borderRadius: 10, background: C.raised, border: `1px solid ${C.border}` }}>
         <b style={{ fontSize: 13 }}>Cash</b>
@@ -1372,5 +1396,146 @@ function SaveCard({ s, channel, onDone }: { s: J; channel: Channel; onDone: () =
         />
       )}
     </Box>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The rich list (owner only, 2026-11-16): the richest or oldest cloud careers,
+// read from the saves themselves (saveStats.ts). Every minute while it's open,
+// it reads the saves that changed and updates the list.
+// ---------------------------------------------------------------------------
+const ago = (ms: number) => {
+  const d = Math.floor((Date.now() - ms) / 86_400_000);
+  return d < 1 ? 'today' : d === 1 ? '1 day' : d < 60 ? `${d} days` : d < 730 ? `${Math.floor(d / 30.4)} months` : `${(d / 365).toFixed(1)} years`;
+};
+
+/** Reads the saves that changed and stores their summaries. Returns how many it read. */
+async function syncStats(channel: Channel, onLeft: (n: number) => void): Promise<number> {
+  let read = 0;
+  for (let round = 0; round < 40; round++) {
+    const r = await rpc<{ left: number; rows: J[] }>('admin_save_blobs', { p_channel: channel });
+    onLeft(r.left);
+    if (!r.rows.length) break;
+    const rows = r.rows.map((x) => ({ user: x.user, saveId: x.saveId, rev: x.rev, stats: saveStats(x.data, x.saveId) }));
+    await rpc('admin_save_stats_put', { p_channel: channel, p_rows: rows });
+    read += rows.length;
+    if (rows.length >= r.left) break;
+  }
+  onLeft(0);
+  return read;
+}
+
+function Rich({ channel, me }: Ctx) {
+  const [mode, setMode] = useState<'career' | 'sandbox'>('career');
+  const [sort, setSort] = useState<'cash' | 'age'>('cash');
+  const [left, setLeft] = useState(0);
+  const [syncError, setSyncError] = useState('');
+  const [lastAt, setLastAt] = useState(0);
+  const r = useLoad(() => rpc<{ total: number; rows: J[] }>('admin_rich', { p_channel: channel, p_mode: mode, p_sort: sort, p_limit: 200 }), [channel, mode, sort, lastAt]);
+  const busy = useRef(false);
+  useEffect(() => {
+    if (me.role !== 'owner') return;
+    let stop = false;
+    const tick = async () => {
+      if (busy.current || document.hidden) return;
+      busy.current = true;
+      try {
+        await syncStats(channel, (n) => !stop && setLeft(n));
+        if (!stop) {
+          setSyncError('');
+          setLastAt(Date.now());
+        }
+      } catch (e) {
+        if (!stop) setSyncError(e instanceof Error ? e.message : String(e));
+      } finally {
+        busy.current = false;
+      }
+    };
+    void tick();
+    const id = window.setInterval(() => void tick(), 60_000);
+    return () => {
+      stop = true;
+      window.clearInterval(id);
+    };
+  }, [channel, me.role]);
+  if (me.role !== 'owner') return <Muted>Only the owner can see the rich list.</Muted>;
+  const rows = r.data?.rows ?? [];
+  const th: React.CSSProperties = { textAlign: 'left', padding: '6px 8px', fontSize: 12, color: C.muted, fontWeight: 650, whiteSpace: 'nowrap' };
+  const td: React.CSSProperties = { padding: '7px 8px', fontSize: 13, borderTop: `1px solid ${C.line}`, whiteSpace: 'nowrap' };
+  return (
+    <div>
+      <H1>Rich list</H1>
+      <Muted>
+        Read from the cloud saves themselves, updated every minute while this page is open.
+        {left > 0 ? ` Reading ${left} changed save${left === 1 ? '' : 's'}…` : lastAt ? ` Up to date at ${new Date(lastAt).toLocaleTimeString()}.` : ''}
+        {r.data ? ` ${r.data.total} careers in the cloud.` : ''}
+      </Muted>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '12px 0' }}>
+        <Button size="sm" variant={mode === 'career' ? 'primary' : 'subtle'} onClick={() => setMode('career')}>
+          Career
+        </Button>
+        <Button size="sm" variant={mode === 'sandbox' ? 'primary' : 'subtle'} onClick={() => setMode('sandbox')}>
+          Sandbox
+        </Button>
+        <span style={{ width: 12 }} />
+        <Button size="sm" variant={sort === 'cash' ? 'primary' : 'subtle'} onClick={() => setSort('cash')}>
+          Richest
+        </Button>
+        <Button size="sm" variant={sort === 'age' ? 'primary' : 'subtle'} onClick={() => setSort('age')}>
+          Oldest
+        </Button>
+      </div>
+      <Err e={syncError || r.error} />
+      {r.data && rows.length === 0 && <Muted>None yet.</Muted>}
+      {rows.length > 0 && (
+        <div style={{ overflowX: 'auto', background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12 }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <thead>
+              <tr>
+                <th style={th}>#</th>
+                <th style={th}>Airline</th>
+                <th style={{ ...th, textAlign: 'right' }}>Cash</th>
+                <th style={{ ...th, textAlign: 'right' }}>Loans owed</th>
+                <th style={{ ...th, textAlign: 'right' }}>Fleet</th>
+                <th style={{ ...th, textAlign: 'right' }}>Routes</th>
+                <th style={{ ...th, textAlign: 'right' }}>Game week</th>
+                <th style={th}>Started</th>
+                <th style={th}>Last synced</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((x, i) => {
+                const st = (x.stats ?? {}) as SaveStats;
+                return (
+                  <tr key={`${x.user}/${x.saveId}`}>
+                    <td style={{ ...td, color: C.muted }}>{i + 1}</td>
+                    <td style={td}>
+                      <a href={`#/saves/${encodeURIComponent(x.saveId)}`} style={{ color: C.text, fontWeight: 650, textDecoration: 'none' }}>
+                        {x.airline || 'Untitled'}
+                      </a>{' '}
+                      <span style={{ color: C.muted, fontSize: 12 }}>
+                        @{x.username}
+                        {x.friendCode ? ` · ${x.friendCode}` : ''}
+                      </span>{' '}
+                      {st.tampered && <Pill tone="red">Edited save</Pill>}
+                      {st.unreadable && <Pill tone="muted">Unreadable</Pill>}
+                    </td>
+                    <td className="num" style={{ ...td, textAlign: 'right', fontWeight: 700, color: (st.cash ?? 0) < 0 ? C.red : C.text }}>
+                      {st.cash === undefined ? '' : usdFull(st.cash)}
+                    </td>
+                    <td className="num" style={{ ...td, textAlign: 'right', color: C.textSoft }}>{st.debt ? usdFull(st.debt) : ''}</td>
+                    <td className="num" style={{ ...td, textAlign: 'right' }}>{st.fleet ?? ''}</td>
+                    <td className="num" style={{ ...td, textAlign: 'right' }}>{st.routes ?? ''}</td>
+                    <td className="num" style={{ ...td, textAlign: 'right' }}>{st.weeks ?? ''}</td>
+                    <td style={td}>{st.startedAt ? `${day(new Date(st.startedAt).toISOString())} (${ago(st.startedAt)})` : ''}</td>
+                    <td style={{ ...td, color: C.muted }}>{when(x.updatedAt)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }

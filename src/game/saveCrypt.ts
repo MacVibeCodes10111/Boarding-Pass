@@ -116,3 +116,18 @@ export function openProtectedSave<T = unknown>(s: string): OpenedSave<T> {
     return { ok: false, reason: 'unreadable' };
   }
 }
+
+/** Unscrambles a save even if its signature fails (for the owner's rich list, to flag edited saves). */
+export function readProtectedSave<T = unknown>(s: string): { value: T; signed: boolean } | null {
+  try {
+    const [salt, sig, b64] = s.slice(PREFIX.length).split('.');
+    if (!s.startsWith(PREFIX) || !salt || !sig || !b64) return null;
+    const bytes = fromBase64(b64);
+    const ks = keystream(salt);
+    for (let i = 0; i < bytes.length; i++) bytes[i] ^= ks();
+    const text = new TextDecoder().decode(bytes);
+    return { value: JSON.parse(text) as T, signed: sign(salt, text) === sig };
+  } catch {
+    return null;
+  }
+}
