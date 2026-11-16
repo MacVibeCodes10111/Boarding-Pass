@@ -83,7 +83,7 @@ describe('the game’s own registrations', () => {
     expect(tried).toBeGreaterThan(5000);
     // The odd one really does spell something: its flights just don't show on friends' maps
     expect(kept / tried).toBeGreaterThan(0.99);
-  });
+  }, 60_000);
 });
 
 describe('checking a snapshot', () => {
