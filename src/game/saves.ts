@@ -4,6 +4,7 @@
 import { AIRCRAFT_BY_ID } from './aircraftCatalog';
 import { MAX_FARE_MULT, getDefaultCabinForModel, getRouteDemandAndFares } from './economics';
 import { normaliseMarket } from './marketSave';
+import { normaliseGrants } from './grantSave';
 import { isProtectedSave, openProtectedSave, protectSave } from './saveCrypt';
 import { normaliseSubsidiaries, tidyFleetBrands } from './subsidiaries';
 import { daysOrAll } from './time';
@@ -105,6 +106,7 @@ export function hydrateSave(raw: SaveGameState, airportByIata: Map<string, Airpo
     schedule,
     savedAirports: undefined,
     market: normaliseMarket(raw.market),
+    grants: normaliseGrants(raw.grants),
     subsidiaries,
   };
 }

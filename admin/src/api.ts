@@ -101,6 +101,9 @@ const ANSWERS: Record<string, string> = {
   bad: 'Something in that wasn’t right.',
   admin: 'Admins can’t be suspended. Remove them from the team first.',
   last_owner: 'There has to be at least one owner.',
+  bad_kind: 'The server doesn’t know that kind of grant.',
+  bad_amount: 'That amount isn’t allowed (up to $100 billion, not zero).',
+  gone: 'That was already applied or cancelled.',
 };
 
 // ---------------------------------------------------------------------------

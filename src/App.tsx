@@ -122,6 +122,7 @@ import { MainMenu } from './components/MainMenu';
 import { CloudHost } from './components/CloudPanel';
 import { OnlineHost, OnlineSidePanel, onOpenOnline, openOnline, type OnlineTab } from './components/OnlinePanel';
 import type { MarketHooks } from './components/MarketTab';
+import { claimGrant, grantActions, grantLetter, loadGrants, normaliseGrants, withGrants, type Grant, type GrantSave } from './game/grants';
 import { applyMarket, cancelListing, claimMarket, listAircraft, loadMarketMine, marketActions, marketAnswer, normaliseMarket, withApplied, type MarketMine, type MarketSave } from './game/market';
 import { NoticesHost } from './components/ReportButton';
 import { FriendAirlineHost } from './components/FriendAirline';
@@ -488,6 +489,8 @@ export default function App() {
   const [activeSaveId, setActiveSaveId] = useState(`SAVE-${Date.now()}`);
   // The marketplace (Update B): what this career has applied, and its listings and trades as last read
   const [market, setMarket] = useState<MarketSave>({ applied: [] });
+  // Admin grants (cash given or taken by the owner): which ones this career has applied
+  const [grants, setGrants] = useState<GrantSave>({ applied: [] });
   const [marketMine, setMarketMine] = useState<MarketMine | null>(null);
   const [onlineStart, setOnlineStart] = useState<{ tab?: OnlineTab; sellTail?: string | null }>({});
   useEffect(() => {
@@ -904,6 +907,7 @@ export default function App() {
     career,
     replacesAiAirline: replacedAi,
     market,
+    grants,
   });
 
   /** Writes the current career into its slot. Returns false if storage failed. */
@@ -927,6 +931,8 @@ export default function App() {
   const persistAfterRender = useRef(false);
   /** Marketplace steps applied to this career, told to the server once the save holding them is written. */
   const claimAfterSave = useRef<{ saveId: string; keys: string[] } | null>(null);
+  /** Admin grants applied to this career, claimed once the save holding them is written. */
+  const grantsAfterSave = useRef<{ saveId: string; ids: string[] } | null>(null);
   useEffect(() => {
     if (persistAfterRender.current && screen === 'dashboard') {
       persistAfterRender.current = false;
@@ -935,6 +941,11 @@ export default function App() {
       if (saved && c) {
         claimAfterSave.current = null;
         void Promise.all(c.keys.map((k) => claimMarket(c.saveId, k).catch(() => undefined)));
+      }
+      const g = grantsAfterSave.current;
+      if (saved && g) {
+        grantsAfterSave.current = null;
+        void Promise.all(g.ids.map((id) => claimGrant(g.saveId, id).catch(() => undefined)));
       }
     }
   });
@@ -1012,6 +1023,7 @@ export default function App() {
     setFleet([]);
     setSchedule([]);
     setMarket({ applied: [] });
+    setGrants({ applied: [] });
     setMarketMine(null);
     // every airline starts in the standard livery
     setLiveries([standardLivery()]);
@@ -1118,6 +1130,7 @@ export default function App() {
     setFleet(tidyFleetLiveries(s.fleet, loadedLiveries));
     setSchedule(s.schedule);
     setMarket(normaliseMarket(s.market));
+    setGrants(normaliseGrants(s.grants));
     setMarketMine(null);
     setLedgerHistory(s.ledgerHistory ?? []);
     setEconSpeed(s.econPaused ? 'paused' : 'normal');
@@ -1513,6 +1526,60 @@ export default function App() {
       window.clearInterval(id);
     };
   }, [marketOn, activeSaveId]);
+
+  // ---------------------------------------------------------------------------
+  // Admin grants (2026-11-16, game/grants.ts): cash the owner gave or took away,
+  // applied once with a Bank letter, then claimed after the save is written
+  // ---------------------------------------------------------------------------
+  const grantsBusy = useRef(false);
+  /** Applied but not rendered yet: a second answer arriving first mustn't apply them again. */
+  const grantsInFlight = useRef(new Set<string>());
+  const applyGrantsRef = useRef<(list: Grant[], saveId: string) => void>(() => undefined);
+  applyGrantsRef.current = (list, saveId) => {
+    if (saveId !== activeSaveId) return;
+    const { apply: fresh, claim } = grantActions(list, grants);
+    const apply = fresh.filter((g) => !grantsInFlight.current.has(g.id));
+    if (claim.length) void Promise.all(claim.map((id) => claimGrant(saveId, id).catch(() => undefined)));
+    if (!apply.length) return;
+    const ids = apply.map((g) => g.id);
+    ids.forEach((id) => grantsInFlight.current.add(id));
+    const sandbox = gameModeRef.current === 'sandbox';
+    const total = apply.reduce((sum, g) => sum + g.amount, 0);
+    if (total) bookCash('grant', total);
+    const letters = apply.map((g) => grantLetter(g, airlineNameRef.current, econRef.current.min, sandbox)).reverse();
+    setCareer({ ...careerRef.current, letters: [...letters, ...careerRef.current.letters] });
+    setGrants((g) => withGrants(g, ids));
+    const before = grantsAfterSave.current?.saveId === saveId ? grantsAfterSave.current.ids : [];
+    grantsAfterSave.current = { saveId, ids: [...before, ...ids] };
+    persistAfterRender.current = true;
+    const usd = `$${Math.abs(total).toLocaleString('en-US')}`;
+    flashToast(
+      sandbox ? 'You have a letter from Boarding Pass in the Bank.' : total >= 0 ? `Boarding Pass added ${usd} to your account. See the letter in the Bank.` : `Boarding Pass took ${usd} from your account. See the letter in the Bank.`,
+      7000
+    );
+  };
+  useEffect(() => {
+    if (screen !== 'dashboard') return;
+    const saveId = activeSaveId;
+    grantsInFlight.current = new Set();
+    const run = async () => {
+      if (grantsBusy.current || document.hidden || !mightBeSignedIn()) return;
+      grantsBusy.current = true;
+      try {
+        applyGrantsRef.current(await loadGrants(saveId), saveId);
+      } catch {
+        // Tried again in a few minutes
+      } finally {
+        grantsBusy.current = false;
+      }
+    };
+    const first = window.setTimeout(() => void run(), 5000);
+    const id = window.setInterval(() => void run(), 5 * 60_000);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(id);
+    };
+  }, [screen, activeSaveId]);
 
   /** Lists an owned aircraft. It leaves the fleet once the server has the listing. '' when it worked. */
   const listOnMarket = async (tail: string, price: number): Promise<string> => {

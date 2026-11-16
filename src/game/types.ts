@@ -304,6 +304,8 @@ export interface SaveGameState {
   // --- Update B ---
   /** What this career has applied from the marketplace (see game/market.ts). */
   market?: { applied: string[] };
+  /** Admin grants this career has applied (see game/grants.ts). */
+  grants?: { applied: string[] };
   // --- 2026-11 ---
   /** Its regional and cargo brands (one of each at most). */
   subsidiaries?: Subsidiary[];

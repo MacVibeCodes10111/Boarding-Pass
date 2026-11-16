@@ -14,7 +14,7 @@ const IDLE_MS = 30 * 60_000;
 
 const parseRoute = (): Route => {
   const [page = 'dashboard', id = ''] = location.hash.replace(/^#\/?/, '').split('/');
-  return { page: (['dashboard', 'reports', 'airlines', 'alliances', 'market', 'logos', 'log', 'team'].includes(page) ? page : 'dashboard') as Route['page'], id };
+  return { page: (['dashboard', 'reports', 'airlines', 'alliances', 'market', 'saves', 'logos', 'log', 'team'].includes(page) ? page : 'dashboard') as Route['page'], id };
 };
 export const go = (page: Route['page'], id = '') => {
   location.hash = `/${page}${id ? `/${id}` : ''}`;
@@ -94,6 +94,7 @@ export function Admin() {
                   ['airlines', 'Airlines'],
                   ['alliances', 'Alliances'],
                   ['market', 'Marketplace'],
+                  ...(state.me.role === 'owner' ? ([['saves', 'Saves']] as const) : []),
                   ['log', 'Admin log'],
                   ['team', 'Team'],
                 ] as const

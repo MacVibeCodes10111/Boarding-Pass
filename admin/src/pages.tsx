@@ -8,11 +8,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { liveryFromProfile } from '../../src/game/profile';
 import { AIRCRAFT_BY_ID } from '../../src/game/aircraftCatalog';
 import { paintedPhoto } from '../../src/game/liveryPaint';
-import { Button, C, DISPLAY, inputStyle } from '../../src/ui/kit';
+import { Button, C, DISPLAY, ModalShell, inputStyle } from '../../src/ui/kit';
 import { act, actOnLogo, forgetPicture, listLogos, logoPicture, rpc, storageUsage, type Channel, type LogoRow, type Me } from './api';
 
 export interface Route {
-  page: 'dashboard' | 'reports' | 'airlines' | 'alliances' | 'market' | 'logos' | 'log' | 'team';
+  page: 'dashboard' | 'reports' | 'airlines' | 'alliances' | 'market' | 'saves' | 'logos' | 'log' | 'team';
   id: string;
 }
 interface Ctx {
@@ -28,6 +28,7 @@ export function Page(props: Ctx) {
   if (page === 'airlines') return id ? <Airline {...props} id={id} /> : <Airlines {...props} />;
   if (page === 'alliances') return id ? <Alliance {...props} id={id} /> : <Alliances {...props} />;
   if (page === 'market') return <Market {...props} />;
+  if (page === 'saves') return <Saves {...props} />;
   if (page === 'logos') return <Logos {...props} />;
   if (page === 'log') return <Log {...props} />;
   if (page === 'team') return <Team {...props} />;
@@ -362,6 +363,9 @@ const ACTIONS: Record<string, string> = {
   alliance_disband: 'Disbanded alliance',
   market_reverse: 'Reversed a trade',
   market_remove: 'Took a listing down',
+  grant: 'Gave or took cash',
+  grant_cancel: 'Cancelled a cash grant',
+  save_delete: 'Removed a cloud save',
   report_resolved: 'Resolved report',
   report_dismissed: 'Dismissed report',
   logo_approve: 'Approved logo',
@@ -1137,5 +1141,236 @@ function Team({ me }: Ctx) {
         </Box>
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Cloud saves (owner only, 2026-11-16): give or take cash, and remove a save
+// from the cloud. Grants reach the save the next time the player plays it,
+// with a letter that shows the reason. Every action asks "are you sure?" first.
+// ---------------------------------------------------------------------------
+const usdFull = (n: number) => `${n < 0 ? '−' : ''}$${Math.abs(Math.round(n)).toLocaleString('en-US')}`;
+
+/** "5m", "250k", "1.5b", "2,000,000" → a whole number of dollars, or null. */
+export function parseDollars(text: string): number | null {
+  const m = text.trim().toLowerCase().replace(/[$,\s]/g, '').match(/^(\d+(?:\.\d+)?)([kmb]?)$/);
+  if (!m) return null;
+  const n = Math.round(Number(m[1]) * { '': 1, k: 1e3, m: 1e6, b: 1e9 }[m[2] as '' | 'k' | 'm' | 'b']);
+  return Number.isFinite(n) && n > 0 && n <= 100_000_000_000 ? n : null;
+}
+
+/** The "are you sure?" window: what will happen, in plain words, then yes or no. */
+function Sure(props: { title: string; lines: React.ReactNode[]; yes: string; danger?: boolean; run: () => Promise<unknown>; onClose: () => void; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  return (
+    <ModalShell onClose={busy ? undefined : props.onClose} maxWidth={440} zIndex={400} label={props.title}>
+      <h2 style={{ margin: '0 36px 10px 0', fontFamily: DISPLAY, fontSize: 22 }}>{props.title}</h2>
+      <div style={{ display: 'grid', gap: 8, fontSize: 14, lineHeight: 1.45, marginBottom: 14 }}>
+        {props.lines.map((l, i) => (
+          <div key={i}>{l}</div>
+        ))}
+      </div>
+      <Err e={error} />
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <Button variant="ghost" onClick={props.onClose} disabled={busy}>
+          No, go back
+        </Button>
+        <Button
+          variant={props.danger ? 'danger' : 'primary'}
+          disabled={busy}
+          onClick={() => {
+            setBusy(true);
+            setError('');
+            props
+              .run()
+              .then(() => {
+                props.onClose();
+                props.onDone();
+              })
+              .catch((x) => setError(x instanceof Error ? x.message : String(x)))
+              .finally(() => setBusy(false));
+          }}
+        >
+          {busy ? 'Working…' : props.yes}
+        </Button>
+      </div>
+    </ModalShell>
+  );
+}
+
+function Saves({ channel, me }: Ctx) {
+  const [q, setQ] = useState('');
+  const [typed, setTyped] = useState('');
+  const r = useLoad(() => (q.trim().length >= 2 ? rpc<J[]>('admin_saves', { p_channel: channel, p_q: q }) : Promise.resolve([] as J[])), [channel, q]);
+  if (me.role !== 'owner') return <Muted>Only the owner can see cloud saves.</Muted>;
+  return (
+    <div>
+      <H1>Cloud saves</H1>
+      <Muted>Give or take cash, or remove a career from the cloud. Cash reaches the career the next time its player opens it, signed in, with a letter in their Bank showing your reason.</Muted>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          setQ(typed);
+        }}
+        style={{ display: 'flex', gap: 6, margin: '12px 0' }}
+      >
+        <input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="@username, airline name or friend code" aria-label="Search" style={{ ...inputStyle, flex: 1 }} />
+        <Button type="submit" variant="primary">
+          Search
+        </Button>
+      </form>
+      <Err e={r.error} />
+      <div style={{ display: 'grid', gap: 10 }}>
+        {q && r.data?.length === 0 && <Muted>None found.</Muted>}
+        {r.data?.map((s) => <SaveCard key={`${s.user}/${s.saveId}`} s={s} channel={channel} onDone={r.reload} />)}
+      </div>
+    </div>
+  );
+}
+
+function SaveCard({ s, channel, onDone }: { s: J; channel: Channel; onDone: () => void }) {
+  const [give, setGive] = useState(true);
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
+  const [sure, setSure] = useState<null | 'grant' | 'delete' | { cancel: J }>(null);
+  const [delReason, setDelReason] = useState('');
+  const [cancelReason, setCancelReason] = useState('');
+  const n = parseDollars(amount);
+  const who = (
+    <>
+      <b>{s.airline || 'Untitled'}</b> (@{s.username})
+    </>
+  );
+  const grants: J[] = s.grants ?? [];
+  return (
+    <Box
+      title={s.airline || 'Untitled'}
+      right={
+        <span style={{ fontSize: 12.5, color: C.muted }}>
+          @{s.username}
+          {s.friendCode ? ` · ${s.friendCode}` : ''}
+        </span>
+      }
+    >
+      <Muted>
+        Last synced {when(s.updatedAt)} · {mb(Number(s.bytes) || 0)} · save {s.saveId}
+      </Muted>
+
+      <div style={{ display: 'grid', gap: 8, marginTop: 12, padding: 10, borderRadius: 10, background: C.raised, border: `1px solid ${C.border}` }}>
+        <b style={{ fontSize: 13 }}>Cash</b>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Button size="sm" variant={give ? 'primary' : 'subtle'} onClick={() => setGive(true)}>
+            Give
+          </Button>
+          <Button size="sm" variant={!give ? 'danger' : 'subtle'} onClick={() => setGive(false)}>
+            Take away
+          </Button>
+          <input value={amount} onChange={(e) => setAmount(e.target.value.slice(0, 20))} placeholder="Amount, e.g. 5m or 250,000" aria-label="Amount" style={{ ...inputStyle, flex: '1 1 180px' }} />
+        </div>
+        {amount && n === null && <Muted>Write a number of dollars, like 5000000, 5m or 250k (up to $100 billion).</Muted>}
+        <textarea value={reason} onChange={(e) => setReason(e.target.value.slice(0, 300))} rows={2} placeholder="Why. The player sees this in their letter, and it’s kept in the admin log." aria-label="Reason" style={{ ...inputStyle, fontFamily: 'inherit', resize: 'vertical' }} />
+        <div>
+          <Button size="sm" variant={give ? 'primary' : 'danger'} disabled={n === null || reason.trim().length < 3} onClick={() => setSure('grant')}>
+            {give ? 'Give' : 'Take'} {n ? usdFull(n) : 'cash'}…
+          </Button>
+        </div>
+      </div>
+
+      {grants.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <b style={{ fontSize: 13 }}>Grants</b>
+          <div style={{ display: 'grid', gap: 6, marginTop: 6 }}>
+            {grants.map((g) => (
+              <div key={g.id} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 13 }}>
+                <b className="num" style={{ color: g.amount > 0 ? C.green : C.red }}>{usdFull(g.amount)}</b>
+                <span style={{ flex: '1 1 200px', color: C.textSoft }}>{g.reason}</span>
+                <span style={{ color: C.muted }}>{when(g.at)}</span>
+                {g.claimedAt ? <Pill tone="green">Applied {day(g.claimedAt)}</Pill> : g.cancelledAt ? <Pill tone="muted">Cancelled</Pill> : <Pill tone="amber">Waiting for the player</Pill>}
+                {!g.claimedAt && !g.cancelledAt && (
+                  <Button size="sm" variant="ghost" onClick={() => setSure({ cancel: g })}>
+                    Cancel…
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gap: 8, marginTop: 12, padding: 10, borderRadius: 10, background: C.raised, border: `1px solid ${C.red}` }}>
+        <b style={{ fontSize: 13 }}>Remove from the cloud</b>
+        <Muted>The cloud copy is deleted and this career can’t sync again. It stays on the player’s own devices, and they’re told.</Muted>
+        <textarea value={delReason} onChange={(e) => setDelReason(e.target.value.slice(0, 300))} rows={2} placeholder="Why (kept in the admin log; the player isn’t shown it)" aria-label="Reason for removing" style={{ ...inputStyle, fontFamily: 'inherit', resize: 'vertical' }} />
+        <div>
+          <Button size="sm" variant="danger" disabled={delReason.trim().length < 3} onClick={() => setSure('delete')}>
+            Remove from the cloud…
+          </Button>
+        </div>
+      </div>
+
+      {sure === 'grant' && n !== null && (
+        <Sure
+          title={give ? `Give ${usdFull(n)}?` : `Take ${usdFull(n)}?`}
+          lines={[
+            <>
+              {give ? 'Adds' : 'Takes'} <b>{usdFull(n)}</b> {give ? 'to' : 'from'} {who}.
+            </>,
+            'It happens the next time they open this career, signed in. Until then you can cancel it here.',
+            <>
+              Their letter will say: <i>“{reason.trim()}”</i>
+            </>,
+            ...(!give ? ['Their cash can go below zero.'] : []),
+          ]}
+          yes={give ? `Yes, give ${usdFull(n)}` : `Yes, take ${usdFull(n)}`}
+          danger={!give}
+          run={() => act('admin_grant', { p_channel: channel, p_user: s.user, p_save_id: s.saveId, p_kind: 'cash', p_amount: give ? n : -n, p_reason: reason.trim() })}
+          onClose={() => setSure(null)}
+          onDone={() => {
+            setAmount('');
+            setReason('');
+            onDone();
+          }}
+        />
+      )}
+      {sure === 'delete' && (
+        <Sure
+          title="Remove this career from the cloud?"
+          lines={[
+            <>
+              Deletes the cloud copy of {who}, and it can’t be put back in the cloud.
+            </>,
+            'The player keeps it on the devices that already have it. Any cash grants still waiting are cancelled.',
+            <b style={{ color: C.red }}>This can’t be undone.</b>,
+          ]}
+          yes="Yes, remove it"
+          danger
+          run={() => act('admin_save_delete', { p_channel: channel, p_user: s.user, p_save_id: s.saveId, p_reason: delReason.trim() })}
+          onClose={() => setSure(null)}
+          onDone={onDone}
+        />
+      )}
+      {sure && typeof sure === 'object' && (
+        <Sure
+          title={`Cancel this ${usdFull(sure.cancel.amount)} grant?`}
+          lines={[
+            <>
+              {who} won’t get it. If their game applies it first, it can’t be cancelled any more.
+            </>,
+            <textarea key="r" value={cancelReason} onChange={(e) => setCancelReason(e.target.value.slice(0, 300))} rows={2} placeholder="Why (kept in the admin log)" aria-label="Reason for cancelling" style={{ ...inputStyle, width: '100%', fontFamily: 'inherit', resize: 'vertical' }} />,
+          ]}
+          yes="Yes, cancel it"
+          run={() => {
+            if (cancelReason.trim().length < 3) return Promise.reject(new Error('Write a reason first (3 letters or more).'));
+            return act('admin_grant_cancel', { p_channel: channel, p_id: sure.cancel.id, p_reason: cancelReason.trim() });
+          }}
+          onClose={() => setSure(null)}
+          onDone={() => {
+            setCancelReason('');
+            onDone();
+          }}
+        />
+      )}
+    </Box>
   );
 }

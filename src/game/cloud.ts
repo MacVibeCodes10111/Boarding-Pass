@@ -776,6 +776,7 @@ export async function setCloudPick(s: SaveGameState, on: boolean): Promise<void>
   const { data, error } = await c.rpc('cloud_pick', { p_channel: CHANNEL, p_save_id: s.saveId, p_airline: s.airlineName ?? '', p_on: on });
   if (error) throw new Error(friendlyAuthError(error.message));
   if (data === 'full') throw new Error(`${MAX_CLOUD_CAREERS} careers are in the cloud already. Turn one off first.`);
+  if (data === 'removed') throw new Error('This career was removed from cloud saves by a moderator, so it stays on this device.');
   markSeen(s.saveId);
   const next = new Set(picks ?? []);
   if (on) next.add(s.saveId);
