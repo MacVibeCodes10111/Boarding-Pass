@@ -740,10 +740,27 @@ function Airline({ channel, id }: Ctx & { id: string }) {
 function Alliances({ channel }: Ctx) {
   const [q, setQ] = useState('');
   const [typed, setTyped] = useState('');
+  const [mode, setMode] = useState<'all' | 'career' | 'sandbox'>('all');
   const r = useLoad(() => rpc<J[]>('admin_alliances', { p_channel: channel, p_q: q }), [channel, q]);
+  const modeOf = (a: J) => (a.mode === 'sandbox' ? 'sandbox' : 'career');
+  const count = (m: 'career' | 'sandbox') => r.data?.filter((a) => modeOf(a) === m).length ?? 0;
+  const shown = r.data?.filter((a) => mode === 'all' || modeOf(a) === mode);
   return (
     <div>
       <H1>Alliances</H1>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+        {(
+          [
+            ['all', `All${r.data ? ` (${r.data.length})` : ''}`],
+            ['career', `Career${r.data ? ` (${count('career')})` : ''}`],
+            ['sandbox', `Sandbox${r.data ? ` (${count('sandbox')})` : ''}`],
+          ] as const
+        ).map(([m, label]) => (
+          <Button key={m} size="sm" variant={mode === m ? 'primary' : 'subtle'} onClick={() => setMode(m)}>
+            {label}
+          </Button>
+        ))}
+      </div>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -758,13 +775,14 @@ function Alliances({ channel }: Ctx) {
       </form>
       <Err e={r.error} />
       <div style={{ display: 'grid', gap: 6 }}>
-        {r.data?.length === 0 && <Muted>None found.</Muted>}
-        {r.data?.map((a) => (
+        {shown?.length === 0 && <Muted>None found.</Muted>}
+        {shown?.map((a) => (
           <Row key={a.id} href={`#/alliances/${a.id}`}>
             <Logo hash={a.logo} colours={a.colours} text={a.tag} size={34} />
             <span style={{ flex: '1 1 200px', minWidth: 0 }}>
               <b style={{ fontSize: 14 }}>{a.name}</b> <span style={{ fontSize: 12, color: C.muted }}>{a.tag} · {a.members} airlines · led by {a.leader ?? '?'} · since {day(a.createdAt)}</span>
             </span>
+            {modeOf(a) === 'sandbox' ? <Pill tone="muted">Sandbox</Pill> : <Pill tone="green">Career</Pill>}
             {a.openReports > 0 && <Pill tone="amber">{a.openReports} open report{a.openReports === 1 ? '' : 's'}</Pill>}
           </Row>
         ))}
