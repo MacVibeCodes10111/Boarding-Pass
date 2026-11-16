@@ -250,7 +250,7 @@ export function HomeScreen(props: HomeScreenProps) {
         background: `radial-gradient(1200px 700px at 25% -10%, ${C.raised} 0%, transparent 65%), ${C.bg}`,
         display: 'flex',
         justifyContent: 'center',
-        padding: phone ? '20px 14px calc(28px + env(safe-area-inset-bottom, 0px))' : 32,
+        padding: phone ? 'calc(20px + var(--bp-safe-t)) calc(14px + var(--bp-safe-r)) calc(28px + var(--bp-safe-b)) calc(14px + var(--bp-safe-l))' : 'calc(32px + var(--bp-safe-t)) 32px calc(32px + var(--bp-safe-b))',
         alignItems: phone ? 'flex-start' : 'center',
       }}
     >

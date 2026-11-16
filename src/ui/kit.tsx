@@ -147,8 +147,10 @@ export function useThemeVersion(): number {
 export const globalCss = () => `
   /* Layout sizes; the phone layout (ui/layout.ts) swaps the side rail for a bottom tab bar */
   /* Layout sizes. Desktop and tablet: a floating top bar (10 + 50 px) and a floating toolbar at the bottom; panels float between them, --bp-gap from the edges */
-  :root { --bp-top-h: 68px; --bp-rail-w: 0px; --bp-bottom-h: 86px; --bp-gap: 10px; color-scheme: ${C.scheme}; }
-  html[data-layout=phone] { --bp-top-h: 50px; --bp-rail-w: 0px; --bp-bottom-h: calc(60px + env(safe-area-inset-bottom, 0px)); --bp-gap: 0px; }
+  /* --bp-safe-*: the screen edges an iPhone or iPad keeps for its clock, camera and home bar (0 elsewhere) */
+  :root { --bp-safe-t: env(safe-area-inset-top, 0px); --bp-safe-l: env(safe-area-inset-left, 0px); --bp-safe-r: env(safe-area-inset-right, 0px); --bp-safe-b: env(safe-area-inset-bottom, 0px);
+    --bp-top-h: calc(68px + var(--bp-safe-t)); --bp-rail-w: 0px; --bp-bottom-h: calc(86px + var(--bp-safe-b)); --bp-gap: 10px; color-scheme: ${C.scheme}; }
+  html[data-layout=phone] { --bp-top-h: calc(50px + var(--bp-safe-t)); --bp-rail-w: 0px; --bp-bottom-h: calc(60px + var(--bp-safe-b)); --bp-gap: 0px; }
   html, body, #root { margin: 0; padding: 0; width: 100vw; height: 100vh; height: 100dvh; overflow: hidden;
     background: ${C.bg}; color: ${C.text}; font-family: ${FONT}; font-size: 14px; -webkit-font-smoothing: antialiased;
     -webkit-text-size-adjust: 100%; overscroll-behavior: none; }
@@ -202,7 +204,7 @@ export const globalCss = () => `
   .bp-camera-alt { color: ${C.textDim}; background: ${C.panel}b8; }
   /* The map buttons (layers, zoom, then the 3D camera box) stack down from the top right: level with the airline bubble on
      bigger screens, under the top bar on phones. The camera box is a narrow column on phones. */
-  :root { --bp-ctl-top: 10px; }
+  :root { --bp-ctl-top: calc(10px + var(--bp-safe-t)); }
   html[data-layout=phone] { --bp-ctl-top: calc(var(--bp-top-h) + 8px); }
   html[data-layout=phone] .bp-camera-alt { flex-direction: column; padding: 3px !important; gap: 4px !important; }
   html[data-layout=phone] .bp-cam-text { display: none; }
@@ -254,8 +256,9 @@ export const globalCss = () => `
   html[data-layout=phone] :is(.bp-panel-body, [role=dialog]) .bp-model-grid { grid-template-columns: minmax(0, 1fr) !important; }
   html[data-layout=phone] .bp-wrap { display: flex !important; flex-wrap: wrap; row-gap: 6px !important; }
   html[data-layout=phone] .bp-wrap > * { min-width: 0; }
-  html[data-layout=phone] .bp-modal-backdrop { padding: 10px 8px calc(10px + env(safe-area-inset-bottom, 0px)) !important; align-items: stretch !important; }
-  html[data-layout=phone] .bp-modal-backdrop > [role=dialog] { padding: 16px !important; max-height: calc(100dvh - 20px) !important; }
+  html[data-layout=phone] .bp-modal-backdrop { padding: calc(10px + var(--bp-safe-t)) calc(8px + var(--bp-safe-r)) calc(10px + var(--bp-safe-b)) calc(8px + var(--bp-safe-l)) !important; align-items: center !important; }
+  /* As tall as what's in it (a short menu stays short), scrolling inside past the screen's height */
+  html[data-layout=phone] .bp-modal-backdrop > [role=dialog] { padding: 16px !important; max-height: calc(100dvh - 20px - var(--bp-safe-t) - var(--bp-safe-b)) !important; }
   html[data-layout=phone] .bp-drawer { left: 0 !important; right: 0 !important; width: 100vw !important; top: var(--bp-top-h) !important; box-shadow: none !important;
     bottom: var(--bp-bottom-h) !important; border-radius: 0 !important; border-left: none !important; border-right: none !important; animation: bp-sheet-in .16s ease-out !important; }
   html[data-layout=phone] .maplibregl-popup { max-width: calc(100vw - 16px) !important; }

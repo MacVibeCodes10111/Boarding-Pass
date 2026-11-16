@@ -1492,7 +1492,7 @@ export function LiveryEditor(props: {
     dirty.current = true;
     setActive(0);
   };
-  const menuBox: React.CSSProperties = { ...(phone ? { position: 'fixed', top: 56, left: 12, right: 12 } : { position: 'absolute', top: 'calc(100% + 6px)', left: 0 }), zIndex: 30, minWidth: 220, display: 'grid', gap: 2, padding: 6, borderRadius: 11, background: C.panel, border: `1px solid ${C.border}`, boxShadow: '0 16px 36px rgba(0,0,0,.5)' };
+  const menuBox: React.CSSProperties = { ...(phone ? { position: 'fixed', top: 'calc(56px + var(--bp-safe-t))', left: 12, right: 12 } : { position: 'absolute', top: 'calc(100% + 6px)', left: 0 }), zIndex: 30, minWidth: 220, display: 'grid', gap: 2, padding: 6, borderRadius: 11, background: C.panel, border: `1px solid ${C.border}`, boxShadow: '0 16px 36px rgba(0,0,0,.5)' };
   const menuItem = (on: boolean): React.CSSProperties => ({ textAlign: 'left', padding: '8px 10px', borderRadius: 8, border: 'none', background: on ? `${C.brand}22` : 'transparent', color: on ? C.text : C.textSoft, fontWeight: on ? 650 : 500, fontSize: 13, cursor: 'pointer' });
 
   const topBar = (
@@ -1623,7 +1623,7 @@ export function LiveryEditor(props: {
   );
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Livery editor" style={{ position: 'fixed', inset: 0, zIndex: 260, background: C.bg, display: 'flex', flexDirection: 'column', color: C.text }}>
+    <div role="dialog" aria-modal="true" aria-label="Livery editor" style={{ position: 'fixed', inset: 0, zIndex: 260, background: C.bg, display: 'flex', flexDirection: 'column', color: C.text, padding: 'var(--bp-safe-t) var(--bp-safe-r) var(--bp-safe-b) var(--bp-safe-l)' }}>
       {topBar}
       {help && <LiveryManual phone={phone} onClose={() => setHelp(false)} />}
       {phone ? (

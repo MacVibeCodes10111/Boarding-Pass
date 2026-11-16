@@ -228,7 +228,7 @@ function ClockButton(props: {
           style={{
             ...glass('f0'),
             position: 'fixed',
-            ...(props.up ? { bottom: 'calc(12px + 64px + 8px)', left: 10 } : { top: 'calc(var(--bp-top-h) + 8px)', right: 8 }),
+            ...(props.up ? { bottom: 'calc(12px + 64px + 8px + var(--bp-safe-b))', left: 'calc(10px + var(--bp-safe-l))' } : { top: 'calc(var(--bp-top-h) + 8px)', right: 8 }),
             width: 'min(330px, calc(100vw - 16px))',
             borderRadius: 16,
             padding: '14px 16px 16px',
@@ -343,8 +343,8 @@ export function TopBar(props: {
       data-tour="topbar"
       style={
         phone
-          ? { position: 'absolute', top: 0, left: 0, right: 0, height: 'var(--bp-top-h)', display: 'flex', alignItems: 'stretch', gap: 10, padding: '0 6px 0 0', zIndex: 50, borderRadius: 0, borderWidth: '0 0 1px 0' }
-          : { position: 'absolute', top: 10, left: 10, right: 10, height: 54, display: 'flex', alignItems: 'stretch', justifyContent: 'space-between', gap: 10, zIndex: 50, pointerEvents: 'none' }
+          ? { position: 'absolute', top: 0, left: 0, right: 0, height: 'var(--bp-top-h)', display: 'flex', alignItems: 'stretch', gap: 10, padding: 'var(--bp-safe-t) calc(6px + var(--bp-safe-r)) 0 var(--bp-safe-l)', zIndex: 50, borderRadius: 0, borderWidth: '0 0 1px 0' }
+          : { position: 'absolute', top: 'calc(10px + var(--bp-safe-t))', left: 'calc(10px + var(--bp-safe-l))', right: 'calc(10px + var(--bp-safe-r))', height: 54, display: 'flex', alignItems: 'stretch', justifyContent: 'space-between', gap: 10, zIndex: 50, pointerEvents: 'none' }
       }
     >
       {bubble(<>
@@ -410,7 +410,7 @@ export function TopBar(props: {
               <div
                 role="dialog"
                 aria-label="Money"
-                style={{ ...glass('f0'), position: 'fixed', top: phone ? 'calc(var(--bp-top-h) + 8px)' : 72, left: phone ? 8 : 230, width: 'min(300px, calc(100vw - 16px))', borderRadius: 16, padding: '14px 16px 16px', zIndex: 300, boxShadow: floatShadow(), display: 'grid', gap: 8, fontSize: 13.5 }}
+                style={{ ...glass('f0'), position: 'fixed', top: phone ? 'calc(var(--bp-top-h) + 8px)' : 'calc(72px + var(--bp-safe-t))', left: phone ? 8 : 230, width: 'min(300px, calc(100vw - 16px))', borderRadius: 16, padding: '14px 16px 16px', zIndex: 300, boxShadow: floatShadow(), display: 'grid', gap: 8, fontSize: 13.5 }}
               >
                 <div style={{ fontSize: 12, color: C.muted }}>A week, as scheduled</div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
@@ -484,7 +484,7 @@ export function TopBar(props: {
     {!phone && (
       <div
         className="bp-clockbubble"
-        style={{ ...glass(), position: 'absolute', left: 10, bottom: 12, height: 64, display: 'flex', alignItems: 'center', gap: 2, padding: '0 7px', borderRadius: 18, zIndex: 45 }}
+        style={{ ...glass(), position: 'absolute', left: 'calc(10px + var(--bp-safe-l))', bottom: 'calc(12px + var(--bp-safe-b))', height: 64, display: 'flex', alignItems: 'center', gap: 2, padding: '0 7px', borderRadius: 18, zIndex: 45 }}
       >
         {layout === 'desktop' && <IconButton icon="palette" label="Appearance" size={40} iconSize={19} onClick={openAppearance} />}
         {clock}
@@ -631,7 +631,7 @@ export function NavRail(props: {
       <nav
         aria-label="Main"
         className="bp-tabbar bp-glass"
-        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 'var(--bp-bottom-h)', paddingBottom: 'env(safe-area-inset-bottom, 0px)', borderRadius: 0, borderWidth: '1px 0 0 0', display: 'flex', zIndex: 45 }}
+        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 'var(--bp-bottom-h)', padding: '0 var(--bp-safe-r) var(--bp-safe-b) var(--bp-safe-l)', borderRadius: 0, borderWidth: '1px 0 0 0', display: 'flex', zIndex: 45 }}
       >
         {buttons(true)}
       </nav>
@@ -641,7 +641,7 @@ export function NavRail(props: {
     <nav
       aria-label="Main"
       className="bp-dock"
-      style={{ ...glass(), position: 'absolute', left: '50%', bottom: 12, transform: 'translateX(-50%)', maxWidth: 'calc(100vw - 20px)', display: 'flex', alignItems: 'center', gap: 2, padding: 5, borderRadius: 18, zIndex: 45 }}
+      style={{ ...glass(), position: 'absolute', left: '50%', bottom: 'calc(12px + var(--bp-safe-b))', transform: 'translateX(-50%)', maxWidth: 'calc(100vw - 20px)', display: 'flex', alignItems: 'center', gap: 2, padding: 5, borderRadius: 18, zIndex: 45 }}
     >
       {buttons(false)}
     </nav>
