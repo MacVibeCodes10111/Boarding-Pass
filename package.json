@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node tools/trim-data.mjs",
     "check": "tsc",
     "preview": "vite preview",
     "tauri": "tauri",

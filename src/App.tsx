@@ -817,11 +817,12 @@ export default function App() {
     [setEcon, setCareer]
   );
 
+  // The map clock. While the economy runs, its tick moves this clock too, in the same render
   useEffect(() => {
-    if (screen !== 'dashboard') return;
+    if (screen !== 'dashboard' || econSpeed !== 'paused') return;
     const id = window.setInterval(() => setMapNowMs(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, [screen]);
+  }, [screen, econSpeed]);
 
   useEffect(() => {
     if (screen !== 'dashboard' || econSpeed === 'paused') return;
@@ -831,6 +832,7 @@ export default function App() {
       const now = Date.now();
       const realSec = (now - last) / 1000;
       last = now;
+      setMapNowMs(now);
       const gameMinutes = liveTickGameMinutes(realSec, rate);
       const res = applyAdvance(gameMinutes);
       // Woke from sleep: say what happened, as when coming back to a closed game

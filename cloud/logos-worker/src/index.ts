@@ -136,9 +136,28 @@ async function release(env: Env, hash: string) {
 async function upload(req: Request, env: Env, user: string, channel: string, airline: string, cors: Cors): Promise<Response> {
   const len = Number(req.headers.get('content-length') ?? 0);
   if (len > MAX_LOGO_BYTES) return json(413, { error: 'a logo can be 48 KB at most' }, cors);
-  const buf = await req.arrayBuffer();
-  const body = new Uint8Array(buf);
-  if (!body.length || body.length > MAX_LOGO_BYTES) return json(413, { error: 'a logo can be 48 KB at most' }, cors);
+  // Read as it arrives and stop past the limit: a body sent without a length isn't read in full first
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  const reader = req.body?.getReader();
+  while (reader) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.length;
+    if (size > MAX_LOGO_BYTES) {
+      await reader.cancel();
+      return json(413, { error: 'a logo can be 48 KB at most' }, cors);
+    }
+    chunks.push(value);
+  }
+  const body = new Uint8Array(size);
+  let at = 0;
+  for (const c of chunks) {
+    body.set(c, at);
+    at += c.length;
+  }
+  const buf = body.buffer;
+  if (!body.length) return json(413, { error: 'a logo can be 48 KB at most' }, cors);
   const pic = sniff(body);
   if (!pic) return json(415, { error: 'logos must be still PNG or WebP pictures' }, cors);
   // Square like the game makes them, and no bigger than it does: a tiny file can still be a huge picture to open

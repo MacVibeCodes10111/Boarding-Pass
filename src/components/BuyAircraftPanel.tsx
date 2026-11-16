@@ -114,7 +114,7 @@ function Browse(props: BuyAircraftPanelProps & { onOpen: (m: AircraftModel) => v
   const toggle = (k: string) => setOpenFamilies((s) => (s.has(k) ? new Set([...s].filter((x) => x !== k)) : new Set([...s, k])));
 
   return (
-    <div style={{ display: 'grid', gap: 12 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 12 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <SearchInput value={search} onChange={setSearch} placeholder="Search" style={{ flex: '1 1 200px' }} />
         <Segmented<Role>
