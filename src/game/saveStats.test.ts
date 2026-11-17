@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { protectSave } from '../../src/game/saveCrypt';
-import { MIN_PER_WEEK } from '../../src/game/time';
+import { protectSave } from './saveCrypt';
+import { MIN_PER_WEEK } from './time';
 import { saveStats } from './saveStats';
 
 const save = {
@@ -25,6 +25,7 @@ describe('rich list stats', () => {
       debt: 2000,
       mode: 'career',
       weeks: 10,
+      econMin: MIN_PER_WEEK * 9 + 5,
       fleet: 3,
       routes: 2,
       hubs: 2,

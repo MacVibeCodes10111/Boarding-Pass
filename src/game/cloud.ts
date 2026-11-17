@@ -36,6 +36,7 @@ import { buildSnapshot } from './scheduleSnapshot';
 import { normaliseLogo } from './livery';
 import { IS_MAC } from './platform';
 import { openProtectedSave, protectSave } from './saveCrypt';
+import { anchorClock, resetClock } from './trustedClock';
 import { MAX_SAVE_SLOTS, hasRoomForCareer, readSaveSlots, serializeSave, writeSaveSlots, isValidSave } from './saves';
 import type { SaveGameState } from './types';
 
@@ -346,6 +347,7 @@ export async function signOut(): Promise<void> {
   conflicts.clear();
   setPicks(null);
   forgetSharing();
+  resetClock();
 }
 
 /** Deletes the account and every cloud copy. Careers on devices stay. */
@@ -744,11 +746,17 @@ export const isSynced = (s: SaveGameState) => saveRev(s) <= (readSynced()[s.save
 type PushResult = 'saved' | 'same' | 'older' | 'full' | 'server_full' | 'too_big' | 'rate_limited' | 'not_picked' | 'skip';
 
 // ---------------------------------------------------------------------------
-// Which careers live in the cloud (v2.52): the player picks up to 4 per
-// account; the list is kept on the server so every device agrees. A career
-// this device hasn't seen before is picked automatically while there's room.
+// Which careers live in the cloud (v2.52): up to 6 per account (4 before
+// 2026-11-17); the list is kept on the server so every device agrees. A Career
+// this device hasn't seen before goes online by itself while there's room.
+//
+// Online careers (2026-11-17): a Career lives in the cloud and needs an
+// account and a connection to play. Each goes online once; careers made before
+// the update can come online until the server's deadline (90 days after the
+// update). Sandbox stays on the device, in the cloud only if the player picks it.
 // ---------------------------------------------------------------------------
-export const MAX_CLOUD_CAREERS = 4;
+export const MAX_CLOUD_CAREERS = 6;
+export const isOnlineCareer = (s: Pick<SaveGameState, 'gameMode'>) => s.gameMode !== 'sandbox';
 let picks: Set<string> | null = null; // null until the first overview
 const listeners = new Set<() => void>();
 export const cloudPicks = () => picks;
@@ -769,14 +777,44 @@ export function cloudStatus(s: SaveGameState): 'local' | 'cloud' | 'pending' | '
   return isSynced(s) ? 'cloud' : 'pending';
 }
 
+/** A server function that isn't there yet (the game is newer than the server). */
+const missingFunction = (e: { code?: string; message?: string } | null) => !!e && (e.code === 'PGRST202' || /could not find the function/i.test(e.message ?? ''));
+
+/** The server's answer to putting a career in the cloud (or taking it out). */
+export type PickAnswer = 'ok' | 'full' | 'removed' | 'used' | 'closed';
+async function pickOnServer(c: SupabaseClient, s: SaveGameState, on: boolean): Promise<PickAnswer> {
+  const args = { p_channel: CHANNEL, p_save_id: s.saveId, p_airline: s.airlineName ?? '', p_on: on };
+  let { data, error } = await c.rpc('cloud_pick', on && isOnlineCareer(s) ? { ...args, p_mode: 'career' } : args);
+  if (missingFunction(error)) ({ data, error } = await c.rpc('cloud_pick', args)); // a server from before online careers
+  if (error) throw error;
+  return (['full', 'removed', 'used', 'closed'].includes(String(data)) ? data : 'ok') as PickAnswer;
+}
+
+/** Why a career can't go online, in plain words. */
+export function pickRefusal(a: PickAnswer, name: string): string {
+  return a === 'full'
+    ? `You have ${MAX_CLOUD_CAREERS} careers online already. Delete one, or take a Sandbox career out of the cloud, to make room.`
+    : a === 'removed'
+      ? `${name} was removed from cloud saves by a moderator, so it can’t be played as a Career.`
+      : a === 'used'
+        ? `${name} was in the cloud before and was taken out, so it can’t come back as a Career.`
+        : a === 'closed'
+          ? `Careers from before online careers could be brought online until the deadline, and it has passed.`
+          : '';
+}
+
 /** Puts a career in the cloud (and uploads it now) or takes it out (the copy on devices stays). */
 export async function setCloudPick(s: SaveGameState, on: boolean): Promise<void> {
   const c = await signedInClient();
   if (!c) throw new Error('Sign in to use cloud saves.');
-  const { data, error } = await c.rpc('cloud_pick', { p_channel: CHANNEL, p_save_id: s.saveId, p_airline: s.airlineName ?? '', p_on: on });
-  if (error) throw new Error(friendlyAuthError(error.message));
-  if (data === 'full') throw new Error(`${MAX_CLOUD_CAREERS} careers are in the cloud already. Turn one off first.`);
-  if (data === 'removed') throw new Error('This career was removed from cloud saves by a moderator, so it stays on this device.');
+  if (!on && isOnlineCareer(s)) throw new Error('Careers live in the cloud, so they can’t be taken out. Delete it instead.');
+  let data: PickAnswer;
+  try {
+    data = await pickOnServer(c, s, on);
+  } catch (e) {
+    throw new Error(friendlyAuthError(e instanceof Error ? e.message : String((e as { message?: string })?.message ?? e)));
+  }
+  if (data !== 'ok') throw new Error(pickRefusal(data, s.airlineName));
   markSeen(s.saveId);
   const next = new Set(picks ?? []);
   if (on) next.add(s.saveId);
@@ -792,6 +830,13 @@ export async function setCloudPick(s: SaveGameState, on: boolean): Promise<void>
     store.set(SYNCED_KEY, JSON.stringify(m));
   }
   notify();
+}
+
+/** A career the server won't take as a Career: not asked again by the background sync. */
+function markRefused(id: string) {
+  const m = readSynced();
+  m[id] = -1;
+  store.set(SYNCED_KEY, JSON.stringify(m));
 }
 
 function markSeen(id: string) {
@@ -1053,11 +1098,12 @@ async function doSync(openSaveId: string | null): Promise<SyncReport> {
     const picked = new Set(picks ?? []);
     const seen = readSynced();
     for (const s of readSaveSlots()) {
-      if (s.saveId in seen) continue;
-      markSeen(s.saveId);
+      // Careers go online by themselves; Sandbox only when the player picks it
+      if (picked.has(s.saveId) || !isOnlineCareer(s) || seen[s.saveId] === -1) continue;
       if (picked.size >= (ov?.maxPicks ?? MAX_CLOUD_CAREERS)) continue;
-      const { data } = await c.rpc('cloud_pick', { p_channel: CHANNEL, p_save_id: s.saveId, p_airline: s.airlineName ?? '', p_on: true });
-      if (data === 'ok') picked.add(s.saveId);
+      const a = await pickOnServer(c, s, true).catch(() => null);
+      if (a === 'ok') picked.add(s.saveId);
+      else if (a === 'used' || a === 'closed' || a === 'removed') markRefused(s.saveId);
     }
     setPicks([...picked]);
 
@@ -1117,3 +1163,111 @@ export async function cloudOverview(): Promise<CloudOverview | null> {
 
 /** The next revision for a career being saved: always above the last one, even if this device's clock is behind. */
 export const nextRev = (prev: SaveGameState | undefined) => Math.max(Date.now(), prev ? saveRev(prev) + 1 : 0);
+
+// ---------------------------------------------------------------------------
+// Opening an online career (2026-11-17)
+// ---------------------------------------------------------------------------
+export type CareerGate =
+  /** `cloudAt`: when the server last received this career (ms), for the catch-up. */
+  | { kind: 'ok'; save: SaveGameState; cloudAt?: number }
+  /** A newer copy from another device: download it, or open this one (it replaces that one). */
+  | { kind: 'newer'; fromName: string; rev: number }
+  | { kind: 'signin' }
+  | { kind: 'offline' }
+  /** Changed here and on another device: the player picks which version to keep first. */
+  | { kind: 'conflict' }
+  | { kind: 'refused'; answer: PickAnswer; message: string }
+  | { kind: 'error'; message: string };
+
+const offlineError = (e: unknown) => {
+  const m = e instanceof Error ? e.message : String((e as { message?: string })?.message ?? e);
+  return typeof navigator !== 'undefined' && navigator.onLine === false ? true : /failed to fetch|network|load failed|timed out|fetch/i.test(m);
+};
+const signedOutError = (e: unknown) => (e as { code?: string })?.code === 'P0410' || /signed in on another device|not signed in|jwt/i.test(String((e as { message?: string })?.message ?? ''));
+
+/** Asks the server for its rules and its clock (sets the trusted clock). False when the server is older than online careers. */
+async function readRules(c: SupabaseClient): Promise<boolean> {
+  const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  const { data, error } = await c.rpc('cloud_rules', { p_channel: CHANNEL });
+  if (missingFunction(error)) return false;
+  if (error) throw error;
+  const t1 = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  anchorClock(Number((data as { now?: unknown })?.now), t1 - t0);
+  return true;
+}
+
+/** Gets a Career ready to play: signed in, online, in the cloud and up to date. */
+export async function prepareOnlineCareer(sv: SaveGameState): Promise<CareerGate> {
+  if (!mightBeSignedIn()) return { kind: 'signin' };
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return { kind: 'offline' };
+  try {
+    const c = await signedInClient();
+    if (!c) return { kind: 'signin' };
+    if (conflicts.has(sv.saveId)) return { kind: 'conflict' };
+    await readRules(c);
+    const ov = await cloudOverview();
+    if (!ov) return { kind: 'signin' };
+    const picked = ov.picks.some((p) => p.saveId === sv.saveId);
+    if (!picked) {
+      const a = await pickOnServer(c, sv, true);
+      if (a !== 'ok') {
+        if (a !== 'full') markRefused(sv.saveId);
+        return { kind: 'refused', answer: a, message: pickRefusal(a, sv.airlineName) };
+      }
+      setPicks([...(picks ?? []), sv.saveId]);
+      const r = await pushOne(c, sv, true);
+      if (r === 'too_big') return { kind: 'error', message: `${sv.airlineName} is too big for the cloud.` };
+      if (r === 'server_full') return { kind: 'error', message: 'The cloud is full right now. Try again later.' };
+      return { kind: 'ok', save: sv };
+    }
+    const copy = ov.saves.find((x) => x.saveId === sv.saveId);
+    if (copy && copy.waitingHere && Number(copy.rev) > saveRev(sv)) return { kind: 'newer', fromName: copy.fromName, rev: Number(copy.rev) };
+    if (!copy) await pushOne(c, sv, true);
+    const at = copy ? Date.parse(copy.updatedAt) : NaN;
+    return { kind: 'ok', save: sv, ...(Number.isFinite(at) ? { cloudAt: at } : {}) };
+  } catch (e) {
+    if (signedOutError(e)) return { kind: 'signin' };
+    if (offlineError(e)) return { kind: 'offline' };
+    return { kind: 'error', message: friendlyAuthError(e instanceof Error ? e.message : String((e as { message?: string })?.message ?? e)) };
+  }
+}
+
+/** Whether a new Career can start: signed in, online, and room in the cloud. */
+export async function roomForNewCareer(): Promise<'ok' | 'signin' | 'offline' | 'full'> {
+  if (!mightBeSignedIn()) return 'signin';
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'offline';
+  try {
+    const ov = await cloudOverview();
+    if (!ov) return 'signin';
+    return ov.picks.length >= (ov.maxPicks || MAX_CLOUD_CAREERS) ? 'full' : 'ok';
+  } catch (e) {
+    return signedOutError(e) ? 'signin' : 'offline';
+  }
+}
+
+/** While a Career is played: is the connection there? (One small call.) */
+export async function checkConnection(): Promise<'ok' | 'offline' | 'signed_out'> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'offline';
+  if (!mightBeSignedIn()) return 'signed_out';
+  try {
+    const c = await signedInClient();
+    if (!c) return 'signed_out';
+    await readRules(c);
+    return 'ok';
+  } catch (e) {
+    return signedOutError(e) ? 'signed_out' : 'offline';
+  }
+}
+
+/** Puts the Career being played online if it isn't yet (a new career, once it's saved). */
+export async function ensureOnline(sv: SaveGameState): Promise<PickAnswer | 'skip'> {
+  if (!isOnlineCareer(sv) || picks?.has(sv.saveId)) return 'skip';
+  const c = await signedInClient();
+  if (!c) return 'skip';
+  const a = await pickOnServer(c, sv, true);
+  if (a === 'ok') {
+    setPicks([...(picks ?? []), sv.saveId]);
+    await pushOne(c, sv, true);
+  }
+  return a;
+}

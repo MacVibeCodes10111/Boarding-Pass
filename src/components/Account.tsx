@@ -9,6 +9,7 @@
 import { useEffect, useState } from 'react';
 import {
   MAX_CLOUD_CAREERS,
+  isOnlineCareer,
   MAX_SHARED_AIRLINES,
   airlineFor,
   autoDownload,
@@ -285,9 +286,9 @@ export function AccountView(props: { user: CloudUser; busy: boolean; act: Act; o
                     {phone && (l || r.waiting) && 'Cloud'}
                     {l ? (
                       <Toggle
-                        label={`Keep ${r.name} in the cloud`}
+                        label={inCloud && isOnlineCareer(l) ? `${r.name} is a Career, so it stays in the cloud` : `Keep ${r.name} in the cloud`}
                         on={inCloud}
-                        disabled={props.busy || st === 'unknown' || (!inCloud && picks >= MAX_CLOUD_CAREERS)}
+                        disabled={props.busy || st === 'unknown' || (!inCloud && picks >= MAX_CLOUD_CAREERS) || (inCloud && isOnlineCareer(l))}
                         onChange={(want) => void run(want ? `Putting ${r.name} in the cloud…` : `Taking ${r.name} out of the cloud…`, () => setCloudPick(l, want))}
                       />
                     ) : r.waiting ? (

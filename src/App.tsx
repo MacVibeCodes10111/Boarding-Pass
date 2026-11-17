@@ -127,7 +127,9 @@ import { applyMarket, cancelListing, claimMarket, listAircraft, loadMarketMine, 
 import { NoticesHost } from './components/ReportButton';
 import { FriendAirlineHost } from './components/FriendAirline';
 import { IS_DEV } from './game/channel';
-import { airlineFor, cloudDeleteSave, downloadCareer, mightBeSignedIn, newerCloudCopy, nextRev, onCloudChange, preferThisCopy, publishIfDue } from './game/cloud';
+import { MAX_CLOUD_CAREERS, airlineFor, checkConnection, cloudDeleteSave, downloadCareer, ensureOnline, isOnlineCareer, mightBeSignedIn, newerCloudCopy, nextRev, onCloudChange, preferThisCopy, prepareOnlineCareer, publishIfDue, roomForNewCareer, type CareerGate } from './game/cloud';
+import { awayMs as awayTime, trustedNow } from './game/trustedClock';
+import { ReconnectOverlay } from './components/ReconnectOverlay';
 import { featureOn, onFeaturesChange } from './game/features';
 import { friendsOnMap, onFriendsMapChange, refreshFriendsMap, setFriendsMapAirline, wantFriendsMap, withFriends, type FriendOnMap } from './game/friendsMap';
 import { RouteFromBar } from './components/RouteFromBar';
@@ -487,6 +489,8 @@ export default function App() {
 
   // Saves
   const [activeSaveId, setActiveSaveId] = useState(`SAVE-${Date.now()}`);
+  const activeSaveIdRef = useRef(activeSaveId);
+  activeSaveIdRef.current = activeSaveId;
   // The marketplace (Update B): what this career has applied, and its listings and trades as last read
   const [market, setMarket] = useState<MarketSave>({ applied: [] });
   // Admin grants (cash given or taken by the owner): which ones this career has applied
@@ -820,19 +824,24 @@ export default function App() {
     [setEcon, setCareer]
   );
 
+  // Online careers (2026-11-17): a Career needs the connection. While it's lost, the game pauses.
+  const [connLost, setConnLost] = useState<null | 'offline' | 'signed_out'>(null);
+  const clockStopped = econSpeed === 'paused' || connLost !== null;
+
   // The map clock. While the economy runs, its tick moves this clock too, in the same render
   useEffect(() => {
-    if (screen !== 'dashboard' || econSpeed !== 'paused') return;
-    const id = window.setInterval(() => setMapNowMs(Date.now()), 1000);
+    if (screen !== 'dashboard' || !clockStopped) return;
+    const id = window.setInterval(() => setMapNowMs(trustedNow()), 1000);
     return () => window.clearInterval(id);
-  }, [screen, econSpeed]);
+  }, [screen, clockStopped]);
 
   useEffect(() => {
-    if (screen !== 'dashboard' || econSpeed === 'paused') return;
+    if (screen !== 'dashboard' || clockStopped) return;
     const rate = ECONOMY_RATE[econSpeed];
-    let last = Date.now();
+    // Timed by the trusted clock (the server's), so changing the device's clock doesn't skip ahead
+    let last = trustedNow();
     const id = window.setInterval(() => {
-      const now = Date.now();
+      const now = trustedNow();
       const realSec = (now - last) / 1000;
       last = now;
       setMapNowMs(now);
@@ -860,7 +869,7 @@ export default function App() {
     }, ECONOMY_TICK_MS);
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen, econSpeed, applyAdvance]);
+  }, [screen, econSpeed, clockStopped, applyAdvance]);
 
   // Testing speed, dev builds only: Ctrl+Shift+F toggles 1 week per 10 minutes
   useEffect(() => {
@@ -899,7 +908,7 @@ export default function App() {
     appVersion: APP_VERSION,
     econVersion: ECON_VERSION,
     econMin: econRef.current.min,
-    lastRealTs: Date.now(),
+    lastRealTs: trustedNow(),
     econPaused: econSpeed === 'paused',
     ledgerCurrent: econRef.current.current,
     ledgerHistory,
@@ -973,11 +982,37 @@ export default function App() {
   const showCareersFull = () =>
     showAlert(`You have ${MAX_SAVE_SLOTS} careers`, `That's the most this device can keep. Delete one from Your careers to make room.`, 'Cloud saves keep a copy of the careers you pick, so you can bring one back later.', 'warning');
 
-  /** Start button: if the airline copies a real one in the traffic list, ask first. */
-  const requestLaunch = () => {
+  /** Start button: a Career needs an account, a connection and room online; if the airline copies a real one in the traffic list, ask first. */
+  const launching = useRef(false);
+  const requestLaunch = async () => {
     if (!hasRoomForCareer(readSaveSlots())) {
       showCareersFull();
       return;
+    }
+    if (gameMode !== 'sandbox') {
+      if (launching.current) return;
+      launching.current = true;
+      const room = await roomForNewCareer().finally(() => {
+        launching.current = false;
+      });
+      if (room === 'signin') {
+        setGameAlert({
+          title: 'Sign in to start a Career',
+          message: 'Careers are kept online, so they need an account and an internet connection. Sandbox careers play offline.',
+          severity: 'info',
+          confirmLabel: 'Sign in',
+          onConfirm: () => openOnline('account'),
+        });
+        return;
+      }
+      if (room === 'offline') {
+        showAlert('You’re offline', 'Starting a Career needs an internet connection. Connect and try again, or start a Sandbox career.', undefined, 'warning');
+        return;
+      }
+      if (room === 'full') {
+        showAlert('No room online', `You have ${MAX_CLOUD_CAREERS} careers online already. Delete one, or take a Sandbox career out of the cloud, to start another.`, undefined, 'warning');
+        return;
+      }
     }
     const match = findMatchingAiAirline(airlineName, airlineIata, airlineCallsign, aiTraffic?.airlines ?? AI_AIRLINES);
     if (!match) {
@@ -1106,6 +1141,8 @@ export default function App() {
   const [brandLivery, setBrandLivery] = useState<{ kind: BrandKind; back: boolean } | null>(null);
   const [subsOpen, setSubsOpen] = useState(false);
 
+  /** When the server last received the career being opened (ms), for its catch-up. */
+  const loadCloudAt = useRef<number | undefined>(undefined);
   const loadCareer = (raw: SaveGameState) => {
     setTourOpen(false);
     const hydrated = hydrateSave(raw, airportByIataRef.current);
@@ -1137,7 +1174,9 @@ export default function App() {
 
     // Economy catch-up for the time the career wasn't open (7×, capped at 4 weeks)
     const startLedger = s.ledgerCurrent ?? freshLedger(econWeekOf(startMin));
-    const awayMs = s.lastRealTs ? Date.now() - s.lastRealTs : 0;
+    // By the trusted clock, and never longer than since the server last had this career
+    const awayMs = awayTime(trustedNow(), s.lastRealTs, loadCloudAt.current);
+    loadCloudAt.current = undefined;
     const { gameMinutes, capped } = s.econPaused ? { gameMinutes: 0, capped: false } : catchUpGameMinutes(awayMs);
     // Bank: saves from before v2.8 start the programme now, with a welcome letter
     setReplacedAi(s.replacesAiAirline ?? null);
@@ -1189,13 +1228,66 @@ export default function App() {
     if (checkingCloud.current) return;
     checkingCloud.current = true;
     if (!worldLoadedRef.current) flashToast('Loading the world’s airports and routes…', 20_000);
-    const [newer] = await Promise.all([newerCloudCopy(sv), whenWorldLoaded()]);
+    // A Career has to be online and up to date first (2026-11-17); Sandbox only checks for a newer copy
+    const gateFor = async (): Promise<CareerGate> => {
+      if (isOnlineCareer(sv)) return prepareOnlineCareer(sv);
+      const newer = await newerCloudCopy(sv);
+      return newer ? { kind: 'newer', ...newer } : { kind: 'ok', save: sv };
+    };
+    const [gate] = await Promise.all([gateFor(), whenWorldLoaded()]);
     checkingCloud.current = false;
     setToast((t) => (t === 'Loading the world’s airports and routes…' ? null : t));
-    if (!newer) {
-      loadCareer(sv);
+    const open = (save: SaveGameState, cloudAt?: number) => {
+      loadCloudAt.current = cloudAt;
+      loadCareer(save);
+    };
+    if (gate.kind === 'ok') {
+      open(gate.save, gate.cloudAt);
       return;
     }
+    if (gate.kind === 'signin') {
+      setGameAlert({
+        title: 'Sign in to play this Career',
+        message: 'Careers are kept online now, so they need an account and an internet connection. Careers from before can be brought online for a limited time after this update.',
+        detail: 'Or make it a Sandbox career: it plays offline on this device, money doesn’t count, and it can’t become a Career again.',
+        severity: 'info',
+        confirmLabel: 'Sign in',
+        onConfirm: () => openOnline('account'),
+        secondaryLabel: 'Make it Sandbox',
+        secondaryCloses: true,
+        secondaryVariant: 'subtle',
+        onSecondary: () => confirmSandbox(sv),
+      });
+      return;
+    }
+    if (gate.kind === 'offline') {
+      showAlert('You’re offline', 'Careers need an internet connection. Connect and try again, or play a Sandbox career.', undefined, 'warning');
+      return;
+    }
+    if (gate.kind === 'conflict') {
+      showAlert('Pick a version first', `${sv.airlineName} changed on this device and on another one. Choose which version to keep, then play.`, undefined, 'warning');
+      return;
+    }
+    if (gate.kind === 'error') {
+      showAlert('Could not open', gate.message, undefined, 'warning');
+      return;
+    }
+    if (gate.kind === 'refused') {
+      if (gate.answer === 'full') {
+        showAlert('No room online', gate.message, undefined, 'warning');
+        return;
+      }
+      setGameAlert({
+        title: `${sv.airlineName} can’t be a Career`,
+        message: gate.message,
+        detail: 'You can keep playing it as a Sandbox career on this device: it plays offline and money doesn’t count.',
+        severity: 'warning',
+        confirmLabel: 'Make it Sandbox',
+        onConfirm: () => makeSandbox(sv),
+      });
+      return;
+    }
+    const newer = gate;
     setGameAlert({
       title: 'A newer copy is in the cloud',
       message: `${sv.airlineName} was saved more recently on ${newer.fromName || 'another device'}.`,
@@ -1218,6 +1310,83 @@ export default function App() {
       },
     });
   };
+
+  /** A Career that can't go online becomes a Sandbox career on this device (one way). */
+  const makeSandbox = (sv: SaveGameState) => {
+    const copy: SaveGameState = { ...sv, gameMode: 'sandbox', saveId: `SAVE-${Date.now()}` };
+    const slots = readSaveSlots().map((x) => (x.saveId === sv.saveId ? copy : x));
+    writeSaveSlots(slots);
+    setSavedGames(slots);
+    flashToast(`${sv.airlineName} is a Sandbox career now.`, 5000);
+  };
+  const confirmSandbox = (sv: SaveGameState) =>
+    setGameAlert({
+      title: `Make ${sv.airlineName} a Sandbox career?`,
+      message: 'It plays offline on this device and money doesn’t count. It can’t become a Career again.',
+      severity: 'warning',
+      confirmLabel: 'Make it Sandbox',
+      onConfirm: () => makeSandbox(sv),
+      secondaryLabel: 'Keep it a Career',
+      secondaryCloses: true,
+      secondaryVariant: 'subtle',
+      onSecondary: () => undefined,
+    });
+
+  // While a Career is open: check the connection every 30 seconds (and when the
+  // device says it went off or on line). Two misses in a row, or going offline,
+  // pause the game until it's back. A new Career goes online once it's saved.
+  const onlinePlay = screen === 'dashboard' && gameMode !== 'sandbox';
+  const connLostRef = useRef(connLost);
+  connLostRef.current = connLost;
+  useEffect(() => {
+    if (!onlinePlay) {
+      setConnLost(null);
+      return;
+    }
+    let stop = false;
+    let busy = false;
+    let misses = 0;
+    const check = async () => {
+      if (busy || stop) return;
+      busy = true;
+      try {
+        const r = await checkConnection();
+        if (stop) return;
+        if (r === 'ok') {
+          misses = 0;
+          if (connLostRef.current) flashToast('Back online.', 3000);
+          setConnLost(null);
+          const slot = readSaveSlots().find((x) => x.saveId === activeSaveIdRef.current);
+          if (slot) {
+            const a = await ensureOnline(slot).catch(() => 'skip' as const);
+            if (!stop && a !== 'ok' && a !== 'skip') flashToast('This career couldn’t go online. See Cloud saves in your account.', 6000);
+          }
+        } else {
+          misses++;
+          if (r === 'signed_out' || misses >= 2) setConnLost(r);
+        }
+      } finally {
+        busy = false;
+      }
+    };
+    const offline = () => setConnLost('offline');
+    const back = () => void check();
+    // Back from the background (a phone's timers stop there): check now, which also resets the clock to the server's
+    const shown = () => document.visibilityState === 'visible' && void check();
+    void check();
+    const id = window.setInterval(() => void check(), 30_000);
+    window.addEventListener('offline', offline);
+    window.addEventListener('online', back);
+    document.addEventListener('visibilitychange', shown);
+    return () => {
+      stop = true;
+      window.clearInterval(id);
+      window.removeEventListener('offline', offline);
+      window.removeEventListener('online', back);
+      document.removeEventListener('visibilitychange', shown);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onlinePlay, activeSaveId]);
 
   const saveCareer = () => {
     if (persistCareer(false)) {
@@ -2063,6 +2232,17 @@ export default function App() {
   // ---------------------------------------------------------------------------
   const overlays = (
     <>
+      {connLost && screen === 'dashboard' && (
+        <ReconnectOverlay
+          reason={connLost}
+          onSignIn={() => openOnline('account')}
+          onHome={() => {
+            persistCareer(true);
+            resetTransientUi();
+            setScreen('home');
+          }}
+        />
+      )}
       {gameAlert && <AlertModal alert={gameAlert} onDismiss={() => setGameAlert(null)} />}
       {toast && <Toast key={toast} message={toast} onDismiss={() => setToast(null)} />}
       <UpdateBanner onBeforeInstall={() => screen === 'dashboard' && persistRef.current(true)} />

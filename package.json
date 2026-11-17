@@ -12,7 +12,8 @@
     "test": "vitest run",
     "admin:dev": "vite --config admin/vite.config.ts",
     "admin:build": "vite build --config admin/vite.config.ts",
-    "admin:deploy": "npm run admin:build && cd admin && ../cloud/logos-worker/node_modules/.bin/wrangler deploy"
+    "admin:deploy": "npm run admin:build && cd admin && ../cloud/logos-worker/node_modules/.bin/wrangler deploy",
+    "save-check:build": "cloud/logos-worker/node_modules/.bin/esbuild cloud/save-check/index.ts --bundle --format=esm --platform=neutral --target=es2022 --outfile=cloud/save-check/dist/index.js"
   },
   "dependencies": {
     "@fontsource/barlow": "^5.3.0",

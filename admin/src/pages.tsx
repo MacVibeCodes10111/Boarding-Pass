@@ -9,7 +9,7 @@ import { liveryFromProfile } from '../../src/game/profile';
 import { AIRCRAFT_BY_ID } from '../../src/game/aircraftCatalog';
 import { paintedPhoto } from '../../src/game/liveryPaint';
 import { Button, C, DISPLAY, ModalShell, inputStyle } from '../../src/ui/kit';
-import { saveStats, type SaveStats } from './saveStats';
+import { type SaveStats } from '../../src/game/saveStats';
 import { act, actOnLogo, forgetPicture, listLogos, logoPicture, rpc, storageUsage, type Channel, type LogoRow, type Me } from './api';
 
 export interface Route {
@@ -1296,6 +1296,8 @@ function SaveCard({ s, channel, onDone }: { s: J; channel: Channel; onDone: () =
           {s.stats.startedAt ? <span>Started {day(new Date(s.stats.startedAt).toISOString())}</span> : null}
           {s.stats.mode === 'sandbox' && <Pill tone="muted">Sandbox</Pill>}
           {s.stats.tampered && <Pill tone="red">Edited save</Pill>}
+          {s.stats.flags?.includes('time') && <Pill tone="red">Time skipped</Pill>}
+          {s.stats.flags?.includes('cash') && <Pill tone="red">Impossible cash</Pill>}
         </div>
       )}
 
@@ -1419,63 +1421,24 @@ function SaveCard({ s, channel, onDone }: { s: J; channel: Channel; onDone: () =
 
 // ---------------------------------------------------------------------------
 // The rich list (owner only, 2026-11-16): the richest or oldest cloud careers,
-// read from the saves themselves (saveStats.ts). Every minute while it's open,
-// it reads the saves that changed and updates the list.
+// read from the saves themselves by the server's save check (cloud/save-check),
+// which also flags careers that look cheated. Refreshes every minute.
 // ---------------------------------------------------------------------------
 const ago = (ms: number) => {
   const d = Math.floor((Date.now() - ms) / 86_400_000);
   return d < 1 ? 'today' : d === 1 ? '1 day' : d < 60 ? `${d} days` : d < 730 ? `${Math.floor(d / 30.4)} months` : `${(d / 365).toFixed(1)} years`;
 };
 
-/** Reads the saves that changed and stores their summaries. Returns how many it read. */
-async function syncStats(channel: Channel, onLeft: (n: number) => void): Promise<number> {
-  let read = 0;
-  for (let round = 0; round < 40; round++) {
-    const r = await rpc<{ left: number; rows: J[] }>('admin_save_blobs', { p_channel: channel });
-    onLeft(r.left);
-    if (!r.rows.length) break;
-    const rows = r.rows.map((x) => ({ user: x.user, saveId: x.saveId, rev: x.rev, stats: saveStats(x.data, x.saveId) }));
-    await rpc('admin_save_stats_put', { p_channel: channel, p_rows: rows });
-    read += rows.length;
-    if (rows.length >= r.left) break;
-  }
-  onLeft(0);
-  return read;
-}
-
 function Rich({ channel, me }: Ctx) {
   const [mode, setMode] = useState<'career' | 'sandbox'>('career');
-  const [sort, setSort] = useState<'cash' | 'age'>('cash');
-  const [left, setLeft] = useState(0);
-  const [syncError, setSyncError] = useState('');
+  const [sort, setSort] = useState<'cash' | 'age' | 'flagged'>('cash');
   const [lastAt, setLastAt] = useState(0);
-  const r = useLoad(() => rpc<{ total: number; rows: J[] }>('admin_rich', { p_channel: channel, p_mode: mode, p_sort: sort, p_limit: 200 }), [channel, mode, sort, lastAt]);
-  const busy = useRef(false);
+  const r = useLoad(() => rpc<{ total: number; checked?: number; rows: J[] }>('admin_rich', { p_channel: channel, p_mode: mode, p_sort: sort, p_limit: 200 }), [channel, mode, sort, lastAt]);
   useEffect(() => {
     if (me.role !== 'owner') return;
-    let stop = false;
-    const tick = async () => {
-      if (busy.current || document.hidden) return;
-      busy.current = true;
-      try {
-        await syncStats(channel, (n) => !stop && setLeft(n));
-        if (!stop) {
-          setSyncError('');
-          setLastAt(Date.now());
-        }
-      } catch (e) {
-        if (!stop) setSyncError(e instanceof Error ? e.message : String(e));
-      } finally {
-        busy.current = false;
-      }
-    };
-    void tick();
-    const id = window.setInterval(() => void tick(), 60_000);
-    return () => {
-      stop = true;
-      window.clearInterval(id);
-    };
-  }, [channel, me.role]);
+    const id = window.setInterval(() => !document.hidden && setLastAt(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, [me.role]);
   if (me.role !== 'owner') return <Muted>Only the owner can see the rich list.</Muted>;
   const rows = r.data?.rows ?? [];
   const th: React.CSSProperties = { textAlign: 'left', padding: '6px 8px', fontSize: 12, color: C.muted, fontWeight: 650, whiteSpace: 'nowrap' };
@@ -1484,8 +1447,7 @@ function Rich({ channel, me }: Ctx) {
     <div>
       <H1>Rich list</H1>
       <Muted>
-        Read from the cloud saves themselves, updated every minute while this page is open.
-        {left > 0 ? ` Reading ${left} changed save${left === 1 ? '' : 's'}…` : lastAt ? ` Up to date at ${new Date(lastAt).toLocaleTimeString()}.` : ''}
+        Read from the cloud saves themselves by the server, which checks each Career it receives (at most every half hour per career) and flags ones that look cheated. Refreshes every minute.
         {r.data ? ` ${r.data.total} careers in the cloud.` : ''}
       </Muted>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '12px 0' }}>
@@ -1502,9 +1464,12 @@ function Rich({ channel, me }: Ctx) {
         <Button size="sm" variant={sort === 'age' ? 'primary' : 'subtle'} onClick={() => setSort('age')}>
           Oldest
         </Button>
+        <Button size="sm" variant={sort === 'flagged' ? 'danger' : 'subtle'} onClick={() => setSort('flagged')}>
+          Flagged
+        </Button>
       </div>
-      <Err e={syncError || r.error} />
-      {r.data && rows.length === 0 && <Muted>None yet.</Muted>}
+      <Err e={r.error} />
+      {r.data && rows.length === 0 && <Muted>{sort === 'flagged' ? 'Nothing flagged.' : 'None yet.'}</Muted>}
       {rows.length > 0 && (
         <div style={{ overflowX: 'auto', background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12 }}>
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
@@ -1536,6 +1501,9 @@ function Rich({ channel, me }: Ctx) {
                         {x.friendCode ? ` · ${x.friendCode}` : ''}
                       </span>{' '}
                       {st.tampered && <Pill tone="red">Edited save</Pill>}
+                      {st.flags?.includes('time') && <Pill tone="red">Time skipped</Pill>}
+                      {st.flags?.includes('cash') && <Pill tone="red">Impossible cash</Pill>}
+                      {(x.flagCount ?? 0) > 0 && !st.flags?.length && <Pill tone="amber">Flagged before ({x.flagCount})</Pill>}
                       {st.unreadable && <Pill tone="muted">Unreadable</Pill>}
                     </td>
                     <td className="num" style={{ ...td, textAlign: 'right', fontWeight: 700, color: (st.cash ?? 0) < 0 ? C.red : C.text }}>
