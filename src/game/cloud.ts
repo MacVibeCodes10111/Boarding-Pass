@@ -1149,8 +1149,18 @@ export type CloudOverview = {
   saves: { saveId: string; airline: string; rev: number; updatedAt: string; fromThisDevice: boolean; fromName: string; bytes: number; waitingHere: boolean }[];
   picks: { saveId: string; airline: string }[];
   maxPicks: number;
+  /** Until when careers made before online careers can be brought online (ISO); null while there's no deadline. */
+  importUntil?: string | null;
   devices: { name: string; lastSeen: string; thisDevice: boolean }[];
 };
+
+/** Whole days left to import (rounded up); null with no deadline, 0 once it has passed. */
+export function importDaysLeft(until: string | null | undefined, now = Date.now()): number | null {
+  if (!until) return null;
+  const t = Date.parse(until);
+  if (!Number.isFinite(t)) return null;
+  return Math.max(0, Math.ceil((t - now) / 86_400_000));
+}
 export async function cloudOverview(): Promise<CloudOverview | null> {
   const c = await signedInClient();
   if (!c) return null;
@@ -1270,4 +1280,44 @@ export async function ensureOnline(sv: SaveGameState): Promise<PickAnswer | 'ski
     await pushOne(c, sv, true);
   }
   return a;
+}
+
+// ---------------------------------------------------------------------------
+// Live updates (2026-11-17): the server tells this player's game the moment
+// the owner gives or takes cash, removes a career, or sends a notice. Only the
+// player can listen on their channel (server policy), and the event only says
+// what changed; the game then fetches it through the usual checked functions.
+// ---------------------------------------------------------------------------
+export type PlayerEvent = { kind: 'grant' | 'removed' | 'notice'; saveId: string };
+
+/** Listens for this player's live updates while signed in. Returns a stop function. */
+export function listenForPlayer(onEvent: (e: PlayerEvent) => void): () => void {
+  let stopped = false;
+  let channel: ReturnType<SupabaseClient['channel']> | null = null;
+  let c: SupabaseClient | null = null;
+  void (async () => {
+    try {
+      c = await signedInClient();
+      if (!c || stopped) return;
+      const { data } = await c.auth.getSession();
+      const s = data.session;
+      if (!s || stopped) return;
+      await c.realtime.setAuth(s.access_token);
+      channel = c
+        .channel(`player:${s.user.id}`, { config: { private: true } })
+        .on('broadcast', { event: '*' }, (m) => {
+          const p = (m as { payload?: { kind?: unknown; channel?: unknown; saveId?: unknown } }).payload;
+          if (!p || p.channel !== CHANNEL) return;
+          if (p.kind === 'grant' || p.kind === 'removed' || p.kind === 'notice') onEvent({ kind: p.kind, saveId: typeof p.saveId === 'string' ? p.saveId : '' });
+        })
+        .subscribe();
+      if (stopped) void c.removeChannel(channel);
+    } catch {
+      /* the regular checks still pick changes up */
+    }
+  })();
+  return () => {
+    stopped = true;
+    if (c && channel) void c.removeChannel(channel);
+  };
 }

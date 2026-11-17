@@ -124,10 +124,10 @@ import { OnlineHost, OnlineSidePanel, onOpenOnline, openOnline, type OnlineTab }
 import type { MarketHooks } from './components/MarketTab';
 import { claimGrant, grantActions, grantLetter, loadGrants, normaliseGrants, withGrants, type Grant, type GrantSave } from './game/grants';
 import { applyMarket, cancelListing, claimMarket, listAircraft, loadMarketMine, marketActions, marketAnswer, normaliseMarket, withApplied, type MarketMine, type MarketSave } from './game/market';
-import { NoticesHost } from './components/ReportButton';
+import { NoticesHost, checkNotices } from './components/ReportButton';
 import { FriendAirlineHost } from './components/FriendAirline';
 import { IS_DEV } from './game/channel';
-import { MAX_CLOUD_CAREERS, airlineFor, checkConnection, cloudDeleteSave, downloadCareer, ensureOnline, isOnlineCareer, mightBeSignedIn, newerCloudCopy, nextRev, onCloudChange, preferThisCopy, prepareOnlineCareer, publishIfDue, roomForNewCareer, type CareerGate } from './game/cloud';
+import { MAX_CLOUD_CAREERS, airlineFor, checkConnection, cloudDeleteSave, downloadCareer, ensureOnline, isOnlineCareer, listenForPlayer, mightBeSignedIn, newerCloudCopy, nextRev, onCloudChange, preferThisCopy, prepareOnlineCareer, publishIfDue, roomForNewCareer, syncNow, type CareerGate } from './game/cloud';
 import { awayMs as awayTime, trustedNow } from './game/trustedClock';
 import { ReconnectOverlay } from './components/ReconnectOverlay';
 import { featureOn, onFeaturesChange } from './game/features';
@@ -1744,9 +1744,19 @@ export default function App() {
     };
     const first = window.setTimeout(() => void run(), 5000);
     const id = window.setInterval(() => void run(), 5 * 60_000);
+    // The server says the moment something changes for this player
+    const stopListening = mightBeSignedIn()
+      ? listenForPlayer((e) => {
+          if (e.kind === 'notice') checkNotices();
+          else if (e.saveId !== saveId) return;
+          else if (e.kind === 'grant') void run();
+          else void syncNow(saveId).catch(() => undefined);
+        })
+      : () => undefined;
     return () => {
       window.clearTimeout(first);
       window.clearInterval(id);
+      stopListening();
     };
   }, [screen, activeSaveId]);
 
@@ -2258,7 +2268,13 @@ export default function App() {
         <OnlineHost airports={airportByIata} mapStyle={mapStyle} onSlotsChanged={() => setSavedGames(readSaveSlots())} />
         <HomeScreen
           onAccount={() => openOnline('account')}
-          onCloudDownloaded={() => setSavedGames(readSaveSlots())}
+          onPlayCloud={async (saveId) => {
+            await downloadCareer(saveId);
+            const slots = readSaveSlots();
+            setSavedGames(slots);
+            const sv = slots.find((x) => x.saveId === saveId);
+            if (sv) await resumeCareer(sv);
+          }}
           toast={flashToast}
           airlineName={airlineName}
           airlineIata={airlineIata}

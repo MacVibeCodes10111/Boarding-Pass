@@ -9,7 +9,6 @@ import { useEffect, useRef, useState } from 'react';
 import {
   PASSWORD_MIN,
   USERNAME_RULE,
-  cloudOverview,
   cloudConflicts,
   onSignedOutElsewhere,
   resolveConflict,
@@ -17,7 +16,6 @@ import {
   finishWebSignIn,
   inDesktopApp,
   cloudStatus,
-  downloadCareer,
   onCloudChange,
   mightBeSignedIn,
   refreshFeatures,
@@ -28,13 +26,11 @@ import {
   validUsername,
   type AgeStatus,
   type CloudConflict,
-  type CloudOverview,
   type CloudUser,
   type SyncReport,
 } from '../game/cloud';
 import { formatMoneyM } from '../game/time';
 import type { SaveGameState } from '../game/types';
-import { Icon } from '../ui/icons';
 import { Button, C, DISPLAY, ModalShell, Segmented, inputStyle, labelStyle, well } from '../ui/kit';
 
 const SYNC_EVERY_MS = 3 * 60_000;
@@ -342,68 +338,8 @@ export function SignInForm(props: {
 }
 
 // ---------------------------------------------------------------------------
-// Home screen: careers waiting in the cloud for this device (v2.52)
+// Where an airline is kept (cloud or this device)
 // ---------------------------------------------------------------------------
-export function CloudCareersOnHome(props: { onDownloaded: () => void; toast: (m: string) => void }) {
-  const [items, setItems] = useState<CloudOverview['saves']>([]);
-  const [busy, setBusy] = useState<string | null>(null);
-  useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      if (!mightBeSignedIn()) return setItems([]);
-      try {
-        const o = await cloudOverview();
-        if (alive) setItems((o?.saves ?? []).filter((s) => s.waitingHere));
-      } catch {
-        /* offline: nothing to show */
-      }
-    };
-    void load();
-    const onChange = () => void load();
-    window.addEventListener(CHANGED_EVENT, onChange);
-    return () => {
-      alive = false;
-      window.removeEventListener(CHANGED_EVENT, onChange);
-    };
-  }, []);
-  if (items.length === 0) return null;
-  return (
-    <div role="region" aria-label="Careers in the cloud" style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
-      {items.map((c) => (
-        <div key={c.saveId} style={{ background: `${C.brand}1c`, borderRadius: 14, padding: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Icon name="download" size={20} color={C.brand} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.airline || 'An airline'}</div>
-            <div style={{ fontSize: 12, color: C.muted }}>
-              On {c.fromName || 'another device'} · {ago(Date.parse(c.updatedAt))}
-            </div>
-          </div>
-          <Button
-            variant="primary"
-            disabled={busy !== null}
-            aria-label={`Download ${c.airline || 'career'}`}
-            onClick={async () => {
-              setBusy(c.saveId);
-              try {
-                const name = await downloadCareer(c.saveId);
-                props.onDownloaded();
-                props.toast(`${name} downloaded`);
-                announceChange();
-              } catch (e) {
-                props.toast(e instanceof Error ? e.message : String(e));
-              } finally {
-                setBusy(null);
-              }
-            }}
-          >
-            {busy === c.saveId ? 'Downloading…' : 'Download'}
-          </Button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 /** Re-renders when the cloud picks or sync state change. */
 function useCloudVersion() {
   const [, setV] = useState(0);
