@@ -1,7 +1,9 @@
 -- Sandbox online too (2026-11-17). Sandbox airlines get the same treatment as
 -- Careers: kept in the account, played online, each comes online once, and the
--- same import deadline. Each account keeps up to 6 Careers and 6 Sandbox
--- airlines (12 saves in all).
+-- same import deadline. Each account keeps up to 4 airlines in all, Career and
+-- Sandbox together (Mac, 2026-11-17; was 6 Careers). Accounts that have more
+-- than 4 online when this is applied are grandfathered: their limit stays at
+-- what they had (private.pick_limits).
 --
 --   * cloud_picks.mode says which kind each one is. Older picks get it from
 --     the server's own save check when it has read the save, else 'career'.
@@ -17,8 +19,27 @@ update public.cloud_picks p set mode = coalesce(
   'career')
   where mode is null;
 
+/** Grandfathered limits: accounts with more than 4 airlines online when the limit became 4. */
+create table private.pick_limits (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  channel text not null,
+  max_picks int not null check (max_picks between 4 and 12),
+  at timestamptz not null default now(),
+  primary key (user_id, channel)
+);
+alter table private.pick_limits enable row level security;
+insert into private.pick_limits (user_id, channel, max_picks)
+  select user_id, channel, least(count(*), 12) from public.cloud_picks group by user_id, channel having count(*) > 4
+  on conflict do nothing;
+
+/** How many airlines an account keeps: 4, or what it had when the limit became 4. */
+create function private.pick_limit(uid uuid, ch text) returns int
+  language sql stable security definer set search_path = ''
+as $$ select coalesce((select max_picks from private.pick_limits where user_id = uid and channel = ch), 4) $$;
+revoke all on function private.pick_limit(uuid, text) from public, anon, authenticated;
+
 /** Which kind an airline in the cloud is: what the save check read, else what the device said. */
-create function private.save_mode(uid uuid, ch text, sid text) returns text
+create or replace function private.save_mode(uid uuid, ch text, sid text) returns text
   language sql stable security definer set search_path = ''
 as $$
   select coalesce(
@@ -49,9 +70,9 @@ begin
       select import_until into until from private.online_rules where channel = ch;
       if until is not null and now() > until and (born is null or born < now() - interval '2 days') then return 'closed'; end if;
     end if;
-    -- 6 of each kind
-    select count(*) into n from public.cloud_picks p where p.user_id = uid and p.channel = ch and private.save_mode(uid, ch, p.save_id) = m;
-    if n >= 6 then return 'full'; end if;
+    -- 4 airlines in all (or a grandfathered limit)
+    select count(*) into n from public.cloud_picks p where p.user_id = uid and p.channel = ch;
+    if n >= private.pick_limit(uid, ch) then return 'full'; end if;
     insert into public.cloud_picks(user_id, channel, save_id, airline, mode) values (uid, ch, p_save_id, left(coalesce(p_airline, ''), 80), m);
     insert into private.cloud_known (user_id, channel, save_id) values (uid, ch, p_save_id) on conflict do nothing;
     return 'ok';
@@ -83,7 +104,7 @@ begin
   end if;
   if pg_total_relation_size('public.cloud_saves') > 400 * 1024 * 1024 then return 'server_full'; end if;
   select count(*) into n from public.cloud_saves where user_id = uid and channel = ch;
-  if n >= 12 then return 'full'; end if;
+  if n >= private.pick_limit(uid, ch) then return 'full'; end if;
   insert into public.cloud_saves(user_id, channel, save_id, rev, airline, data, from_device)
   values (uid, ch, p_save_id, p_rev, left(coalesce(p_airline, ''), 80), p_data, p_device);
   return 'saved';
@@ -105,7 +126,7 @@ begin
                where s.user_id = uid and s.channel = ch), '[]'::jsonb),
     'picks', coalesce((select jsonb_agg(jsonb_build_object('saveId', p.save_id, 'airline', p.airline, 'mode', private.save_mode(uid, ch, p.save_id)) order by p.picked_at)
                from public.cloud_picks p where p.user_id = uid and p.channel = ch), '[]'::jsonb),
-    'maxPicks', 6,
+    'maxPicks', private.pick_limit(uid, ch),
     'importUntil', (select import_until from private.online_rules where channel = ch),
     'devices', coalesce((select jsonb_agg(jsonb_build_object('name', d.name, 'lastSeen', d.last_seen, 'thisDevice', d.device_id = p_device)
                  order by d.last_seen desc) from public.cloud_devices d where d.user_id = uid and d.channel = ch), '[]'::jsonb));

@@ -756,10 +756,10 @@ type PushResult = 'saved' | 'same' | 'older' | 'full' | 'server_full' | 'too_big
 // update).
 //
 // Sandbox online too (2026-11-17): Sandbox airlines get the same treatment.
-// Each account keeps 6 Careers and 6 Sandbox airlines.
+// Each account keeps 4 airlines in all, Career and Sandbox together.
 // ---------------------------------------------------------------------------
-/** How many of each kind (Career, Sandbox) an account keeps. */
-export const MAX_CLOUD_CAREERS = 6;
+/** How many airlines an account keeps (Career and Sandbox together). */
+export const MAX_CLOUD_CAREERS = 4;
 export type SaveKind = 'career' | 'sandbox';
 export const kindOf = (s: Pick<SaveGameState, 'gameMode'>): SaveKind => (s.gameMode === 'sandbox' ? 'sandbox' : 'career');
 let picks: Set<string> | null = null; // null until the first overview
@@ -796,10 +796,9 @@ async function pickOnServer(c: SupabaseClient, s: SaveGameState, on: boolean): P
 }
 
 /** Why an airline can't go online, in plain words. */
-export function pickRefusal(a: PickAnswer, name: string, kind: SaveKind = 'career'): string {
-  const what = kind === 'sandbox' ? 'Sandbox airlines' : 'Careers';
+export function pickRefusal(a: PickAnswer, name: string, _kind: SaveKind = 'career'): string {
   return a === 'full'
-    ? `You have ${MAX_CLOUD_CAREERS} ${what} already. Delete one to make room.`
+    ? 'Your account has as many airlines as it can keep. Delete one to make room.'
     : a === 'removed'
       ? `${name} was removed from cloud saves by a moderator, so it can’t be played.`
       : a === 'used'
@@ -1046,7 +1045,7 @@ export async function uploadCareer(saveId: string): Promise<void> {
     r === 'older'
       ? 'The cloud has a newer copy of this career from another device. Download it instead.'
       : r === 'full' || r === 'not_picked'
-        ? `Turn on “Keep in the cloud” for this career first (up to ${MAX_CLOUD_CAREERS}).`
+        ? 'Your account has as many airlines as it can keep. Delete one to make room.'
         : r === 'too_big'
           ? 'This career is too big to sync, so it stays on this device.'
           : r === 'rate_limited'
@@ -1103,19 +1102,13 @@ async function doSync(openSaveId: string | null): Promise<SyncReport> {
     const undelivered = new Set((ov?.saves ?? []).filter((x) => x.waitingHere).map((x) => x.saveId));
     const picked = new Set(picks ?? []);
     const seen = readSynced();
-    // How many of each kind are online (the server knows each one's kind)
-    const count: Record<SaveKind, number> = { career: 0, sandbox: 0 };
-    const slots = readSaveSlots();
-    for (const p of ov?.picks ?? []) count[p.mode ?? kindOf(slots.find((x) => x.saveId === p.saveId) ?? { gameMode: 'standard' })]++;
-    for (const s of slots) {
-      // Every airline goes online by itself while there's room for its kind
+    for (const s of readSaveSlots()) {
+      // Every airline goes online by itself while there's room (the slots are newest first)
       if (picked.has(s.saveId) || seen[s.saveId] === -1) continue;
-      if (count[kindOf(s)] >= (ov?.maxPicks ?? MAX_CLOUD_CAREERS)) continue;
+      if (picked.size >= (ov?.maxPicks ?? MAX_CLOUD_CAREERS)) continue;
       const a = await pickOnServer(c, s, true).catch(() => null);
-      if (a === 'ok') {
-        picked.add(s.saveId);
-        count[kindOf(s)]++;
-      } else if (a === 'used' || a === 'closed' || a === 'removed') markRefused(s.saveId);
+      if (a === 'ok') picked.add(s.saveId);
+      else if (a === 'used' || a === 'closed' || a === 'removed') markRefused(s.saveId);
     }
     setPicks([...picked]);
 
@@ -1128,7 +1121,7 @@ async function doSync(openSaveId: string | null): Promise<SyncReport> {
       }
       const r = await pushOne(c, s);
       if (r === 'saved') report.sent++;
-      else if (r === 'full') report.problem = `Your account keeps ${MAX_CLOUD_CAREERS} Careers and ${MAX_CLOUD_CAREERS} Sandbox airlines. Delete one to make room.`;
+      else if (r === 'full') report.problem = 'Your account has as many airlines as it can keep. Delete one to make room.';
       else if (r === 'server_full') report.problem = 'The cloud is full right now. Your careers are safe on this device; try again later.';
       else if (r === 'too_big') report.problem = `${s.airlineName} is too big to sync, so it stays on this device.`;
       else if (r === 'older' && s.saveId !== openSaveId) report.waiting.push(s.airlineName);
@@ -1254,16 +1247,14 @@ export async function prepareOnlineCareer(sv: SaveGameState): Promise<CareerGate
   }
 }
 
-/** Whether a new airline of this kind can start: signed in, online, and room in the account. */
-export async function roomForNewCareer(kind: SaveKind = 'career'): Promise<'ok' | 'signin' | 'offline' | 'full'> {
+/** Whether a new airline can start: signed in, online, and room in the account (4 in all). */
+export async function roomForNewCareer(): Promise<'ok' | 'signin' | 'offline' | 'full'> {
   if (!mightBeSignedIn()) return 'signin';
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'offline';
   try {
     const ov = await cloudOverview();
     if (!ov) return 'signin';
-    const slots = readSaveSlots();
-    const n = ov.picks.filter((p) => (p.mode ?? kindOf(slots.find((x) => x.saveId === p.saveId) ?? { gameMode: 'standard' })) === kind).length;
-    return n >= (ov.maxPicks || MAX_CLOUD_CAREERS) ? 'full' : 'ok';
+    return ov.picks.length >= (ov.maxPicks || MAX_CLOUD_CAREERS) ? 'full' : 'ok';
   } catch (e) {
     return signedOutError(e) ? 'signin' : 'offline';
   }

@@ -127,7 +127,7 @@ import { applyMarket, cancelListing, claimMarket, listAircraft, loadMarketMine, 
 import { NoticesHost, checkNotices } from './components/ReportButton';
 import { FriendAirlineHost } from './components/FriendAirline';
 import { IS_DEV } from './game/channel';
-import { MAX_CLOUD_CAREERS, airlineFor, checkConnection, cloudDeleteSave, downloadCareer, ensureOnline, listenForPlayer, mightBeSignedIn, nextRev, onCloudChange, preferThisCopy, prepareOnlineCareer, publishIfDue, roomForNewCareer, syncNow, type CareerGate } from './game/cloud';
+import { airlineFor, checkConnection, cloudDeleteSave, downloadCareer, ensureOnline, listenForPlayer, mightBeSignedIn, nextRev, onCloudChange, preferThisCopy, prepareOnlineCareer, publishIfDue, roomForNewCareer, syncNow, type CareerGate } from './game/cloud';
 import { awayMs as awayTime, trustedNow } from './game/trustedClock';
 import { ReconnectOverlay } from './components/ReconnectOverlay';
 import { featureOn, onFeaturesChange } from './game/features';
@@ -993,8 +993,7 @@ export default function App() {
       // Every airline is kept online (Careers, and Sandbox since 2026-11-17)
       if (launching.current) return;
       launching.current = true;
-      const sandboxNew = gameMode === 'sandbox';
-      const room = await roomForNewCareer(sandboxNew ? 'sandbox' : 'career').finally(() => {
+      const room = await roomForNewCareer().finally(() => {
         launching.current = false;
       });
       if (room === 'signin') {
@@ -1012,7 +1011,7 @@ export default function App() {
         return;
       }
       if (room === 'full') {
-        showAlert('No room', `You have ${MAX_CLOUD_CAREERS} ${sandboxNew ? 'Sandbox airlines' : 'Careers'} already. Delete one to start another.`, undefined, 'warning');
+        showAlert('No room', 'Your account has as many airlines as it can keep. Delete one to start another.', undefined, 'warning');
         return;
       }
     }
@@ -1398,11 +1397,11 @@ export default function App() {
 
   const importSaveFile = async (file: File) => {
     // An opened file becomes a new Sandbox airline, which lives in the account too
-    const room = await roomForNewCareer('sandbox');
+    const room = await roomForNewCareer();
     if (room !== 'ok') {
       showAlert(
         'Could not open this save',
-        room === 'full' ? `You have ${MAX_CLOUD_CAREERS} Sandbox airlines already. Delete one to make room.` : room === 'offline' ? 'Opening a save needs an internet connection.' : 'Log in first: airlines are kept in your account.',
+        room === 'full' ? 'Your account has as many airlines as it can keep. Delete one to make room.' : room === 'offline' ? 'Opening a save needs an internet connection.' : 'Log in first: airlines are kept in your account.',
         undefined,
         'warning'
       );

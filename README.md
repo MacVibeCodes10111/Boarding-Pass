@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 3.1.0. Free to play. See [Credits and licences](#credits-and-licences).
+Version 3.2.0. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -20,6 +20,18 @@ Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 3.2.0, airlines online:
+
+- **Your airlines live in your account now,** Career and Sandbox alike, and you play them online on any device you sign in on. Playing needs an account and an internet connection; if the connection drops, the game pauses until it's back.
+- **Bring your airlines over:** airlines from before this update move into your account by themselves when you log in, or with **Import** on the home screen. Import shows how many days are left: you have 90 days. Each airline can come online once.
+- **4 airlines per account,** Career and Sandbox together. If you already had more online, you keep them.
+- **A new home screen:** one big Log in, Career and Sandbox side by side, and it opens on the airline you played last, on any device.
+- **Fair play:** your airline's time runs by the server's clock, so changing your device's clock does nothing, and the server checks saves for skipped time, impossible money and edits. Save files can only be opened during the 90 days, and become a new Sandbox airline.
+- **Letters from Boarding Pass** about your airline arrive straight away instead of a few minutes later.
+- **Freighters park on the cargo ramp,** and every airport has passenger and cargo stands.
+- **Faster and safer:** a smaller download at startup, fewer redraws, and a tighter security setup for the browser version.
+- **Updated [Terms of use](https://boardingpass.my/terms.html) and [Privacy policy](https://boardingpass.my/privacy.html)** for online airlines: what the server keeps and checks, and for how long.
 
 Version 3.1.0, the economy update:
 

@@ -256,7 +256,7 @@ export function AccountView(props: { user: CloudUser; busy: boolean; act: Act; o
           <div style={{ flex: 1 }}>
             <SectionTitle>Airlines</SectionTitle>
           </div>
-          {!phone && <span style={{ ...head, marginBottom: 8 }} title={`Kept in your account, so it’s on all your devices (${MAX_CLOUD_CAREERS} Careers and ${MAX_CLOUD_CAREERS} Sandbox airlines)`}>
+          {!phone && <span style={{ ...head, marginBottom: 8 }} title={`Kept in your account, so it’s on all your devices (up to ${MAX_CLOUD_CAREERS} airlines)`}>
             Cloud
           </span>}
           {!phone && profiles && (

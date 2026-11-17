@@ -13,7 +13,7 @@ import { type SaveStats } from '../../src/game/saveStats';
 import { act, actOnLogo, forgetPicture, listLogos, logoPicture, rpc, storageUsage, type Channel, type LogoRow, type Me } from './api';
 
 export interface Route {
-  page: 'dashboard' | 'reports' | 'airlines' | 'alliances' | 'market' | 'rich' | 'saves' | 'logos' | 'log' | 'team';
+  page: 'dashboard' | 'reports' | 'airlines' | 'alliances' | 'market' | 'online' | 'rich' | 'saves' | 'logos' | 'log' | 'team';
   id: string;
 }
 interface Ctx {
@@ -29,6 +29,7 @@ export function Page(props: Ctx) {
   if (page === 'airlines') return id ? <Airline {...props} id={id} /> : <Airlines {...props} />;
   if (page === 'alliances') return id ? <Alliance {...props} id={id} /> : <Alliances {...props} />;
   if (page === 'market') return <Market {...props} />;
+  if (page === 'online') return <Online {...props} />;
   if (page === 'rich') return <Rich {...props} />;
   if (page === 'saves') return <Saves {...props} id={id} />;
   if (page === 'logos') return <Logos {...props} />;
@@ -1515,6 +1516,89 @@ function Rich({ channel, me }: Ctx) {
                     <td className="num" style={{ ...td, textAlign: 'right' }}>{st.weeks ?? ''}</td>
                     <td style={td}>{st.startedAt ? `${day(new Date(st.startedAt).toISOString())} (${ago(st.startedAt)})` : ''}</td>
                     <td style={{ ...td, color: C.muted }}>{when(x.updatedAt)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Online (owner only): who has used the game in the last 15 minutes. A game
+// being played checks in about every 30 seconds, so "now" means the last 2
+// minutes. Refreshes every 15 seconds.
+// ---------------------------------------------------------------------------
+const since = (iso: string) => {
+  const s = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
+  return s < 60 ? `${s}s ago` : `${Math.floor(s / 60)} min ago`;
+};
+
+function Online({ channel, me }: Ctx) {
+  const [lastAt, setLastAt] = useState(0);
+  const r = useLoad(() => rpc<{ now: number; hour: number; day: number; rows: J[] }>('admin_online', { p_channel: channel }), [channel, lastAt]);
+  useEffect(() => {
+    if (me.role !== 'owner') return;
+    const id = window.setInterval(() => !document.hidden && setLastAt(Date.now()), 15_000);
+    return () => window.clearInterval(id);
+  }, [me.role]);
+  if (me.role !== 'owner') return <Muted>Only the owner can see who's online.</Muted>;
+  const rows = r.data?.rows ?? [];
+  const th: React.CSSProperties = { textAlign: 'left', padding: '6px 8px', fontSize: 12, color: C.muted, fontWeight: 650, whiteSpace: 'nowrap' };
+  const td: React.CSSProperties = { padding: '7px 8px', fontSize: 13, borderTop: `1px solid ${C.line}`, whiteSpace: 'nowrap' };
+  const stat = (label: string, n: number | undefined) => (
+    <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, padding: '10px 14px', minWidth: 110 }}>
+      <div style={{ fontSize: 12, color: C.muted }}>{label}</div>
+      <div className="num" style={{ fontSize: 24, fontWeight: 700 }}>{n ?? '–'}</div>
+    </div>
+  );
+  return (
+    <div>
+      <H1>Online</H1>
+      <Muted>Players using the game, counted across Main and Dev. The list shows the last 15 minutes, with each player's most recently saved airline on this channel. Refreshes every 15 seconds.</Muted>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '12px 0' }}>
+        {stat('Online now', r.data?.now)}
+        {stat('Last hour', r.data?.hour)}
+        {stat('Last 24 hours', r.data?.day)}
+      </div>
+      <Err e={r.error} />
+      {r.data && rows.length === 0 && <Muted>Nobody in the last 15 minutes.</Muted>}
+      {rows.length > 0 && (
+        <div style={{ overflowX: 'auto', background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12 }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+            <thead>
+              <tr>
+                <th style={th}>Player</th>
+                <th style={th}>Last seen</th>
+                <th style={th}>Device</th>
+                <th style={th}>Airline</th>
+                <th style={th}>Last saved</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((x) => {
+                const live = Date.now() - Date.parse(x.at) < 120_000;
+                return (
+                  <tr key={x.user}>
+                    <td style={td}>
+                      <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 4, marginRight: 8, background: live ? C.green : C.faint }} />
+                      <span style={{ fontWeight: 650 }}>@{x.username || 'unknown'}</span>
+                    </td>
+                    <td style={{ ...td, color: live ? C.text : C.muted }}>{since(x.at)}</td>
+                    <td style={{ ...td, color: C.textSoft }}>{x.device || ''}</td>
+                    <td style={td}>
+                      {x.saveId ? (
+                        <a href={`#/saves/${encodeURIComponent(x.saveId)}`} style={{ color: C.text, textDecoration: 'none' }}>
+                          {x.airline || 'Untitled'}
+                        </a>
+                      ) : (
+                        <span style={{ color: C.muted }}>No airline online yet</span>
+                      )}
+                    </td>
+                    <td style={{ ...td, color: C.muted }}>{x.savedAt ? when(x.savedAt) : ''}</td>
                   </tr>
                 );
               })}
