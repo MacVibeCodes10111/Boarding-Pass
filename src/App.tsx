@@ -127,7 +127,7 @@ import { applyMarket, cancelListing, claimMarket, listAircraft, loadMarketMine, 
 import { NoticesHost, checkNotices } from './components/ReportButton';
 import { FriendAirlineHost } from './components/FriendAirline';
 import { IS_DEV } from './game/channel';
-import { MAX_CLOUD_CAREERS, airlineFor, checkConnection, cloudDeleteSave, downloadCareer, ensureOnline, isOnlineCareer, listenForPlayer, mightBeSignedIn, newerCloudCopy, nextRev, onCloudChange, preferThisCopy, prepareOnlineCareer, publishIfDue, roomForNewCareer, syncNow, type CareerGate } from './game/cloud';
+import { MAX_CLOUD_CAREERS, airlineFor, checkConnection, cloudDeleteSave, downloadCareer, ensureOnline, listenForPlayer, mightBeSignedIn, nextRev, onCloudChange, preferThisCopy, prepareOnlineCareer, publishIfDue, roomForNewCareer, syncNow, type CareerGate } from './game/cloud';
 import { awayMs as awayTime, trustedNow } from './game/trustedClock';
 import { ReconnectOverlay } from './components/ReconnectOverlay';
 import { featureOn, onFeaturesChange } from './game/features';
@@ -989,28 +989,30 @@ export default function App() {
       showCareersFull();
       return;
     }
-    if (gameMode !== 'sandbox') {
+    {
+      // Every airline is kept online (Careers, and Sandbox since 2026-11-17)
       if (launching.current) return;
       launching.current = true;
-      const room = await roomForNewCareer().finally(() => {
+      const sandboxNew = gameMode === 'sandbox';
+      const room = await roomForNewCareer(sandboxNew ? 'sandbox' : 'career').finally(() => {
         launching.current = false;
       });
       if (room === 'signin') {
         setGameAlert({
-          title: 'Sign in to start a Career',
-          message: 'Careers are kept online, so they need an account and an internet connection. Sandbox careers play offline.',
+          title: 'Log in to start an airline',
+          message: 'Airlines are kept in your account, so they need an account and an internet connection.',
           severity: 'info',
-          confirmLabel: 'Sign in',
+          confirmLabel: 'Log in',
           onConfirm: () => openOnline('account'),
         });
         return;
       }
       if (room === 'offline') {
-        showAlert('You’re offline', 'Starting a Career needs an internet connection. Connect and try again, or start a Sandbox career.', undefined, 'warning');
+        showAlert('You’re offline', 'Starting an airline needs an internet connection. Connect and try again.', undefined, 'warning');
         return;
       }
       if (room === 'full') {
-        showAlert('No room online', `You have ${MAX_CLOUD_CAREERS} careers online already. Delete one, or take a Sandbox career out of the cloud, to start another.`, undefined, 'warning');
+        showAlert('No room', `You have ${MAX_CLOUD_CAREERS} ${sandboxNew ? 'Sandbox airlines' : 'Careers'} already. Delete one to start another.`, undefined, 'warning');
         return;
       }
     }
@@ -1228,12 +1230,8 @@ export default function App() {
     if (checkingCloud.current) return;
     checkingCloud.current = true;
     if (!worldLoadedRef.current) flashToast('Loading the world’s airports and routes…', 20_000);
-    // A Career has to be online and up to date first (2026-11-17); Sandbox only checks for a newer copy
-    const gateFor = async (): Promise<CareerGate> => {
-      if (isOnlineCareer(sv)) return prepareOnlineCareer(sv);
-      const newer = await newerCloudCopy(sv);
-      return newer ? { kind: 'newer', ...newer } : { kind: 'ok', save: sv };
-    };
+    // Every airline has to be online and up to date first (Careers 2026-11-17, Sandbox too since)
+    const gateFor = (): Promise<CareerGate> => prepareOnlineCareer(sv);
     const [gate] = await Promise.all([gateFor(), whenWorldLoaded()]);
     checkingCloud.current = false;
     setToast((t) => (t === 'Loading the world’s airports and routes…' ? null : t));
@@ -1247,21 +1245,16 @@ export default function App() {
     }
     if (gate.kind === 'signin') {
       setGameAlert({
-        title: 'Sign in to play this Career',
-        message: 'Careers are kept online now, so they need an account and an internet connection. Careers from before can be brought online for a limited time after this update.',
-        detail: 'Or make it a Sandbox career: it plays offline on this device, money doesn’t count, and it can’t become a Career again.',
+        title: `Log in to play ${sv.airlineName}`,
+        message: 'Airlines are kept in your account now, so they need an account and an internet connection. Airlines from before can be brought online for a limited time after this update.',
         severity: 'info',
-        confirmLabel: 'Sign in',
+        confirmLabel: 'Log in',
         onConfirm: () => openOnline('account'),
-        secondaryLabel: 'Make it Sandbox',
-        secondaryCloses: true,
-        secondaryVariant: 'subtle',
-        onSecondary: () => confirmSandbox(sv),
       });
       return;
     }
     if (gate.kind === 'offline') {
-      showAlert('You’re offline', 'Careers need an internet connection. Connect and try again, or play a Sandbox career.', undefined, 'warning');
+      showAlert('You’re offline', 'Playing needs an internet connection. Connect and try again.', undefined, 'warning');
       return;
     }
     if (gate.kind === 'conflict') {
@@ -1273,14 +1266,14 @@ export default function App() {
       return;
     }
     if (gate.kind === 'refused') {
-      if (gate.answer === 'full') {
-        showAlert('No room online', gate.message, undefined, 'warning');
+      if (gate.answer === 'full' || sv.gameMode === 'sandbox') {
+        showAlert(gate.answer === 'full' ? 'No room' : `${sv.airlineName} can’t be played`, gate.message, undefined, 'warning');
         return;
       }
       setGameAlert({
         title: `${sv.airlineName} can’t be a Career`,
         message: gate.message,
-        detail: 'You can keep playing it as a Sandbox career on this device: it plays offline and money doesn’t count.',
+        detail: 'You can keep playing it as a new Sandbox airline instead: money doesn’t count, and it can’t become a Career again.',
         severity: 'warning',
         confirmLabel: 'Make it Sandbox',
         onConfirm: () => makeSandbox(sv),
@@ -1311,31 +1304,19 @@ export default function App() {
     });
   };
 
-  /** A Career that can't go online becomes a Sandbox career on this device (one way). */
+  /** A Career that can't go online becomes a new Sandbox airline (one way); it goes online as one when it's played. */
   const makeSandbox = (sv: SaveGameState) => {
     const copy: SaveGameState = { ...sv, gameMode: 'sandbox', saveId: `SAVE-${Date.now()}` };
     const slots = readSaveSlots().map((x) => (x.saveId === sv.saveId ? copy : x));
     writeSaveSlots(slots);
     setSavedGames(slots);
-    flashToast(`${sv.airlineName} is a Sandbox career now.`, 5000);
+    flashToast(`${sv.airlineName} is a Sandbox airline now.`, 5000);
   };
-  const confirmSandbox = (sv: SaveGameState) =>
-    setGameAlert({
-      title: `Make ${sv.airlineName} a Sandbox career?`,
-      message: 'It plays offline on this device and money doesn’t count. It can’t become a Career again.',
-      severity: 'warning',
-      confirmLabel: 'Make it Sandbox',
-      onConfirm: () => makeSandbox(sv),
-      secondaryLabel: 'Keep it a Career',
-      secondaryCloses: true,
-      secondaryVariant: 'subtle',
-      onSecondary: () => undefined,
-    });
 
   // While a Career is open: check the connection every 30 seconds (and when the
   // device says it went off or on line). Two misses in a row, or going offline,
   // pause the game until it's back. A new Career goes online once it's saved.
-  const onlinePlay = screen === 'dashboard' && gameMode !== 'sandbox';
+  const onlinePlay = screen === 'dashboard';
   const connLostRef = useRef(connLost);
   connLostRef.current = connLost;
   useEffect(() => {
@@ -1415,7 +1396,18 @@ export default function App() {
     });
   };
 
-  const importSaveFile = (file: File) => {
+  const importSaveFile = async (file: File) => {
+    // An opened file becomes a new Sandbox airline, which lives in the account too
+    const room = await roomForNewCareer('sandbox');
+    if (room !== 'ok') {
+      showAlert(
+        'Could not open this save',
+        room === 'full' ? `You have ${MAX_CLOUD_CAREERS} Sandbox airlines already. Delete one to make room.` : room === 'offline' ? 'Opening a save needs an internet connection.' : 'Log in first: airlines are kept in your account.',
+        undefined,
+        'warning'
+      );
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       const r = readSaveFileText(String(reader.result));
@@ -1437,7 +1429,7 @@ export default function App() {
       showAlert(
         'Opened in Sandbox mode',
         `${r.save.airlineName} is a new Sandbox career made from the save file. Careers loaded from files always play in Sandbox, so they can't be used to get ahead in Career.`,
-        'To move a career between devices, use Cloud saves.',
+        'It’s kept in your account like your other airlines.',
         'info'
       );
     };
@@ -2294,7 +2286,7 @@ export default function App() {
           onLaunch={requestLaunch}
           onResume={(sv) => void resumeCareer(sv)}
           onDeleteSave={deleteSave}
-          onImportFile={importSaveFile}
+          onImportFile={(f) => void importSaveFile(f)}
         />
         {overlays}
       </>

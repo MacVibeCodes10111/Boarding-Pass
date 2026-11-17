@@ -7,7 +7,7 @@ import { formatMoneyM } from '../game/time';
 import type { Airport, GameMode, SaveGameState } from '../game/types';
 import { AircraftHero, LiveryContext } from './AircraftPhoto';
 import { CHANGED_EVENT, SaveLocation, ago } from './CloudPanel';
-import { cloudOverview, cloudPicks, importDaysLeft, isOnlineCareer, mightBeSignedIn, prepareOnlineCareer, type CloudOverview } from '../game/cloud';
+import { cloudOverview, cloudPicks, importDaysLeft, kindOf, mightBeSignedIn, prepareOnlineCareer, type CloudOverview, type SaveKind } from '../game/cloud';
 import { Icon } from '../ui/icons';
 import { Button, C, DISPLAY, Field, IconButton, SearchInput, faceHi, inputStyle, glass } from '../ui/kit';
 import { useLayout } from '../ui/layout';
@@ -111,8 +111,8 @@ function AirlineCard({ sv, onPlay, onDelete }: { sv: SaveGameState; onPlay: () =
 type Category = 'career' | 'sandbox';
 type CloudCareer = CloudOverview['saves'][number];
 
-/** A Career kept in the account but not on this device yet: Play downloads it. */
-function CloudOnlyCard({ c, busy, onPlay }: { c: CloudCareer; busy: boolean; onPlay: () => void }) {
+/** An airline kept in the account but not on this device yet: Play downloads it. */
+function CloudOnlyCard({ c, kind, busy, onPlay }: { c: CloudCareer; kind: SaveKind; busy: boolean; onPlay: () => void }) {
   return (
     <div>
       <div style={{ borderRadius: 14, marginBottom: 18, aspectRatio: '3 / 1', background: `linear-gradient(135deg, ${C.raised}, ${C.bg})`, display: 'grid', placeItems: 'center' }}>
@@ -120,7 +120,7 @@ function CloudOnlyCard({ c, busy, onPlay }: { c: CloudCareer; busy: boolean; onP
       </div>
       <h2 style={{ margin: 0, fontSize: 28, fontWeight: 700, lineHeight: 1.1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.airline || 'Your airline'}</h2>
       <div style={{ fontSize: 13, color: C.muted, marginTop: 3, marginBottom: 20 }}>
-        Career · last played {c.fromThisDevice ? 'here' : `on ${c.fromName || 'another device'}`} · {ago(Date.parse(c.updatedAt))}
+        {kind === 'sandbox' ? 'Sandbox' : 'Career'} · last played {c.fromThisDevice ? 'here' : `on ${c.fromName || 'another device'}`} · {ago(Date.parse(c.updatedAt))}
       </div>
       <Button variant="primary" size="lg" block disabled={busy} onClick={onPlay}>
         <Icon name="play" size={18} />
@@ -184,32 +184,38 @@ export function HomeScreen(props: HomeScreenProps) {
   const signedInRef = useRef(signedIn);
   signedInRef.current = signedIn;
 
-  // Careers: what the server has (newest first), with this device's copy when there is one
-  const careers = useMemo(() => {
-    const local = new Map(savedGames.filter(isOnlineCareer).map((s) => [s.saveId, s]));
-    if (!signedIn) return [];
+  // Every airline (Career and Sandbox) is in the account: what the server has, newest first, with this device's copy when there is one
+  const online = useMemo(() => {
+    type Row = { id: string; kind: SaveKind; sv?: SaveGameState; cloud?: CloudCareer };
+    if (!signedIn) return [] as Row[];
+    const local = new Map(savedGames.map((s) => [s.saveId, s]));
     if (!overview) {
-      // Offline: the careers this device knows are online
+      // Offline: the airlines this device knows are online
       const picks = cloudPicks();
-      return savedGames.filter((s) => isOnlineCareer(s) && (picks === null || picks.has(s.saveId))).map((s) => ({ id: s.saveId, sv: s as SaveGameState | undefined, cloud: undefined as CloudCareer | undefined }));
+      return savedGames.filter((s) => picks === null || picks.has(s.saveId)).map((s): Row => ({ id: s.saveId, kind: kindOf(s), sv: s }));
     }
     const server = [...overview.saves].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
-    const picked = new Set(overview.picks.map((p) => p.saveId));
-    const rows = server.map((c) => ({ id: c.saveId, sv: local.get(c.saveId), cloud: c as CloudCareer | undefined }));
-    // Picked but not uploaded yet (it goes up when it's played)
-    for (const s of local.values()) if (picked.has(s.saveId) && !rows.some((r) => r.id === s.saveId)) rows.push({ id: s.saveId, sv: s, cloud: undefined });
+    const picked = new Map(overview.picks.map((p) => [p.saveId, p.mode]));
+    const rows = server.map((c): Row => {
+      const sv = local.get(c.saveId);
+      return { id: c.saveId, kind: c.mode ?? (sv ? kindOf(sv) : 'career'), sv, cloud: c };
+    });
+    // Online but not uploaded yet (it goes up when it's played)
+    for (const s of local.values()) if (picked.has(s.saveId) && !rows.some((r) => r.id === s.saveId)) rows.push({ id: s.saveId, kind: picked.get(s.saveId) ?? kindOf(s), sv: s });
     return rows;
   }, [savedGames, overview, signedIn]);
-  const onlineIds = new Set(careers.map((c) => c.id));
-  // Careers made before online careers, still only on this device
-  const deviceOnly = signedIn && overview ? savedGames.filter((s) => isOnlineCareer(s) && !onlineIds.has(s.saveId)) : [];
-  const sandboxes = savedGames.filter((s) => !isOnlineCareer(s));
+  const careers = online.filter((r) => r.kind === 'career');
+  const sandboxes = online.filter((r) => r.kind === 'sandbox');
+  const onlineIds = new Set(online.map((c) => c.id));
+  // Airlines from before online play, still only on this device
+  const deviceOnly = signedIn && overview ? savedGames.filter((s) => !onlineIds.has(s.saveId)) : [];
   const daysLeft = importDaysLeft(overview?.importUntil);
   const importOpen = daysLeft === null || daysLeft > 0;
 
-  // Opens on the airline played last: the newest career when signed in, else the newest sandbox
-  const cat: Category = category ?? (signedIn && careers.length ? 'career' : sandboxes.length && !signedIn ? 'sandbox' : 'career');
-  const list = cat === 'career' ? careers.map((c) => c.id) : sandboxes.map((s) => s.saveId);
+  // Opens on the airline played last, whichever kind it is
+  const cat: Category = category ?? online[0]?.kind ?? 'career';
+  const rowsHere = cat === 'career' ? careers : sandboxes;
+  const list = rowsHere.map((c) => c.id);
   const tab = picked === NEW ? NEW : list.find((id) => id === picked) ?? list[0] ?? NEW;
   const mode: GameMode = cat === 'career' ? 'standard' : 'sandbox';
   useEffect(() => {
@@ -269,7 +275,7 @@ export function HomeScreen(props: HomeScreenProps) {
       if (g.kind === 'ok') {
         props.toast(`${sv.airlineName} is now in your account`);
         setOverview(await cloudOverview().catch(() => overview));
-        setCategory('career');
+        setCategory(kindOf(sv));
         setPicked(sv.saveId);
         setShowImport(false);
       } else if (g.kind === 'refused' || g.kind === 'error') props.toast(g.message);
@@ -338,7 +344,7 @@ export function HomeScreen(props: HomeScreenProps) {
       </Field>
 
       <div style={{ fontSize: 13, color: C.muted, marginBottom: 14 }}>
-        {cat === 'career' ? 'Career: start with $150M. Kept in your account and played online.' : 'Sandbox: unlimited money. Kept on this device and plays offline.'}
+        {cat === 'career' ? 'Career: start with $150M. Kept in your account and played online.' : 'Sandbox: unlimited money. Kept in your account and played online.'}
       </div>
 
       <Button variant="primary" size="lg" block disabled={!canLaunch} onClick={props.onLaunch}>
@@ -348,12 +354,12 @@ export function HomeScreen(props: HomeScreenProps) {
     </div>
   );
 
-  // Signed out, Career: careers live in the account
+  // Signed out: airlines live in the account
   const careerSignedOut = (
     <div style={{ textAlign: 'center', padding: phone ? '24px 4px' : '36px 12px' }}>
       <Icon name="globe" size={40} color={C.brand} />
-      <h2 style={{ margin: '12px 0 6px', fontSize: 26, fontWeight: 700 }}>Your careers live in your account</h2>
-      <p style={{ margin: '0 auto', maxWidth: 360, fontSize: 14, color: C.muted, lineHeight: 1.5 }}>Log in to play them on any device. Sandbox airlines stay on this device and play offline.</p>
+      <h2 style={{ margin: '12px 0 6px', fontSize: 26, fontWeight: 700 }}>Your airlines live in your account</h2>
+      <p style={{ margin: '0 auto', maxWidth: 360, fontSize: 14, color: C.muted, lineHeight: 1.5 }}>Log in to play your Career and Sandbox airlines on any device.</p>
     </div>
   );
 
@@ -361,10 +367,10 @@ export function HomeScreen(props: HomeScreenProps) {
     <div>
       <h2 style={{ margin: '0 0 4px', fontSize: 24, fontWeight: 700 }}>Import</h2>
       <p style={{ margin: '0 0 16px', fontSize: 13.5, color: C.muted, lineHeight: 1.5 }}>
-        {daysLeft === null ? 'Bring careers from before online play into your account.' : `${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left to bring careers from before online play into your account.`} Each career can come
-        online once. After that, careers still only on a device play as Sandbox.
+        {daysLeft === null ? 'Bring airlines from before online play into your account.' : `${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left to bring airlines from before online play into your account.`} Each airline can come
+        online once. After that, airlines still only on a device can’t be played.
       </p>
-      {deviceOnly.length === 0 && <div style={{ fontSize: 13.5, color: C.muted, marginBottom: 14 }}>No careers on this device are waiting to come online.</div>}
+      {deviceOnly.length === 0 && <div style={{ fontSize: 13.5, color: C.muted, marginBottom: 14 }}>No airlines on this device are waiting to come online.</div>}
       <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
         {deviceOnly.map((sv) => (
           <div key={sv.saveId} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, borderRadius: 12, background: C.raised }}>
@@ -373,7 +379,7 @@ export function HomeScreen(props: HomeScreenProps) {
                 <span style={{ color: C.brand }}>{sv.airlineIata}</span> {sv.airlineName}
               </div>
               <div className="num" style={{ fontSize: 12, color: C.muted }}>
-                {(sv.fleet?.length ?? 0).toLocaleString()} aircraft · {formatMoneyM(sv.cash)}
+                {sv.gameMode === 'sandbox' ? 'Sandbox' : 'Career'} · {(sv.fleet?.length ?? 0).toLocaleString()} aircraft{sv.gameMode === 'sandbox' ? '' : ` · ${formatMoneyM(sv.cash)}`}
               </div>
             </div>
             <Button variant="primary" disabled={busy !== null} onClick={() => void bringOnline(sv)}>
@@ -399,14 +405,12 @@ export function HomeScreen(props: HomeScreenProps) {
     </div>
   );
 
-  const careerRow = careers.find((c) => c.id === tab);
-  const sandbox = sandboxes.find((s) => s.saveId === tab);
+  const row = rowsHere.find((c) => c.id === tab);
   let body: React.ReactNode;
-  if (cat === 'career' && !signedIn) body = careerSignedOut;
-  else if (cat === 'career' && showImport && importOpen) body = importPanel;
-  else if (cat === 'career' && careerRow?.sv) body = <AirlineCard key={careerRow.id} sv={careerRow.sv} onPlay={() => props.onResume(careerRow.sv!)} onDelete={() => props.onDeleteSave(careerRow.id)} />;
-  else if (cat === 'career' && careerRow?.cloud) body = <CloudOnlyCard key={careerRow.id} c={careerRow.cloud} busy={busy === careerRow.id} onPlay={() => void playCloud(careerRow.id)} />;
-  else if (cat === 'sandbox' && sandbox) body = <AirlineCard key={sandbox.saveId} sv={sandbox} onPlay={() => props.onResume(sandbox)} onDelete={() => props.onDeleteSave(sandbox.saveId)} />;
+  if (!signedIn) body = careerSignedOut;
+  else if (showImport && importOpen) body = importPanel;
+  else if (row?.sv) body = <AirlineCard key={row.id} sv={row.sv} onPlay={() => props.onResume(row.sv!)} onDelete={() => props.onDeleteSave(row.id)} />;
+  else if (row?.cloud) body = <CloudOnlyCard key={row.id} c={row.cloud} kind={row.kind} busy={busy === row.id} onPlay={() => void playCloud(row.id)} />;
   else body = newAirline;
 
   const catButton = (c: Category, label: string, count: number) => {
@@ -473,14 +477,12 @@ export function HomeScreen(props: HomeScreenProps) {
         <section aria-label="Your airlines" style={{ ...glass('e8'), borderRadius: 20, overflow: 'hidden', marginTop: signedIn ? 0 : 12 }}>
           {/* Two kinds of airline: Careers (online, in the account) and Sandbox (this device) */}
           <div role="tablist" aria-label="Kind of airline" style={{ display: 'flex', gap: 6, padding: 10, paddingBottom: 0 }}>
-            {catButton('career', 'Career', signedIn ? careers.length : 0)}
+            {catButton('career', 'Career', careers.length)}
             {catButton('sandbox', 'Sandbox', sandboxes.length)}
           </div>
-          {!(cat === 'career' && !signedIn) && (
+          {signedIn && (
             <div role="tablist" aria-label="Airlines" className="bp-scroll-x" style={{ display: 'flex', alignItems: 'center', gap: 2, padding: 10, overflowX: 'auto', borderBottom: `1px solid ${C.line}` }}>
-              {cat === 'career'
-                ? careers.map((c) => airlineTab(c.id, c.sv?.airlineIata ?? '', c.sv?.airlineName ?? c.cloud?.airline ?? 'Airline'))
-                : sandboxes.map((s) => airlineTab(s.saveId, s.airlineIata, s.airlineName))}
+              {rowsHere.map((c) => airlineTab(c.id, c.sv?.airlineIata ?? '', c.sv?.airlineName ?? c.cloud?.airline ?? 'Airline'))}
               {tabButton(
                 NEW,
                 <>
@@ -489,14 +491,14 @@ export function HomeScreen(props: HomeScreenProps) {
                 </>,
                 cat === 'career' ? 'New career' : 'New sandbox airline'
               )}
-              {cat === 'career' && importOpen && (
+              {importOpen && (
                 <>
                   <span style={{ flex: 1 }} />
                   <button
                     type="button"
                     aria-pressed={showImport}
                     onClick={() => setShowImport((v) => !v)}
-                    title="Bring careers from before online play into your account"
+                    title="Bring airlines from before online play into your account"
                     style={{ flex: 'none', height: 38, padding: '0 12px', borderRadius: 10, whiteSpace: 'nowrap', cursor: 'pointer', fontFamily: DISPLAY, fontSize: 16, fontWeight: 700, color: C.amber, background: showImport ? faceHi() : `${C.amber}1c`, border: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}
                   >
                     <Icon name="download" size={15} />

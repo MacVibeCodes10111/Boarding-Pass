@@ -19,7 +19,7 @@ export function ReconnectOverlay(props: { reason: 'offline' | 'signed_out'; onSi
         <h2 style={{ margin: '0 0 8px', fontFamily: DISPLAY, fontSize: 22 }}>{signedOut ? 'You’re signed out' : 'Reconnecting…'}</h2>
         <p style={{ margin: '0 0 16px', fontSize: 14, lineHeight: 1.5, color: C.textSoft }}>
           {signedOut
-            ? 'Careers are played online. Sign in again to carry on; the game is paused until then.'
+            ? 'Airlines are played online. Log in again to carry on; the game is paused until then.'
             : 'The connection to Boarding Pass was lost. The game is paused and carries on by itself when it’s back.'}
         </p>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>

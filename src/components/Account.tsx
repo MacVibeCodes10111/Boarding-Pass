@@ -9,13 +9,11 @@
 import { useEffect, useState } from 'react';
 import {
   MAX_CLOUD_CAREERS,
-  isOnlineCareer,
   MAX_SHARED_AIRLINES,
   airlineFor,
   autoDownload,
   cloudDeleteSave,
   cloudOverview,
-  cloudPicks,
   cloudStatus,
   deleteAccount,
   downloadCareer,
@@ -191,7 +189,6 @@ export function AccountView(props: { user: CloudUser; busy: boolean; act: Act; o
 
   const profiles = featureOn('online') && featureOn('profiles');
   const mapSwitch = profiles && featureOn('friends') && featureOn('friends_map');
-  const picks = cloudPicks()?.size ?? overview?.picks?.length ?? 0;
 
   // One row per airline: the ones on this device, then the ones only in the cloud, then any that are only online
   const waiting = new Map((overview?.saves ?? []).filter((c) => c.waitingHere).map((c) => [c.saveId, c]));
@@ -259,7 +256,7 @@ export function AccountView(props: { user: CloudUser; busy: boolean; act: Act; o
           <div style={{ flex: 1 }}>
             <SectionTitle>Airlines</SectionTitle>
           </div>
-          {!phone && <span style={{ ...head, marginBottom: 8 }} title={`Kept in the cloud, so it’s on all your devices (${picks} of ${MAX_CLOUD_CAREERS})`}>
+          {!phone && <span style={{ ...head, marginBottom: 8 }} title={`Kept in your account, so it’s on all your devices (${MAX_CLOUD_CAREERS} Careers and ${MAX_CLOUD_CAREERS} Sandbox airlines)`}>
             Cloud
           </span>}
           {!phone && profiles && (
@@ -286,9 +283,9 @@ export function AccountView(props: { user: CloudUser; busy: boolean; act: Act; o
                     {phone && (l || r.waiting) && 'Cloud'}
                     {l ? (
                       <Toggle
-                        label={inCloud && isOnlineCareer(l) ? `${r.name} is a Career, so it stays in the cloud` : `Keep ${r.name} in the cloud`}
+                        label={inCloud ? `${r.name} is kept in your account` : `Keep ${r.name} in the cloud`}
                         on={inCloud}
-                        disabled={props.busy || st === 'unknown' || (!inCloud && picks >= MAX_CLOUD_CAREERS) || (inCloud && isOnlineCareer(l))}
+                        disabled={props.busy || st === 'unknown' || inCloud}
                         onChange={(want) => void run(want ? `Putting ${r.name} in the cloud…` : `Taking ${r.name} out of the cloud…`, () => setCloudPick(l, want))}
                       />
                     ) : r.waiting ? (
