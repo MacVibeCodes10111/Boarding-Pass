@@ -7,7 +7,7 @@ import { formatMoneyM } from '../game/time';
 import type { Airport, GameMode, SaveGameState } from '../game/types';
 import { AircraftHero, LiveryContext } from './AircraftPhoto';
 import { CHANGED_EVENT, SaveLocation, ago } from './CloudPanel';
-import { cloudOverview, cloudPicks, importDaysLeft, isOnlineCareer, mightBeSignedIn, onCloudChange, prepareOnlineCareer, type CloudOverview } from '../game/cloud';
+import { cloudOverview, cloudPicks, importDaysLeft, isOnlineCareer, mightBeSignedIn, prepareOnlineCareer, type CloudOverview } from '../game/cloud';
 import { Icon } from '../ui/icons';
 import { Button, C, DISPLAY, Field, IconButton, SearchInput, faceHi, inputStyle, glass } from '../ui/kit';
 import { useLayout } from '../ui/layout';
@@ -151,10 +151,14 @@ export function HomeScreen(props: HomeScreenProps) {
   // Signed in or out (here or in the Account window), and the server's list of careers
   useEffect(() => {
     let alive = true;
-    const load = async () => {
+    let last = 0;
+    const load = async (force = false) => {
       const on = mightBeSignedIn();
       setSignedIn(on);
       if (!on) return setOverview(null);
+      // Never more than one call every 20 seconds, whatever asks
+      if (!force && Date.now() - last < 20_000) return;
+      last = Date.now();
       try {
         const o = await cloudOverview();
         if (alive) setOverview(o);
@@ -162,17 +166,16 @@ export function HomeScreen(props: HomeScreenProps) {
         /* offline: the careers on this device still show */
       }
     };
-    void load();
+    void load(true);
     const again = () => void load();
-    const stopCloud = onCloudChange(again);
+    // Not onCloudChange: loading the list announces a change itself, so that would loop
     window.addEventListener(CHANGED_EVENT, again);
     window.addEventListener('focus', again);
     const t = window.setInterval(() => {
-      if (mightBeSignedIn() !== signedInRef.current) void load();
+      if (mightBeSignedIn() !== signedInRef.current) void load(true);
     }, 1500);
     return () => {
       alive = false;
-      stopCloud();
       window.removeEventListener(CHANGED_EVENT, again);
       window.removeEventListener('focus', again);
       window.clearInterval(t);
