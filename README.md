@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 3.3.0. Free to play. See [Credits and licences](#credits-and-licences).
+Version 3.4.0. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -20,6 +20,13 @@ Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 3.4.0, wingtips:
+
+- **Pick your wingtips:** 737s, the A320 family, 757s, 767s, the 727 freighter and the E175 can wear the wingtips they came with in real life: blended winglets, split scimitars, sharklets, wingtip fences, or none. Choose them free when you buy, or fit others later for a price, one aircraft or a whole fleet at once.
+- **Wingtips save fuel** the way the real ones do, more on longer flights, and each kind has its own picture.
+- **Liveries for each wingtip:** the livery editor shows every kind of wingtips with one click, and you can paint each kind its own way.
+- **Big money reads properly:** prices and totals show in billions and trillions ($3.83B) instead of thousands of millions.
 
 Version 3.3.0, easier schedules:
 
