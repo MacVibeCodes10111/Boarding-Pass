@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 3.4.0. Free to play. See [Credits and licences](#credits-and-licences).
+Version 3.5.0. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -20,6 +20,12 @@ Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 3.5.0, windows and quicker picking:
+
+- **Windows show through the paint,** like real glass: titles, stripes and dark liveries no longer cover the cabin windows, on every type and both decks.
+- **Pick lots of aircraft quickly** in Fleet: shift-click picks every aircraft between two, and on a phone tick the first and last, then **In between**.
+- **Select…** picks all, half or a quarter of a type, base, route or airport, or your idle, busy or leased aircraft. Sort the list first to choose which half.
 
 Version 3.4.0, wingtips:
 
