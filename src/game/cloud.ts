@@ -802,7 +802,7 @@ export function pickRefusal(a: PickAnswer, name: string, _kind: SaveKind = 'care
     : a === 'removed'
       ? `${name} was removed from cloud saves by a moderator, so it can’t be played.`
       : a === 'used'
-        ? `${name} was in your account before and was taken out, so it can’t come back.`
+        ? `${name} has been online before, in this account or another, and each airline can come online only once.`
         : a === 'closed'
           ? `Airlines from before online play could be brought online until the deadline, and it has passed.`
           : '';
@@ -1103,12 +1103,16 @@ async function doSync(openSaveId: string | null): Promise<SyncReport> {
     const picked = new Set(picks ?? []);
     const seen = readSynced();
     for (const s of readSaveSlots()) {
-      // Every airline goes online by itself while there's room (the slots are newest first)
-      if (picked.has(s.saveId) || seen[s.saveId] === -1) continue;
-      if (picked.size >= (ov?.maxPicks ?? MAX_CLOUD_CAREERS)) continue;
+      // Every airline goes online by itself while there's room (the slots are newest first).
+      // While importing is open, an airline from before still tries when the account is full:
+      // the server lets it in and raises the limit to fit it.
+      if (picked.has(s.saveId) || seen[s.saveId] === -1 || fullTried.has(s.saveId)) continue;
+      const full = picked.size >= (ov?.maxPicks ?? MAX_CLOUD_CAREERS);
+      if (full && !isOldImport(s.saveId, ov)) continue;
       const a = await pickOnServer(c, s, true).catch(() => null);
       if (a === 'ok') picked.add(s.saveId);
       else if (a === 'used' || a === 'closed' || a === 'removed') markRefused(s.saveId);
+      else if (a === 'full') fullTried.add(s.saveId); // not again this session
     }
     setPicks([...picked]);
 
@@ -1156,8 +1160,21 @@ export type CloudOverview = {
   maxPicks: number;
   /** Until when careers made before online careers can be brought online (ISO); null while there's no deadline. */
   importUntil?: string | null;
+  /** Airlines started before this (ISO) count as from before online play. */
+  oldBefore?: string | null;
   devices: { name: string; lastSeen: string; thisDevice: boolean }[];
 };
+
+/** Airlines the server said had no room for this session, so the sync doesn't keep asking. */
+const fullTried = new Set<string>();
+
+/** An airline from before online play, while importing is open: it can come in past the limit. */
+export function isOldImport(saveId: string, ov: Pick<CloudOverview, 'importUntil' | 'oldBefore'> | null | undefined, now = Date.now()): boolean {
+  const born = Number(/^SAVE-(\d{13})$/.exec(saveId)?.[1]);
+  const cut = Date.parse(ov?.oldBefore ?? '');
+  const days = importDaysLeft(ov?.importUntil, now);
+  return Number.isFinite(born) && Number.isFinite(cut) && born < cut && days !== 0;
+}
 
 /** Whole days left to import (rounded up); null with no deadline, 0 once it has passed. */
 export function importDaysLeft(until: string | null | undefined, now = Date.now()): number | null {

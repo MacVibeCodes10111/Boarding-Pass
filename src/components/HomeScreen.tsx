@@ -368,7 +368,8 @@ export function HomeScreen(props: HomeScreenProps) {
       <h2 style={{ margin: '0 0 4px', fontSize: 24, fontWeight: 700 }}>Import</h2>
       <p style={{ margin: '0 0 16px', fontSize: 13.5, color: C.muted, lineHeight: 1.5 }}>
         {daysLeft === null ? 'Bring airlines from before online play into your account.' : `${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left to bring airlines from before online play into your account.`} Each airline can come
-        online once. After that, airlines still only on a device can’t be played.
+        online once, into one account. Airlines from before still come in when your account is full: its limit grows to fit them. After the deadline,
+        airlines still only on a device can’t be played.
       </p>
       {deviceOnly.length === 0 && <div style={{ fontSize: 13.5, color: C.muted, marginBottom: 14 }}>No airlines on this device are waiting to come online.</div>}
       <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>

@@ -369,6 +369,7 @@ const ACTIONS: Record<string, string> = {
   grant: 'Gave or took cash',
   grant_cancel: 'Cancelled a cash grant',
   save_delete: 'Removed a cloud save',
+  set_limit: 'Changed an account’s airline limit',
   report_resolved: 'Resolved report',
   report_dismissed: 'Dismissed report',
   logo_approve: 'Approved logo',
@@ -1261,8 +1262,12 @@ function SaveCard({ s, channel, onDone }: { s: J; channel: Channel; onDone: () =
   const [give, setGive] = useState(true);
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
-  const [sure, setSure] = useState<null | 'grant' | 'delete' | { cancel: J }>(null);
+  const [sure, setSure] = useState<null | 'grant' | 'delete' | 'limit' | { cancel: J }>(null);
   const [delReason, setDelReason] = useState('');
+  const [limit, setLimit] = useState(String(s.limit ?? 4));
+  const [limitReason, setLimitReason] = useState('');
+  const lim = /^\d{1,2}$/.test(limit.trim()) ? Number(limit.trim()) : NaN;
+  const limOk = Number.isInteger(lim) && lim >= 4 && lim <= 20 && lim !== Number(s.limit ?? 4);
   const [cancelReason, setCancelReason] = useState('');
   const n = parseDollars(amount);
   const who = (
@@ -1343,9 +1348,25 @@ function SaveCard({ s, channel, onDone }: { s: J; channel: Channel; onDone: () =
         </div>
       )}
 
+      <div style={{ display: 'grid', gap: 8, marginTop: 12, padding: 10, borderRadius: 10, background: C.raised, border: `1px solid ${C.border}` }}>
+        <b style={{ fontSize: 13 }}>Airline limit</b>
+        <Muted>
+          @{s.username} has {s.airlines ?? '?'} of {s.limit ?? 4} airlines (Career and Sandbox together). The normal limit is 4; set it from 4 to 20.
+        </Muted>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input value={limit} onChange={(e) => setLimit(e.target.value.replace(/[^0-9]/g, '').slice(0, 2))} inputMode="numeric" aria-label="Airline limit" style={{ ...inputStyle, width: 80 }} />
+          <input value={limitReason} onChange={(e) => setLimitReason(e.target.value.slice(0, 300))} placeholder="Why (kept in the admin log)" aria-label="Reason for the limit" style={{ ...inputStyle, flex: '1 1 200px' }} />
+          <Button size="sm" variant="primary" disabled={!limOk || limitReason.trim().length < 3} onClick={() => setSure('limit')}>
+            Set limit…
+          </Button>
+        </div>
+        {limit && !Number.isNaN(lim) && (lim < 4 || lim > 20) && <Muted>The limit can be 4 to 20.</Muted>}
+        {limOk && lim < Number(s.airlines ?? 0) && <Muted>That’s fewer than they have. They keep the ones they have, but can’t add another until they’re under {lim}.</Muted>}
+      </div>
+
       <div style={{ display: 'grid', gap: 8, marginTop: 12, padding: 10, borderRadius: 10, background: C.raised, border: `1px solid ${C.red}` }}>
         <b style={{ fontSize: 13 }}>Remove from the cloud</b>
-        <Muted>The cloud copy is deleted and this career can’t sync again. It stays on the player’s own devices, and they’re told.</Muted>
+        <Muted>The airline is deleted from their account and can’t be played or come back. They’re told.</Muted>
         <textarea value={delReason} onChange={(e) => setDelReason(e.target.value.slice(0, 300))} rows={2} placeholder="Why (kept in the admin log; the player isn’t shown it)" aria-label="Reason for removing" style={{ ...inputStyle, fontFamily: 'inherit', resize: 'vertical' }} />
         <div>
           <Button size="sm" variant="danger" disabled={delReason.trim().length < 3} onClick={() => setSure('delete')}>
@@ -1378,6 +1399,24 @@ function SaveCard({ s, channel, onDone }: { s: J; channel: Channel; onDone: () =
           }}
         />
       )}
+      {sure === 'limit' && limOk && (
+        <Sure
+          title={`Set @${s.username}'s limit to ${lim}?`}
+          lines={[
+            <>
+              Their account can keep <b>{lim}</b> airlines, Career and Sandbox together (now {s.limit ?? 4}).
+            </>,
+            'It applies straight away, to every airline in their account. You can change it back here.',
+          ]}
+          yes={`Yes, set it to ${lim}`}
+          run={() => act('admin_set_limit', { p_channel: channel, p_user: s.user, p_limit: lim, p_reason: limitReason.trim() })}
+          onClose={() => setSure(null)}
+          onDone={() => {
+            setLimitReason('');
+            onDone();
+          }}
+        />
+      )}
       {sure === 'delete' && (
         <Sure
           title="Remove this career from the cloud?"
@@ -1385,7 +1424,7 @@ function SaveCard({ s, channel, onDone }: { s: J; channel: Channel; onDone: () =
             <>
               Deletes the cloud copy of {who}, and it can’t be put back in the cloud.
             </>,
-            'The player keeps it on the devices that already have it. Any cash grants still waiting are cancelled.',
+            'They can’t play it any more, on any device. Any cash grants still waiting are cancelled.',
             <b style={{ color: C.red }}>This can’t be undone.</b>,
           ]}
           yes="Yes, remove it"
