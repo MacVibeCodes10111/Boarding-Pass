@@ -22,6 +22,7 @@ import { DEFAULT_LEASE_WEEKS, LEASE_OPTIONS, leaseCreditUse, leaseQuote } from '
 import { Icon } from '../ui/icons';
 import { Button, C, Chip, DISPLAY, Field, IconButton, SearchInput, Segmented, SidePanel, Stepper, inputStyle, well } from '../ui/kit';
 import { CabinEditor } from './CabinEditor';
+import { WINGTIP_LABEL, WINGTIP_TYPES, wingtipLongSaving, wingtipOptions, type WingtipId } from '../game/wingtips';
 
 type Role = 'pax' | 'cargo';
 
@@ -38,7 +39,7 @@ export interface BuyAircraftPanelProps {
   onTailInputChange: (t: string) => void;
   /** Buy or lease `count` of the type; leases run `leaseWeeks`. */
   /** `split`: how many of them fly for a subsidiary (the rest for the airline itself). */
-  onAcquire: (mode: 'owned' | 'leased', leaseWeeks: number, count: number, split?: { kind: BrandKind; n: number }) => void;
+  onAcquire: (mode: 'owned' | 'leased', leaseWeeks: number, count: number, split?: { kind: BrandKind; n: number }, wingtip?: WingtipId) => void;
   /** The airline's name, and its regional and cargo brands: new aircraft can join one. */
   airlineName: string;
   subsidiaries: Subsidiary[];
@@ -242,6 +243,12 @@ function ModelView(props: BuyAircraftPanelProps & { onBack: () => void }) {
   useEffect(() => {
     top.current?.scrollIntoView({ block: 'start' });
   }, [m.id]);
+  // Types built with more than one kind of wingtip: chosen free when buying
+  const tips = wingtipOptions(m.id);
+  const usualTip = WINGTIP_TYPES[m.id]?.usual;
+  const [tipRaw, setTip] = useState<WingtipId | undefined>(undefined);
+  const tip = tipRaw && tips.includes(tipRaw) ? tipRaw : usualTip;
+  const tipSaving = tip ? Math.round(wingtipLongSaving(m.id, tip) * 1000) / 10 : 0;
 
   const seats = cabinSeatTotal(cabinDraft);
   const cabinText = [
@@ -284,9 +291,25 @@ function ModelView(props: BuyAircraftPanelProps & { onBack: () => void }) {
       </div>
 
       {hasAircraftPhoto(m) ? (
-        <AircraftPhoto model={m} width="100%" paintWidth={560} plain={!showLivery} brand={brand} style={{ maxWidth: 560, margin: '0 auto' }} />
+        <AircraftPhoto model={m} width="100%" paintWidth={560} plain={!showLivery} brand={brand} wingtip={tip} style={{ maxWidth: 560, margin: '0 auto' }} />
       ) : (
         <img src={props.iconForModel(m)} alt="" style={{ width: 44, height: 44 }} />
+      )}
+
+      {tips.length > 1 && tip && (
+        <div style={{ display: 'grid', gap: 6, padding: '0 8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, color: C.textSoft }}>Wingtips</span>
+            <Segmented<WingtipId> size="sm" value={tip} onChange={setTip} options={tips.map((w) => ({ value: w, label: WINGTIP_LABEL[w] }))} />
+          </div>
+          <div style={{ fontSize: 12, color: C.muted }}>
+            {tip === usualTip
+              ? 'What most of them fly with. Free to choose now; fitting others later costs money.'
+              : tipSaving > 0
+                ? `About ${tipSaving}% less fuel on long flights than usual, less on short ones. Free to choose now.`
+                : `About ${-tipSaving}% more fuel on long flights than usual. Free to choose now.`}
+          </div>
+        </div>
       )}
 
       {/* Key numbers */}
@@ -355,13 +378,13 @@ function ModelView(props: BuyAircraftPanelProps & { onBack: () => void }) {
         )}
         <div className="bp-stack" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div style={{ display: 'grid', gap: 6, alignContent: 'start' }}>
-            <Button variant="primary" size="lg" block disabled={!usage.isValid || !canBuy} onClick={() => props.onAcquire('owned', weeks, count, split)}>
+            <Button variant="primary" size="lg" block disabled={!usage.isValid || !canBuy} onClick={() => props.onAcquire('owned', weeks, count, split, tip)}>
               Buy{count > 1 ? ` ${count}` : ''} · {formatMoneyM(m.base_price_usd * count)}
             </Button>
             {!canBuy && <div style={{ fontSize: 12, color: C.red }}>Not enough cash</div>}
           </div>
           <div style={{ display: 'grid', gap: 6, alignContent: 'start' }}>
-            <Button size="lg" block disabled={!usage.isValid || !canLease} onClick={() => props.onAcquire('leased', weeks, count, split)}>
+            <Button size="lg" block disabled={!usage.isValid || !canLease} onClick={() => props.onAcquire('leased', weeks, count, split, tip)}>
               Lease{count > 1 ? ` ${count}` : ''} · {formatMoneyM(quote.dailyRate * 7, 2)} a week{count > 1 ? ' each' : ''}
             </Button>
             <label className="num" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: cashForLease ? C.muted : C.red }}>

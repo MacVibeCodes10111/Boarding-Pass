@@ -155,7 +155,7 @@ function PickerCard({ row, selected, originIata, iconForModel, onPick }: { row: 
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {hasAircraftPhoto(ac.model) ? (
-          <AircraftPhoto model={ac.model} width={72} tailNumber={ac.tailNumber} liveryIndex={ac.livery} brand={ac.brand} />
+          <AircraftPhoto model={ac.model} width={72} tailNumber={ac.tailNumber} liveryIndex={ac.livery} brand={ac.brand} wingtip={ac.wingtip} />
         ) : iconForModel ? (
           <img src={iconForModel(ac.model)} alt="" style={{ width: 22, height: 22, flex: 'none' }} />
         ) : (

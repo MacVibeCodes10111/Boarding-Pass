@@ -51,9 +51,17 @@ class L:
         return n
 
 
+# Extra options for a template wherever it's loaded (file -> dict(show, hide)): set by
+# wingtips.py so the types made from parts of templates can wear other wingtips too
+OPTIONS = {}
+
+
 def load(fname, show=(), hide=(), keep_gear=False):
     """Layers of a template. show/hide: regexes matched against the layer path
     ('GROUP/SUB/LAYER'); a group's choice applies to everything inside it."""
+    extra = OPTIONS.get(fname)
+    if extra:
+        show, hide = list(show) + list(extra.get('show', ())), list(hide) + list(extra.get('hide', ()))
     psd = PSDImage.open(SRC + fname)
     W, H = psd.width + 2 * PAD, psd.height + 2 * PAD
     CANVAS[0], CANVAS[1] = W, H

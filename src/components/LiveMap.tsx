@@ -1,4 +1,5 @@
 import { typeMaxCruiseFt } from '../game/altitude';
+import { artIdFor } from '../game/wingtips';
 import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { FlightEconomics } from '../game/economics';
 import { interpolateCoordPair, offsetLatLonNm } from '../game/geo';
@@ -431,7 +432,8 @@ const escapeHtml = (v: unknown) =>
 
 /** The player's aircraft in the airline's livery, on a sky of its own (picked by its tail number). */
 function planeHeroHtml(raw: Record<string, any>): string {
-  const id = String(raw.modelId ?? '');
+  // the picture: its wingtip version when it wears other wingtips
+  const id = String(raw.artId || raw.modelId || '');
   const size = AIRCRAFT_PHOTOS[id];
   if (!size) return '';
   const sky = cloudSkyCss(String(raw.tailNumber ?? id)).replace(/"/g, "'");
@@ -1536,7 +1538,7 @@ export function LiveMap(props: LiveMapProps) {
                 tag.textContent = `★ ${specialLabel(lvy)}`;
                 tag.style.display = 'block';
               }
-              if (heroImg && lvy) paintedPhoto(String(plane?.modelId), lvy, paint.name, String(plane?.tailNumber ?? '')).then((u) => u && (heroImg.src = u));
+              if (heroImg && lvy) paintedPhoto(String(plane?.artId || plane?.modelId), lvy, paint.name, String(plane?.tailNumber ?? '')).then((u) => u && (heroImg.src = u));
             }
             attachOrbit(map, popup);
             popup.on('close', () => {
@@ -2175,6 +2177,7 @@ export function LiveMap(props: LiveMapProps) {
           tailNumber: fl.tailNumber,
           modelName: ac?.model.name ?? 'Commercial Jet',
           modelId: ac?.model.id ?? '',
+          artId: ac ? artIdFor(ac.model.id, ac.wingtip) : '',
           acTier: acTier.tier,
           isCargo: ac?.model.is_cargo ? 1 : 0,
           originIata: fl.origin.iata_code,

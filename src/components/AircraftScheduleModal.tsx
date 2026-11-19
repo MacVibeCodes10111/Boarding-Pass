@@ -11,6 +11,7 @@ import { AircraftHero } from './AircraftPhoto';
 import { aircraftGateCode } from '../game/gateCode';
 import { RouteDemandBar } from './RouteDemandBar';
 import { ScheduleTimeline } from './ScheduleTimeline';
+import { WINGTIP_LABEL, wingtipFitUsd, wingtipLongSaving, wingtipOf, wingtipOptions, type WingtipId } from '../game/wingtips';
 import { legLocalText } from '../game/localTime';
 
 export interface AircraftScheduleModalProps {
@@ -38,6 +39,8 @@ export interface AircraftScheduleModalProps {
   brandName?: string;
   /** The airline's logo, shown beside the registration. */
   airlineLogo?: string;
+  /** Fits other wingtips (paid for), on types that come with more than one kind. */
+  onFitWingtips?: (tailNumber: string, wingtip: WingtipId) => void;
 }
 
 export function AircraftScheduleModal({
@@ -57,7 +60,11 @@ export function AircraftScheduleModal({
   onEditLivery,
   brandName,
   airlineLogo,
+  onFitWingtips,
 }: AircraftScheduleModalProps) {
+  const tips = wingtipOptions(aircraft.model.id);
+  const tipNow = wingtipOf(aircraft);
+  const [tipAsk, setTipAsk] = useState<WingtipId | null>(null);
   const acFlights = useMemo(() => flightsForTail(allSchedule, aircraft.tailNumber), [allSchedule, aircraft.tailNumber]);
   const [selectedFlId, setSelectedFlId] = useState<string | null>(initialSelectedFlightId ?? null);
   const selectedFlight = acFlights.find((f) => f.id === selectedFlId) ?? acFlights[0] ?? null;
@@ -187,7 +194,7 @@ export function AircraftScheduleModal({
 
   return (
     <ModalShell onClose={onClose}>
-      <AircraftHero model={aircraft.model} tailNumber={aircraft.tailNumber} liveryIndex={aircraft.livery} brand={aircraft.brand} style={{ marginBottom: 14 }} />
+      <AircraftHero model={aircraft.model} tailNumber={aircraft.tailNumber} liveryIndex={aircraft.livery} brand={aircraft.brand} wingtip={aircraft.wingtip} style={{ marginBottom: 14 }} />
       {/* Header: what it is, then the few things you can do with it */}
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: '10px 12px' }}>
         {airlineLogo && <img src={airlineLogo} alt="" style={{ width: 40, height: 40, borderRadius: 10, background: '#fff', padding: 3, objectFit: 'contain', boxSizing: 'border-box' }} />}
@@ -216,6 +223,21 @@ export function AircraftScheduleModal({
               ))}
             </select>
           )}
+          {onFitWingtips && tips.length > 1 && tipNow && (
+            <select
+              aria-label="Wingtips"
+              title="Its wingtips: other kinds can be fitted, for a price"
+              value={tipAsk ?? tipNow}
+              onChange={(e) => setTipAsk(e.target.value === tipNow ? null : (e.target.value as WingtipId))}
+              style={{ ...inputStyle, width: 'auto', padding: '6px 8px', fontSize: 13 }}
+            >
+              {tips.map((w) => (
+                <option key={w} value={w}>
+                  {WINGTIP_LABEL[w]}
+                </option>
+              ))}
+            </select>
+          )}
           {onEditLivery && (
             <Button variant="ghost" onClick={() => onEditLivery(Math.min(aircraft.livery ?? 0, Math.max(0, liveryNames.length - 1)))}>
               Livery
@@ -236,6 +258,18 @@ export function AircraftScheduleModal({
           </Button>
         </div>
       </div>
+
+      {tipAsk && onFitWingtips && (
+        <WingtipAsk
+          aircraft={aircraft}
+          to={tipAsk}
+          onFit={() => {
+            onFitWingtips(aircraft.tailNumber, tipAsk);
+            setTipAsk(null);
+          }}
+          onKeep={() => setTipAsk(null)}
+        />
+      )}
 
       {/* Leg selector */}
       <div style={{ marginBottom: 14 }}>
@@ -402,6 +436,33 @@ export function AircraftScheduleModal({
         </>
       )}
     </ModalShell>
+  );
+}
+
+/** "Fit sharklets for $1.9M?": the price and what they do to fuel, before paying. */
+function WingtipAsk({ aircraft, to, onFit, onKeep }: { aircraft: PlayerAircraft; to: WingtipId; onFit: () => void; onKeep: () => void }) {
+  const price = wingtipFitUsd(aircraft, to);
+  const from = wingtipOf(aircraft);
+  // fuel against what it has now, on a long flight
+  const now = from ? wingtipLongSaving(aircraft.model.id, from) : 0;
+  const pct = Math.round((wingtipLongSaving(aircraft.model.id, to) - now) * 1000) / 10;
+  return (
+    <div role="group" aria-label="Fit other wingtips" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 12px', marginBottom: 14, borderRadius: 12, background: `${C.brand}14`, border: `1px solid ${C.brand}55` }}>
+      <div style={{ flex: '1 1 240px', fontSize: 13, lineHeight: 1.45 }}>
+        <b>
+          Fit {WINGTIP_LABEL[to].toLowerCase()} for {formatMoneyM(price, 2)}?
+        </b>
+        <div style={{ color: C.muted }}>
+          {pct > 0 ? `Saves about ${pct}% fuel on long flights, less on short ones.` : pct < 0 ? `Burns about ${-pct}% more fuel on long flights, less on short ones.` : 'The same fuel.'}
+        </div>
+      </div>
+      <Button size="sm" variant="primary" onClick={onFit}>
+        Fit them
+      </Button>
+      <Button size="sm" variant="ghost" onClick={onKeep}>
+        Keep
+      </Button>
+    </div>
   );
 }
 

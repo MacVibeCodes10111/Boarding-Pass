@@ -7,6 +7,7 @@
 //   frames (see livery.ts), so a design made on one type fits the others:
 //   the type picker at the top switches the preview.
 // ============================================================================
+import { WINGTIP_LABEL, WINGTIP_TYPES, artIdFor, wingtipOptions, type WingtipId } from '../../game/wingtips';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AIRCRAFT_PHOTOS } from '../../game/aircraftPhotos';
 import { cloudSkyCss } from '../../game/cloudSky';
@@ -466,15 +467,20 @@ export function LiveryEditor(props: {
   modelRef.current = model;
   /** The selected layer as it is on the aircraft on screen. */
   const selLayer = selShared ? (layerFor(selShared, model) ?? selShared) : null;
+  // Types with more than one kind of wingtip: the livery can be seen on each (changes still go on the type)
+  const tipChoices = wingtipOptions(model);
+  const [tipView, setTipView] = useState<WingtipId | null>(null);
+  const tipShown = tipView && tipChoices.includes(tipView) ? tipView : (WINGTIP_TYPES[model]?.usual ?? null);
+  const art = artIdFor(model, tipShown);
   const [geo, setGeo] = useState<Geometry | null>(null);
   useEffect(() => {
     let ok = true;
     setGeo(null);
-    aircraftGeometry(model).then((g) => ok && setGeo(g));
+    aircraftGeometry(art).then((g) => ok && setGeo(g));
     return () => {
       ok = false;
     };
-  }, [model]);
+  }, [art]);
 
   // the picture, redrawn when anything changes
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -1554,6 +1560,18 @@ export function LiveryEditor(props: {
                 ))}
               </select>
             </label>
+            {tipChoices.length > 1 && tipShown && (
+              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: C.muted, padding: '2px 4px' }}>
+                Wingtips (each kind shows the same livery)
+                <select aria-label="Wingtips to preview" value={tipShown} onChange={(e) => setTipView(e.target.value as WingtipId)} style={{ background: C.bg, color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 8px', fontSize: 13 }}>
+                  {tipChoices.map((w) => (
+                    <option key={w} value={w}>
+                      {WINGTIP_LABEL[w]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <div style={{ height: 1, background: C.line, margin: '4px 0' }} />
             <div style={{ fontSize: 12, color: C.muted, padding: '0 4px' }}>Your changes go on</div>
             <button type="button" role="menuitemradio" aria-checked={scope === 'all'} style={menuItem(scope === 'all')} onClick={() => { setScope('all'); setMenu(null); }}>

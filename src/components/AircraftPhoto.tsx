@@ -4,6 +4,7 @@
 //   (made from the Airline Empires community templates; see Credits). Types
 //   without a picture, and custom aircraft, show their map icon instead.
 // ============================================================================
+import { artIdFor, type WingtipId } from '../game/wingtips';
 import { createContext, useContext, useEffect, useState, useSyncExternalStore } from 'react';
 import { AIRCRAFT_PHOTOS, aircraftArt } from '../game/aircraftPhotos';
 import { cloudSkyCss } from '../game/cloudSky';
@@ -108,12 +109,15 @@ export function AircraftPhoto(props: {
   plain?: boolean;
   /** How wide it's shown, in CSS pixels, when `width` is a percentage (paints a smaller picture). */
   paintWidth?: number;
+  /** Its wingtips, when the type comes with others (game/wingtips.ts). */
+  wingtip?: WingtipId;
 }) {
-  const size = AIRCRAFT_PHOTOS[props.model.id];
+  const art = artIdFor(props.model.id, props.wingtip);
+  const size = AIRCRAFT_PHOTOS[art];
   const [failed, setFailed] = useState(false);
   const ctx = useContext(LiveryContext);
   const { livery, name: paintName, special } = paintOf(ctx, { livery: props.liveryIndex, brand: props.brand });
-  const src = usePaintedPhoto(props.model.id, props.plain ? undefined : livery, paintName, props.tailNumber || SAMPLE_REG, typeof props.width === 'number' ? props.width : props.paintWidth ?? 1280);
+  const src = usePaintedPhoto(art, props.plain ? undefined : livery, paintName, props.tailNumber || SAMPLE_REG, typeof props.width === 'number' ? props.width : props.paintWidth ?? 1280);
   if (!size || failed) {
     if (!props.fallback) return null;
     const s = props.iconSize ?? 24;
@@ -164,7 +168,7 @@ export function SpecialTag({ name }: { name?: string }) {
 }
 
 /** One of the player's aircraft in the airline's livery, on a sky of its own (picked by its tail number). */
-export function AircraftHero(props: { model: AircraftModel; tailNumber: string; liveryIndex?: number; brand?: BrandKind; photoWidth?: string; style?: React.CSSProperties }) {
+export function AircraftHero(props: { model: AircraftModel; tailNumber: string; liveryIndex?: number; brand?: BrandKind; wingtip?: WingtipId; photoWidth?: string; style?: React.CSSProperties }) {
   if (!AIRCRAFT_PHOTOS[props.model.id]) return null;
   return (
     <div
@@ -187,6 +191,7 @@ export function AircraftHero(props: { model: AircraftModel; tailNumber: string; 
         tailNumber={props.tailNumber}
         liveryIndex={props.liveryIndex}
         brand={props.brand}
+        wingtip={props.wingtip}
         width={props.photoWidth ?? 'min(86%, 720px)'}
         style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', maxWidth: '92%', maxHeight: '86%', filter: 'drop-shadow(0 10px 12px rgba(10,20,40,.28))' }}
       />

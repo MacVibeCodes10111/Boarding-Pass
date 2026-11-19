@@ -1,6 +1,7 @@
 // ============================================================================
 // CAREER SAVES (localStorage slots + .json export/import)
 // ============================================================================
+import { normaliseWingtip } from './wingtips';
 import { AIRCRAFT_BY_ID } from './aircraftCatalog';
 import { MAX_FARE_MULT, getDefaultCabinForModel, getRouteDemandAndFares } from './economics';
 import { normaliseMarket } from './marketSave';
@@ -79,7 +80,7 @@ export function hydrateSave(raw: SaveGameState, airportByIata: Map<string, Airpo
     (raw.fleet ?? []).map((ac) => {
       const model = AIRCRAFT_BY_ID.get(ac.model?.id) ?? ac.model;
       const { trade, ...rest } = ac;
-      return { ...rest, model, cabin: cabinFrom(ac.cabin, model), ...(typeof trade === 'string' && TRADE_ID.test(trade) ? { trade } : {}) };
+      return normaliseWingtip({ ...rest, model, cabin: cabinFrom(ac.cabin, model), ...(typeof trade === 'string' && TRADE_ID.test(trade) ? { trade } : {}) });
     }),
     subsidiaries
   );

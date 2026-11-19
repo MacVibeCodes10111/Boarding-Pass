@@ -19,6 +19,7 @@ import { LayersMenu, NavRail, PANEL_GROUPS, TopBar, groupOfPanel, type MapStyleC
 import { AppearanceHost } from './components/Appearance';
 import { FleetPanel } from './components/FleetPanel';
 import { HomeScreen } from './components/HomeScreen';
+import { WINGTIP_LABEL, wingtipFitUsd, wingtipOf, wingtipOptions, withWingtip, type WingtipId } from './game/wingtips';
 import { LiveMap, type AiDensity, type AiDetail, type AiDrawStats, type AirportDetail, type FlownAirports } from './components/LiveMap';
 import { SchedulePanel } from './components/SchedulePanel';
 import { StatsPanel } from './components/StatsPanel';
@@ -1094,6 +1095,22 @@ export default function App() {
   };
 
   /** Put aircraft in the main livery (0) or the special one (1, on up to 50 aircraft). */
+  /** Fits other wingtips to the aircraft given that can wear them, paying for each. */
+  const fitWingtips = (tails: string[], w: WingtipId) => {
+    const set = new Set(tails);
+    const fit = fleet.filter((a) => set.has(a.tailNumber) && wingtipOptions(a.model.id).includes(w) && wingtipOf(a) !== w);
+    if (!fit.length) return;
+    const cost = fit.reduce((s, a) => s + wingtipFitUsd(a, w), 0);
+    if (!canAfford(cost)) {
+      showAlert('Not enough cash', `Fitting ${WINGTIP_LABEL[w].toLowerCase()} costs ${formatMoneyM(cost, 2)}.`, `You have ${formatMoneyM(cash, 2)}.`);
+      return;
+    }
+    spend(cost);
+    const done = new Set(fit.map((a) => a.tailNumber));
+    setFleet((prev) => prev.map((a) => (done.has(a.tailNumber) ? withWingtip(a, w) : a)));
+    flashToast(`${WINGTIP_LABEL[w]} fitted to ${fit.length === 1 ? fit[0].tailNumber : `${fit.length} aircraft`} for ${formatMoneyM(cost, 2)}`);
+  };
+
   const setAircraftLivery = (tails: string[], index: number) => {
     const set = new Set(tails);
     if (index === 1) {
@@ -1508,7 +1525,7 @@ export default function App() {
     registrationsForNewAircraft(taken.map((a) => a.tailNumber), airlineIata, hubCountry, n, typedFirst);
 
   /** Buy or lease `count` aircraft of the selected type (leases for `leaseWeeks`). */
-  const acquireAircraft = (mode: 'owned' | 'leased', leaseWeeks = DEFAULT_LEASE_WEEKS, count = 1, split?: { kind: BrandKind; n: number }) => {
+  const acquireAircraft = (mode: 'owned' | 'leased', leaseWeeks = DEFAULT_LEASE_WEEKS, count = 1, split?: { kind: BrandKind; n: number }, wingtip?: WingtipId) => {
     const check = calculateCabinUsage(selectedModel, cabinDraft);
     if (!check.isValid) {
       showAlert(
@@ -1546,7 +1563,9 @@ export default function App() {
     // the last `split.n` of them fly for the subsidiary, the first ones for the airline itself
     const sub = split && brandAllows(split.kind, selectedModel) ? subsidiaries.find((b) => b.kind === split.kind) : undefined;
     const toSub = sub ? Math.max(0, Math.min(split!.n, regs.length)) : 0;
-    const added: PlayerAircraft[] = regs.map((tail, i) => ({
+    // with the wingtips chosen (none chosen: the type's usual ones)
+    const tipped = (ac: PlayerAircraft) => (wingtip ? withWingtip(ac, wingtip) : ac);
+    const added: PlayerAircraft[] = regs.map((tail, i) => tipped({
       tailNumber: tail,
       model: selectedModel,
       acquisition: mode,
@@ -2630,6 +2649,7 @@ export default function App() {
           onOpenSchedule={(tail) => openSchedule(tail, null)}
           onScheduleTogether={startBulkSchedule}
           onClearSchedules={clearSchedules}
+          onFitWingtips={fitWingtips}
           onSellOrReturn={sellOrReturnAircraft}
           onBuyOut={buyOutLease}
           onRename={renameAircraft}
@@ -2800,6 +2820,7 @@ export default function App() {
               setLiveryOpen(true);
             }}
             brandName={subsidiaries.find((b) => b.kind === modalAircraft.brand)?.name}
+            onFitWingtips={(tail, w) => fitWingtips([tail], w)}
           />
         )}
 

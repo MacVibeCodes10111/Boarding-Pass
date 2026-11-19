@@ -3,6 +3,7 @@
 // ============================================================================
 import { cargoDemand, FREIGHT_DAY, freightRate, freightShare, holdTons, PARCEL_DAY, parcelHourAppeal, parcelRate } from './cargo';
 import { flightCosts, type FlightCosts } from './costs';
+import { wingtipFuelFactor } from './wingtips';
 import { crewShareOf } from './subsidiaries';
 import { gameMarket, marketDemand, PLAYER_MARKET_SHARE, routeKind, type RouteKind } from './demand';
 import { daysOrAll } from './time';
@@ -535,7 +536,7 @@ export function simulateFlightEconomics(
   const cargoRevenue = parcelRevenue + freightRevenue;
   const revenue = paxRevenue + cargoRevenue;
 
-  const costs = flightCosts(aircraft.model, { blockMin: blockTimeMin, seatsFitted: mySeatTotal, cargoTons: soldParcelTons + soldFreightTons, ticketRevenue: paxRevenue, crewShare: crewShareOf(aircraft) });
+  const costs = flightCosts(aircraft.model, { blockMin: blockTimeMin, seatsFitted: mySeatTotal, cargoTons: soldParcelTons + soldFreightTons, ticketRevenue: paxRevenue, crewShare: crewShareOf(aircraft), fuelShare: wingtipFuelFactor(aircraft, distanceNm) });
   const cost = costs.total;
 
   return {

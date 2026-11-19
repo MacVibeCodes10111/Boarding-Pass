@@ -324,7 +324,7 @@ function Sell(props: { market: MarketHooks; busy: boolean; act: Act; onListed: (
         {ac ? (
           <>
             <span style={{ flex: '0 0 46%', maxWidth: 260 }}>
-              <AircraftPhoto model={ac.model} width="100%" paintWidth={260} tailNumber={ac.tailNumber} liveryIndex={ac.livery} noTag />
+              <AircraftPhoto model={ac.model} width="100%" paintWidth={260} tailNumber={ac.tailNumber} liveryIndex={ac.livery} wingtip={ac.wingtip} noTag />
             </span>
             <span style={{ flex: 1, minWidth: 0 }}>
               <span style={{ display: 'block', fontWeight: 700, fontSize: 15 }}>{ac.tailNumber}</span>
@@ -360,7 +360,7 @@ function Sell(props: { market: MarketHooks; busy: boolean; act: Act; onListed: (
                     style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 8, borderRadius: 12, textAlign: 'left', font: 'inherit', color: C.text, cursor: 'pointer', background: C.raised, border: `1px solid ${a.tailNumber === tail ? C.brand : C.lineSoft}` }}
                   >
                     <span style={{ flex: '0 0 50%', maxWidth: 240 }}>
-                      <AircraftPhoto model={a.model} width="100%" paintWidth={240} tailNumber={a.tailNumber} liveryIndex={a.livery} noTag />
+                      <AircraftPhoto model={a.model} width="100%" paintWidth={240} tailNumber={a.tailNumber} liveryIndex={a.livery} wingtip={a.wingtip} noTag />
                     </span>
                     <span style={{ flex: 1, minWidth: 0 }}>
                       <span style={{ display: 'block', fontWeight: 700, fontSize: 14.5 }}>{a.tailNumber}</span>

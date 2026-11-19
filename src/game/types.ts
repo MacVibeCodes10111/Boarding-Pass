@@ -142,7 +142,12 @@ export interface PlayerAircraft {
   trade?: string;
   /** The subsidiary it flies for (2026-11; none = the airline itself). It then wears that brand's livery. */
   brand?: BrandKind;
+  /** Its wingtips, when they aren't the type's usual ones (2026-11; see game/wingtips.ts). */
+  wingtip?: WingtipId;
 }
+
+/** Wingtips an aircraft can wear (game/wingtips.ts says which types offer which). */
+export type WingtipId = 'none' | 'winglet' | 'scimitar' | 'fence' | 'sharklet' | 'standard' | 'enhanced';
 
 /** A subsidiary's kind: a regional brand (like American Eagle) or a cargo brand (like Delta Cargo). */
 export type BrandKind = 'regional' | 'cargo';

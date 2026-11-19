@@ -1,4 +1,6 @@
 import { AircraftPhoto, SpecialTag } from './AircraftPhoto';
+import { WINGTIP_LABEL, wingtipFitUsd, wingtipOf, wingtipOptions, type WingtipId } from '../game/wingtips';
+import { formatMoneyM } from '../game/time';
 import { useMemo, useState } from 'react';
 import type { CabinPreset } from '../game/economics';
 import { leaseStatus, weeksText } from '../game/leasing';
@@ -25,6 +27,8 @@ export interface FleetPanelProps {
   onScheduleTogether: (tails: string[]) => void;
   /** Deletes every flight of the aircraft given. */
   onClearSchedules?: (tails: string[]) => void;
+  /** Fits other wingtips to the aircraft given that can wear them (paid for). */
+  onFitWingtips?: (tails: string[], wingtip: WingtipId) => void;
   onSellOrReturn: (tails: string[]) => void;
   onBuyOut: (tail: string) => void;
   onRename: (tail: string, reg: string) => string | null;
@@ -134,6 +138,11 @@ export function FleetPanel(props: FleetPanelProps) {
   const picked = fleet.filter((a) => selected.has(a.tailNumber));
   const pickedTails = picked.map((a) => a.tailNumber);
   const pickedFlights = schedule.filter((f) => selected.has(f.tailNumber)).length;
+  // Wingtips any of the selected aircraft could be fitted with, and what it'd cost
+  const [tipPick, setTipPick] = useState<WingtipId | ''>('');
+  const tipChoices = [...new Set(picked.flatMap((a) => (wingtipOptions(a.model.id).length > 1 ? wingtipOptions(a.model.id) : [])))];
+  const tipFit = tipPick ? picked.filter((a) => wingtipOptions(a.model.id).includes(tipPick) && wingtipOf(a) !== tipPick) : [];
+  const tipCost = tipPick ? tipFit.reduce((s, a) => s + wingtipFitUsd(a, tipPick), 0) : 0;
   const dialogAc = dialog ? fleet.filter((a) => dialog.tails.includes(a.tailNumber)) : [];
   const allShownPicked = shownTails.length > 0 && shownTails.every((t) => selected.has(t));
 
@@ -257,6 +266,41 @@ export function FleetPanel(props: FleetPanelProps) {
                   ))}
                 </select>
               )}
+              {props.onFitWingtips && tipChoices.length > 0 && !tipPick && (
+                <select
+                  aria-label="Wingtips"
+                  title="Fit other wingtips to the selected aircraft that can wear them"
+                  value=""
+                  onChange={(e) => setTipPick(e.target.value as WingtipId)}
+                  style={{ ...inputStyle, width: 'auto', padding: '4px 8px', fontSize: 13 }}
+                >
+                  <option value="">Wingtips…</option>
+                  {tipChoices.map((w) => (
+                    <option key={w} value={w}>
+                      {WINGTIP_LABEL[w]}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {tipPick && (
+                <>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={tipFit.length === 0}
+                    title={tipFit.length ? undefined : 'They have these already, or their type can’t wear them'}
+                    onClick={() => {
+                      props.onFitWingtips?.(tipFit.map((a) => a.tailNumber), tipPick);
+                      setTipPick('');
+                    }}
+                  >
+                    {tipFit.length ? `Fit ${WINGTIP_LABEL[tipPick].toLowerCase()} to ${tipFit.length} · ${formatMoneyM(tipCost, 1)}` : `No aircraft to fit`}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setTipPick('')}>
+                    Keep
+                  </Button>
+                </>
+              )}
               <Button size="sm" variant="danger" onClick={() => props.onSellOrReturn(pickedTails)}>
                 Sell
               </Button>
@@ -298,7 +342,7 @@ export function FleetPanel(props: FleetPanelProps) {
                       onChange={() => toggle(ac.tailNumber)}
                       style={{ flex: 'none' }}
                     />
-                    <AircraftPhoto model={ac.model} width={phone ? 58 : 72} fallback={iconForModel(ac.model)} tailNumber={ac.tailNumber} liveryIndex={ac.livery} brand={ac.brand} style={{ flex: 'none' }} />
+                    <AircraftPhoto model={ac.model} width={phone ? 58 : 72} fallback={iconForModel(ac.model)} tailNumber={ac.tailNumber} liveryIndex={ac.livery} brand={ac.brand} wingtip={ac.wingtip} style={{ flex: 'none' }} />
                     <div style={{ flex: '1 1 0', minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', minWidth: 0, fontSize: 14, fontWeight: 650, whiteSpace: 'nowrap' }}>
                         <span style={{ flex: 'none' }}>{ac.tailNumber}</span>

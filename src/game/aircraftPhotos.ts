@@ -176,4 +176,32 @@ export const AIRCRAFT_PHOTOS: Record<string, [number, number]> = {
  * browsers fetch the new files after an update instead of keeping old ones
  * (an old mask without the wing half hid the wings and winglets in the editor).
  */
+/** The wingtip versions (game/wingtips.ts): <model>~<wingtip>. */
+Object.assign(AIRCRAFT_PHOTOS, {
+  'a319-100~sharklet': [1280, 424],
+  'a320-200~sharklet': [1280, 382],
+  'a320-p2f~sharklet': [1280, 382],
+  'a321-100~sharklet': [1280, 324],
+  'a321-200~sharklet': [1280, 324],
+  'a321-p2f~sharklet': [1280, 325],
+  'b727-200f~winglet': [1280, 266],
+  'b737-300sf~winglet': [1280, 403],
+  'b737-300~winglet': [1280, 403],
+  'b737-500~winglet': [1280, 436],
+  'b737-700~none': [1280, 442],
+  'b737-700~scimitar': [1280, 442],
+  'b737-800bcf~none': [1280, 387],
+  'b737-800bcf~winglet': [1280, 387],
+  'b737-800~none': [1280, 379],
+  'b737-800~scimitar': [1280, 379],
+  'b737-900er~scimitar': [1280, 355],
+  'b737-900~none': [1280, 355],
+  'b757-200~none': [1280, 341],
+  'b757-300~none': [1280, 295],
+  'b767-300er~none': [1280, 347],
+  'b767-300f~winglet': [1280, 347],
+  'e175lr~enhanced': [1280, 380],
+  'e175~enhanced': [1280, 380],
+} as Record<string, [number, number]>);
+
 export const aircraftArt = (id: string, kind: 'picture' | 'mask' = 'picture') => `/aircraft/${id}.${kind === 'mask' ? 'mask.png' : 'webp'}?v=${APP_VERSION}`;
