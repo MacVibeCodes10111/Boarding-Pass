@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 3.5.0. Free to play. See [Credits and licences](#credits-and-licences).
+Version 3.5.1. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -20,6 +20,12 @@ Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 3.5.1, smooth zooming:
+
+- **Zoom smoothly from the whole world down to the gates,** like FR24: aircraft keep the same size in the air and on the ground, so parked aircraft no longer turn tiny next to the ones flying in.
+- **No more popping in:** parked aircraft, callsigns and the far-out dots fade in as you zoom instead of appearing all at once.
+- **Airport size fixes from players' reports:** Split takes up to the 767 (Code D), San Carlos is a small-plane field (Code B), and Portsmouth Pease takes the biggest aircraft (Code F).
 
 Version 3.5.0, windows and quicker picking:
 
