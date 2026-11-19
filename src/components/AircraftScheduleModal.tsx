@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { MAX_FARE_MULT, getRouteDemandAndFares, simulateFlightEconomics } from '../game/economics';
 import { COST_LINES, ageFactor } from '../game/costs';
-import { calcAircraftScheduleUsage, findScheduleConflict, flightsForTail, isFlightNumberTaken } from '../game/scheduling';
+import { calcAircraftScheduleUsage, findScheduleConflict, flightsForTail, isFlightNumberTaken, movePairedLeg } from '../game/scheduling';
 import { airportRestrictionFor, calcAircraftResaleUsd, getAircraftTierInfo } from '../game/tiers';
 import { MIN_PER_DAY, daysOrAll, formatClockShort, formatDurationHm, formatMoneyM, snapToFiveMin } from '../game/time';
 import type { Fares, PlayerAircraft, ScheduledFlight, WeekDays } from '../game/types';
-import { Button, C, DayPicker, ModalShell, NumberField, SectionTitle, face, inputStyle, labelStyle, well } from '../ui/kit';
+import { Button, C, ConfirmButton, DayPicker, ModalShell, NumberField, SectionTitle, Segmented, face, inputStyle, labelStyle, well } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { AircraftHero } from './AircraftPhoto';
 import { aircraftGateCode } from '../game/gateCode';
@@ -21,8 +21,11 @@ export interface AircraftScheduleModalProps {
   initialSelectedFlightId?: string | null;
   radarIconUrl: string;
   onClose: () => void;
-  onUpdateFlight: (updated: ScheduledFlight) => void;
+  /** Saves one flight, or both flights of a round trip moved together. */
+  onUpdateFlight: (updated: ScheduledFlight | ScheduledFlight[]) => void;
   onDeleteFlight: (flightId: string) => void;
+  /** Deletes several flights at once (selected ones, or the whole schedule). */
+  onDeleteFlights?: (flightIds: string[]) => void;
   onSellOrReturnAircraft: (tailNumber: string) => void;
   /** Sell it to another airline on the marketplace (only when that's possible). */
   onMarketSell?: (tailNumber: string) => void;
@@ -46,6 +49,7 @@ export function AircraftScheduleModal({
   onClose,
   onUpdateFlight,
   onDeleteFlight,
+  onDeleteFlights,
   onSellOrReturnAircraft,
   onMarketSell,
   liveryNames = [],
@@ -62,6 +66,11 @@ export function AircraftScheduleModal({
   const [editDepMin, setEditDepMin] = useState(480);
   const [editDays, setEditDays] = useState<WeekDays>(daysOrAll(null));
   const [editFares, setEditFares] = useState<Fares>({ econ: 120, prem: 220, bus: 480, first: 950, cargoPerTon: 400, parcelPerTon: 850 });
+  // A round trip moves as one by default; "This flight only" moves just the one picked
+  const [together, setTogether] = useState(true);
+  // Picking flights to delete several at once
+  const [picking, setPicking] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
 
   // Load the editor fields only when a *different* flight is selected,
   // so unrelated schedule changes don't wipe what you're typing.
@@ -86,6 +95,16 @@ export function AircraftScheduleModal({
     return acFlights.find((f) => f.pairId === selectedFlight.pairId && f.id !== selectedFlight.id) ?? null;
   }, [acFlights, selectedFlight]);
 
+  /**
+   * Where the other flight of the round trip goes when both move together: the
+   * same shift in time (moving to the day before or after when it crosses
+   * midnight), and the same days as this one, a day on if it was a day on.
+   */
+  const pairEdit = useMemo(() => {
+    if (!selectedFlight || !pairedFlight || !together) return null;
+    return movePairedLeg(selectedFlight, pairedFlight, editDepMin, editDays);
+  }, [selectedFlight, pairedFlight, together, editDepMin, editDays]);
+
   const conflictMsg = useMemo(() => {
     if (!selectedFlight) return null;
     if (!editDays.some(Boolean)) return 'Select at least 1 operating day.';
@@ -103,23 +122,64 @@ export function AircraftScheduleModal({
           originIata: selectedFlight.origin.iata_code,
           destIata: selectedFlight.destination.iata_code,
         },
+        ...(pairedFlight && pairEdit
+          ? [
+              {
+                flightNumber: pairedFlight.flightNumber,
+                depTimeMin: pairEdit.depTimeMin,
+                blockTimeMin: pairedFlight.blockTimeMin,
+                daysOfWeek: pairEdit.daysOfWeek,
+                originIata: pairedFlight.origin.iata_code,
+                destIata: pairedFlight.destination.iata_code,
+              },
+            ]
+          : []),
       ],
       aircraft.model.turnaround_min,
-      [selectedFlight.id]
+      pairedFlight && pairEdit ? [selectedFlight.id, pairedFlight.id] : [selectedFlight.id]
     );
-  }, [selectedFlight, acFlights, allSchedule, editFlightNum, editDepMin, editDays, aircraft]);
+  }, [selectedFlight, pairedFlight, pairEdit, acFlights, allSchedule, editFlightNum, editDepMin, editDays, aircraft]);
 
   const handleSave = () => {
     if (!selectedFlight || conflictMsg) return;
-    onUpdateFlight({
+    const main: ScheduledFlight = {
       ...selectedFlight,
       flightNumber: editFlightNum.trim().toUpperCase(),
       depTimeMin: editDepMin,
       arrTimeMin: (editDepMin + selectedFlight.blockTimeMin) % MIN_PER_DAY,
       daysOfWeek: [...editDays],
       fares: { ...editFares },
-    });
+    };
+    if (pairedFlight && pairEdit)
+      onUpdateFlight([
+        main,
+        {
+          ...pairedFlight,
+          depTimeMin: pairEdit.depTimeMin,
+          arrTimeMin: (pairEdit.depTimeMin + pairedFlight.blockTimeMin) % MIN_PER_DAY,
+          daysOfWeek: [...pairEdit.daysOfWeek],
+        },
+      ]);
+    else onUpdateFlight(main);
   };
+
+  // Picking a flight for deleting picks its round-trip partner too
+  const togglePick = (fl: ScheduledFlight) =>
+    setPicked((prev) => {
+      const ids = acFlights.filter((f) => f.id === fl.id || (fl.pairId && f.pairId === fl.pairId)).map((f) => f.id);
+      const n = new Set(prev);
+      const on = !n.has(fl.id);
+      for (const id of ids) on ? n.add(id) : n.delete(id);
+      return n;
+    });
+  const deleteMany = (ids: string[]) => {
+    if (!ids.length) return;
+    if (onDeleteFlights) onDeleteFlights(ids);
+    else ids.forEach(onDeleteFlight);
+    setPicked(new Set());
+    setPicking(false);
+  };
+  const pickedNow = acFlights.filter((f) => picked.has(f.id));
 
   const tierInfo = getAircraftTierInfo(aircraft.model.tier);
   const usage = calcAircraftScheduleUsage(aircraft, acFlights);
@@ -179,7 +239,38 @@ export function AircraftScheduleModal({
 
       {/* Leg selector */}
       <div style={{ marginBottom: 14 }}>
-        <SectionTitle>Flights</SectionTitle>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <SectionTitle>Flights</SectionTitle>
+          </div>
+          {acFlights.length > 1 && (
+            <Button
+              size="sm"
+              variant={picking ? 'primary' : 'ghost'}
+              onClick={() => {
+                setPicking(!picking);
+                setPicked(new Set());
+              }}
+            >
+              {picking ? 'Done' : 'Select'}
+            </Button>
+          )}
+          {picking && pickedNow.length > 0 && (
+            <ConfirmButton
+              label={`Delete ${pickedNow.length}`}
+              ask={`Delete ${pickedNow.length} flight${pickedNow.length === 1 ? '' : 's'}`}
+              onConfirm={() => deleteMany(pickedNow.map((f) => f.id))}
+            />
+          )}
+          {acFlights.length > 0 && !picking && (
+            <ConfirmButton
+              label="Clear schedule"
+              ask={`Delete all ${acFlights.length} flight${acFlights.length === 1 ? '' : 's'}`}
+              title={`Deletes every flight ${aircraft.tailNumber} flies`}
+              onConfirm={() => deleteMany(acFlights.map((f) => f.id))}
+            />
+          )}
+        </div>
         {acFlights.length === 0 ? (
           <div style={{ padding: 18, background: well(), borderRadius: 14, color: C.muted, fontSize: 13, textAlign: 'center' }}>
             No flights yet. Tap an airport on the map.
@@ -187,7 +278,7 @@ export function AircraftScheduleModal({
         ) : (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {acFlights.map((fl) => {
-              const isSel = selectedFlight?.id === fl.id;
+              const isSel = picking ? picked.has(fl.id) : selectedFlight?.id === fl.id;
               const isPartner = pairedFlight?.id === fl.id;
               // scheduled before the ICAO size codes (v2.65): it keeps flying, but can't be added again
               const tooBig = airportRestrictionFor(aircraft.model, fl.origin) ?? airportRestrictionFor(aircraft.model, fl.destination);
@@ -195,20 +286,21 @@ export function AircraftScheduleModal({
                 <button
                   key={fl.id}
                   type="button"
-                  onClick={() => setSelectedFlId(fl.id)}
+                  onClick={() => (picking ? togglePick(fl) : setSelectedFlId(fl.id))}
                   aria-pressed={isSel}
                   title={legLocalText(fl.depTimeMin, fl.arrTimeMin, fl.origin.iata_code, fl.destination.iata_code) || undefined}
                   style={{
                     padding: '8px 12px',
                     borderRadius: 10,
                     border: `1px solid ${isSel ? C.brand : 'transparent'}`,
-                    background: isSel ? `${C.brand}1c` : isPartner ? face() : well(),
+                    background: isSel ? `${C.brand}1c` : isPartner && !picking ? face() : well(),
                     color: C.text,
                     cursor: 'pointer',
                     textAlign: 'left',
                   }}
                 >
                   <div style={{ fontWeight: 600, fontSize: 13 }}>
+                    {picking && <input type="checkbox" readOnly checked={isSel} tabIndex={-1} aria-hidden style={{ margin: '0 6px 0 0', verticalAlign: '-2px', pointerEvents: 'none' }} />}
                     <span style={{ color: isSel ? C.brand : C.textDim }}>{fl.flightNumber}</span> {fl.origin.iata_code} → {fl.destination.iata_code}
                   </div>
                   {tooBig && (
@@ -226,7 +318,7 @@ export function AircraftScheduleModal({
         )}
       </div>
 
-      {selectedFlight && (
+      {selectedFlight && !picking && (
         <>
           <RouteDemandBar
             origin={selectedFlight.origin}
@@ -239,8 +331,37 @@ export function AircraftScheduleModal({
           />
           <FlightMoney flight={selectedFlight} aircraft={aircraft} allSchedule={allSchedule} fleet={fleet} playerHubs={playerHubs} />
 
+          {pairedFlight && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+              <span style={{ fontSize: 13, color: C.textDim }}>
+                Round trip with <b style={{ color: C.text }}>{pairedFlight.flightNumber}</b>
+              </span>
+              <Segmented<'both' | 'one'>
+                size="sm"
+                value={together ? 'both' : 'one'}
+                onChange={(v) => setTogether(v === 'both')}
+                options={[
+                  { value: 'both', label: 'Move both', title: `${pairedFlight.flightNumber} moves with ${selectedFlight.flightNumber}, keeping the time between them` },
+                  { value: 'one', label: `Only ${selectedFlight.flightNumber}`, title: `Move ${selectedFlight.flightNumber} on its own` },
+                ]}
+              />
+            </div>
+          )}
+
           <ScheduleTimeline
             aircraft={aircraft}
+            pairLeg={
+              pairedFlight && pairEdit
+                ? {
+                    id: pairedFlight.id,
+                    depMin: pairEdit.depTimeMin,
+                    blockMin: pairedFlight.blockTimeMin,
+                    days: pairEdit.daysOfWeek,
+                    from: pairedFlight.origin.iata_code,
+                    to: pairedFlight.destination.iata_code,
+                  }
+                : null
+            }
             existingFlights={acFlights}
             selectedDepMin={editDepMin}
             onChangeDepMin={setEditDepMin}
@@ -271,11 +392,11 @@ export function AircraftScheduleModal({
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
-            <Button variant="ghost" onClick={() => onDeleteFlight(selectedFlight.id)}>
+            <Button variant="ghost" onClick={() => onDeleteFlight(selectedFlight.id)} title={pairedFlight ? 'Deletes the round trip' : undefined}>
               {pairedFlight ? `Delete ${selectedFlight.flightNumber} and ${pairedFlight.flightNumber}` : `Delete ${selectedFlight.flightNumber}`}
             </Button>
             <Button variant="primary" size="lg" disabled={Boolean(conflictMsg)} onClick={handleSave}>
-              Save
+              {pairEdit ? `Save both` : 'Save'}
             </Button>
           </div>
         </>

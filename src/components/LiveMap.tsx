@@ -415,6 +415,11 @@ export interface LiveMapProps {
   /** When false, clicks on aircraft don't open their info (an airport is being planned). */
   planeInfoEnabled: boolean;
   onBlockedPlaneClick?: () => void;
+  /** How many airports show as you zoom out, and whether the ones you fly to always show. */
+  airportDetail?: AirportDetail;
+  flownAirports?: FlownAirports;
+  /** Opens one of the player's own aircraft's schedule (the Schedule button in its info box). */
+  onOpenSchedule?: (tail: string, flightId: string | null) => void;
   customIcons: Record<string, PlaneIcon>;
   navaidsVersion: number;
   /** Receives the MapLibre map once ready (for flyTo from other screens). */
@@ -463,21 +468,46 @@ function buildPlanePopupHtml(raw: Record<string, any>): string {
   </div>`;
 }
 
+/** How many airports the map shows as you zoom out (Layers → Airports). */
+export type AirportDetail = 'fewest' | 'fewer' | 'normal' | 'more' | 'most';
+/** Airports your flights use: always on the map, a step sooner than the rest, or like the rest. */
+export type FlownAirports = 'always' | 'sooner' | 'same';
+const DETAIL_SHIFT: Record<AirportDetail, number> = { fewest: 1.6, fewer: 0.8, normal: 0, more: -0.8, most: -1.6 };
+/** Airports your flights use show up this much further out with "sooner". */
+const FLOWN_HEAD_START = 1.4;
+
+/** Which airports show at a zoom: the biggest and busiest first, more as you zoom in. */
+function lodRows(shift: number): unknown[] {
+  const at = (z: number) => ['>=', ['zoom'], z + shift];
+  return [
+    // the very biggest show at every zoom, unless the map is set to fewer
+    shift > 0 ? ['all', at(1.5 + shift * 0.25), ['==', ['get', 'ac_tier'], 5], ['>=', ['get', 'demand_weight'], 230]] : ['all', ['==', ['get', 'ac_tier'], 5], ['>=', ['get', 'demand_weight'], 230]],
+    ['all', at(3.3), ['==', ['get', 'ac_tier'], 5], ['>=', ['get', 'demand_weight'], 165]],
+    ['all', at(4.1), ['>=', ['get', 'ac_tier'], 4], ['>=', ['get', 'demand_weight'], 110]],
+    ['all', at(4.8), ['>=', ['get', 'ac_tier'], 4]],
+    ['all', at(4.8), ['==', ['get', 'ac_tier'], 3], ['>=', ['get', 'demand_weight'], 30]],
+    ['all', at(5.5), ['>=', ['get', 'ac_tier'], 2]],
+    at(6.3),
+  ];
+}
+
 /** Zoom-dependent level-of-detail filter so the map isn't flooded with airports. */
-const AIRPORT_LOD_FILTER = [
-  'any',
-  ['==', ['get', 'is_hub'], 1],
-  ['==', ['get', 'is_linked'], 1],
-  ['==', ['get', 'is_selected'], 1],
-  ['==', ['get', 'is_active'], 1],
-  ['all', ['==', ['get', 'ac_tier'], 5], ['>=', ['get', 'demand_weight'], 230]],
-  ['all', ['>=', ['zoom'], 3.3], ['==', ['get', 'ac_tier'], 5], ['>=', ['get', 'demand_weight'], 165]],
-  ['all', ['>=', ['zoom'], 4.1], ['>=', ['get', 'ac_tier'], 4], ['>=', ['get', 'demand_weight'], 110]],
-  ['all', ['>=', ['zoom'], 4.8], ['>=', ['get', 'ac_tier'], 4]],
-  ['all', ['>=', ['zoom'], 4.8], ['==', ['get', 'ac_tier'], 3], ['>=', ['get', 'demand_weight'], 30]],
-  ['all', ['>=', ['zoom'], 5.5], ['>=', ['get', 'ac_tier'], 2]],
-  ['>=', ['zoom'], 6.3],
-];
+export function airportLodFilter(detail: AirportDetail = 'normal', flown: FlownAirports = 'sooner'): unknown[] {
+  const shift = DETAIL_SHIFT[detail] ?? 0;
+  return [
+    'any',
+    ['==', ['get', 'is_hub'], 1],
+    ['==', ['get', 'is_linked'], 1],
+    ['==', ['get', 'is_selected'], 1],
+    ...(flown === 'always'
+      ? [['==', ['get', 'is_active'], 1]]
+      : flown === 'sooner'
+        ? [['all', ['==', ['get', 'is_active'], 1], ['any', ...lodRows(shift - FLOWN_HEAD_START)]]]
+        : []),
+    ...lodRows(shift),
+  ];
+}
+const AIRPORT_LOD_FILTER = airportLodFilter();
 
 /** 3D buildings from the basemap's own vector tiles (free), when zoomed into cities. */
 function addBuildings(map: any, styleId: MapStyleId) {
@@ -1442,9 +1472,19 @@ export function LiveMap(props: LiveMapProps) {
                   plane?.friendOf
                     ? `<button type="button" class="bp-pop-info" aria-label="About this airline" title="About this airline" style="flex:none;display:flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid ${C.line};border-radius:8px;background:${C.raised};color:${C.text};font:inherit;font-weight:650;cursor:pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r=".6" fill="currentColor"/></svg>Airline</button>`
                     : ''
+                }${
+                  plane && !plane.friendOf && plane.tailNumber && latest.current.onOpenSchedule && latest.current.fleet.some((a) => a.tailNumber === plane.tailNumber)
+                    ? `<button type="button" class="bp-pop-sched" aria-label="Open this aircraft's schedule" title="Open this aircraft's schedule" style="flex:none;display:flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid ${C.line};border-radius:8px;background:${C.raised};color:${C.text};font:inherit;font-weight:650;cursor:pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>Schedule</button>`
+                    : ''
                 }</div>`
               )
               .addTo(map);
+            const schedBtn = popup.getElement?.()?.querySelector('.bp-pop-sched') as HTMLElement | null;
+            for (const ev of ['mousedown', 'touchstart', 'pointerdown']) schedBtn?.addEventListener(ev, (e) => e.stopPropagation());
+            schedBtn?.addEventListener('click', (e) => {
+              e.stopPropagation();
+              if (plane?.tailNumber) latest.current.onOpenSchedule?.(String(plane.tailNumber), plane.flightId ? String(plane.flightId) : null);
+            });
             const followBtn = popup.getElement?.()?.querySelector('.bp-pop-follow') as HTMLElement | null;
             // Doesn't start dragging the info box round its aircraft
             for (const ev of ['mousedown', 'touchstart', 'pointerdown']) followBtn?.addEventListener(ev, (e) => e.stopPropagation());
@@ -1952,6 +1992,20 @@ export function LiveMap(props: LiveMapProps) {
     });
     map.getSource('airports')?.setData({ type: 'FeatureCollection', features });
   }, [airports, hubs, inspectedAirport, schedule, showWeatherRadar, mapDay, showWeatherRadar ? wxHour : -1, mapReady, styleRev, mapRef]);
+
+  // Airport detail (Layers → Airports)
+  const { airportDetail = 'normal', flownAirports = 'sooner' } = props;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!mapReady || !map) return;
+    const f = airportLodFilter(airportDetail, flownAirports);
+    try {
+      for (const id of ['airports-hit', 'airports-circle', 'airports-labels']) if (map.getLayer(id)) map.setFilter(id, f);
+      if (map.getLayer('airports-wx')) map.setFilter('airports-wx', ['all', ['has', 'wx'], f]);
+    } catch {
+      /* the style is reloading; it's set again once it's back */
+    }
+  }, [airportDetail, flownAirports, mapReady, styleRev, mapRef]);
 
   // While an airport is open for route planning the aircraft step aside, so the
   // airports and routes are easy to see and click

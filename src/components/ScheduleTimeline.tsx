@@ -30,6 +30,11 @@ export interface ScheduleTimelineProps {
   onDetailedView?: () => void;
   /** Just the week chart: the time controls and flight times live elsewhere (route planner, v2.58). */
   chartOnly?: boolean;
+  /**
+   * The other flight of a round trip, moving along with this one: drawn in the
+   * lighter colour of a return and left out of the grey flights.
+   */
+  pairLeg?: { id: string; depMin: number; blockMin: number; days: WeekDays; from: string; to: string } | null;
 }
 
 interface Piece {
@@ -93,6 +98,7 @@ export function ScheduleTimeline({
   othersCompact = false,
   onDetailedView,
   chartOnly = false,
+  pairLeg = null,
 }: ScheduleTimelineProps) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   // Track width, so labels only go on blocks wide enough to read
@@ -122,21 +128,22 @@ export function ScheduleTimeline({
   const candidatePieces = useMemo(() => {
     if (candidateBlockMin <= 0) return [];
     const out = legPieces(selectedDepMin, candidateBlockMin, turnMin, candidateDays).map((p) => ({ ...p, isReturn: false }));
+    if (pairLeg) return [...out, ...legPieces(pairLeg.depMin, pairLeg.blockMin, turnMin, pairLeg.days).map((p) => ({ ...p, isReturn: true }))];
     if (!autoRoundtrip) return out;
     const retDays = shiftDays(candidateDays, Math.floor(retAbs / MIN_PER_DAY));
     const ret = legPieces(retDepMin, candidateBlockMin, turnMin, retDays).map((p) => ({ ...p, isReturn: true }));
     return [...out, ...ret];
-  }, [selectedDepMin, candidateBlockMin, turnMin, candidateDays, autoRoundtrip, retAbs, retDepMin]);
+  }, [selectedDepMin, candidateBlockMin, turnMin, candidateDays, autoRoundtrip, retAbs, retDepMin, pairLeg]);
 
   const occupiedPieces = useMemo(
     () =>
       existingFlights
-        .filter((fl) => fl.id !== editingFlightId)
+        .filter((fl) => fl.id !== editingFlightId && fl.id !== pairLeg?.id)
         .flatMap((fl) => {
           const isOpenChainEnd = !circuit.isClosedLoop && circuit.lastFlight?.id === fl.id;
           return legPieces(fl.depTimeMin, fl.blockTimeMin, turnMin, daysOrAll(fl.daysOfWeek)).map((p) => ({ ...p, flight: fl, isOpenChainEnd }));
         }),
-    [existingFlights, editingFlightId, turnMin, circuit]
+    [existingFlights, editingFlightId, turnMin, circuit, pairLeg]
   );
 
   // --- Dragging (pointer capture keeps the drag alive outside the track) ------
@@ -151,7 +158,7 @@ export function ScheduleTimeline({
   const outLabel = `${originIata}→${destIata}`;
   // Local times at each end (v2.55)
   const depLocal = airportLocalClock(selectedDepMin, originIata);
-  const retLabel = `${destIata}→${originIata}`;
+  const retLabel = pairLeg ? `${pairLeg.from}→${pairLeg.to}` : `${destIata}→${originIata}`;
 
   return (
     <div
@@ -236,7 +243,11 @@ export function ScheduleTimeline({
             <span style={{ fontSize: 10.5, color: C.faint, textTransform: 'uppercase', letterSpacing: '.05em' }}>Local</span>
             {[
               { label: outLabel, dep: selectedDepMin, arr: outArrMin, from: originIata, to: destIata },
-              ...(autoRoundtrip ? [{ label: retLabel, dep: retDepMin, arr: retArrMin, from: destIata, to: originIata }] : []),
+              ...(pairLeg
+                ? [{ label: retLabel, dep: pairLeg.depMin, arr: (pairLeg.depMin + pairLeg.blockMin) % MIN_PER_DAY, from: pairLeg.from, to: pairLeg.to }]
+                : autoRoundtrip
+                  ? [{ label: retLabel, dep: retDepMin, arr: retArrMin, from: destIata, to: originIata }]
+                  : []),
             ].map((l) => {
               const d = airportLocalClock(l.dep, l.from);
               const a = airportLocalClock(l.arr, l.to);
@@ -350,7 +361,7 @@ export function ScheduleTimeline({
                 .filter((p) => p.dayIdx === dIdx)
                 .map((p, i) => {
                   const label = p.isReturn ? retLabel : outLabel;
-                  const base = hasConflict ? C.red : C.brand;
+                  const base = hasConflict ? C.red : p.isReturn && pairLeg ? PAIR_FLIGHT : C.brand;
                   return p.kind === 'flight' ? (
                     <div
                       key={`cand-${i}`}
@@ -384,6 +395,9 @@ export function ScheduleTimeline({
     </div>
   );
 }
+
+/** The other flight of a round trip moving with the one being edited. */
+const PAIR_FLIGHT = '#8fb4e8';
 
 /** The aircraft's other flights: one grey, lighter for the turnaround after each. */
 const OTHER_FLIGHT = 'rgba(148, 163, 184, 0.55)';

@@ -725,3 +725,27 @@ export function planPingPong(req: LoopRequest): PlanResult {
     message: `Added ${flights.length} ${flights.length === 1 ? 'flight' : 'flights'} taking ${ac.tailNumber} back to ${circuit.startIata}.`,
   };
 }
+
+/**
+ * Where the other flight of a round trip goes when both move together: the same
+ * shift in time as the one being edited (onto the day before or after when it
+ * crosses midnight), flying on the same days as it, a day on if it was a day on.
+ */
+export function movePairedLeg(
+  edited: Pick<ScheduledFlight, 'depTimeMin' | 'daysOfWeek'>,
+  pair: Pick<ScheduledFlight, 'depTimeMin' | 'daysOfWeek'>,
+  newDepMin: number,
+  newDays: WeekDays
+): { depTimeMin: number; daysOfWeek: WeekDays } {
+  const delta = newDepMin - snapToFiveMin(edited.depTimeMin);
+  const abs = pair.depTimeMin + delta;
+  const dayShift = Math.floor(abs / MIN_PER_DAY);
+  const dep = ((abs % MIN_PER_DAY) + MIN_PER_DAY) % MIN_PER_DAY;
+  const editedDays = daysOrAll(edited.daysOfWeek);
+  const pairDays = daysOrAll(pair.daysOfWeek);
+  const same = (a: readonly boolean[], b: readonly boolean[]) => a.every((v, i) => v === b[i]);
+  // how the two lined up before: the same days, or a day apart
+  const k0 = [0, 1, -1].find((k) => same(shiftDays(editedDays, k), pairDays));
+  const days = k0 === undefined ? shiftDays(pairDays, dayShift) : shiftDays(newDays, k0 + dayShift);
+  return { depTimeMin: dep, daysOfWeek: days as WeekDays };
+}

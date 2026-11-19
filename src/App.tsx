@@ -19,7 +19,7 @@ import { LayersMenu, NavRail, PANEL_GROUPS, TopBar, groupOfPanel, type MapStyleC
 import { AppearanceHost } from './components/Appearance';
 import { FleetPanel } from './components/FleetPanel';
 import { HomeScreen } from './components/HomeScreen';
-import { LiveMap, type AiDensity, type AiDetail, type AiDrawStats } from './components/LiveMap';
+import { LiveMap, type AiDensity, type AiDetail, type AiDrawStats, type AirportDetail, type FlownAirports } from './components/LiveMap';
 import { SchedulePanel } from './components/SchedulePanel';
 import { StatsPanel } from './components/StatsPanel';
 import { LiveryEditor } from './components/LiveryEditor';
@@ -174,6 +174,8 @@ function readPrefs(): {
   showWeather?: boolean;
   showApproaches?: boolean;
   showNavaids?: boolean;
+  airportDetail?: AirportDetail;
+  flownAirports?: FlownAirports;
 } {
   try {
     return JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}');
@@ -455,6 +457,23 @@ export default function App() {
   const setFriendsCap = (c: FriendsCap) => {
     setFriendsCapState(c);
     writePrefs({ friendsCap: c });
+  };
+  // Airports on the map (Layers → Airports)
+  const [airportDetail, setAirportDetailState] = useState<AirportDetail>(() => {
+    const d = readPrefs().airportDetail;
+    return d && ['fewest', 'fewer', 'normal', 'more', 'most'].includes(d) ? d : 'normal';
+  });
+  const setAirportDetail = (d: AirportDetail) => {
+    setAirportDetailState(d);
+    writePrefs({ airportDetail: d });
+  };
+  const [flownAirports, setFlownAirportsState] = useState<FlownAirports>(() => {
+    const f = readPrefs().flownAirports;
+    return f === 'always' || f === 'sooner' || f === 'same' ? f : 'sooner';
+  });
+  const setFlownAirports = (f: FlownAirports) => {
+    setFlownAirportsState(f);
+    writePrefs({ flownAirports: f });
   };
   const [friendsFlag, setFriendsFlag] = useState(() => featureOn('friends') && featureOn('friends_map'));
   const [friendAirlines, setFriendAirlines] = useState<FriendOnMap[]>(friendsOnMap);
@@ -1975,9 +1994,24 @@ export default function App() {
     setSchedule((prev) => prev.filter((s) => s.id !== flightId && !(target.pairId && s.pairId === target.pairId)));
   };
 
-  const updateFlight = (updated: ScheduledFlight) => {
-    setSchedule((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
-    flashToast(`Saved changes to ${updated.flightNumber}`);
+  const updateFlight = (updated: ScheduledFlight | ScheduledFlight[]) => {
+    const list = Array.isArray(updated) ? updated : [updated];
+    const byId = new Map(list.map((f) => [f.id, f]));
+    setSchedule((prev) => prev.map((s) => byId.get(s.id) ?? s));
+    flashToast(`Saved changes to ${list.map((f) => f.flightNumber).join(' and ')}`);
+  };
+
+  /** Deletes the flights given, exactly (mass delete, and clearing aircraft schedules). */
+  const deleteFlights = (ids: string[]) => {
+    const drop = new Set(ids);
+    const n = schedule.filter((s) => drop.has(s.id)).length;
+    if (!n) return;
+    setSchedule((prev) => prev.filter((s) => !drop.has(s.id)));
+    flashToast(`Deleted ${n} flight${n === 1 ? '' : 's'}`);
+  };
+  const clearSchedules = (tails: string[]) => {
+    const set = new Set(tails);
+    deleteFlights(schedule.filter((s) => set.has(s.tailNumber)).map((s) => s.id));
   };
 
   // Several aircraft on one route (Fleet → select → Schedule together)
@@ -2337,6 +2371,9 @@ export default function App() {
         mapRate={mapSpeed === 'live' ? 1 : ECONOMY_RATE[econSpeed] * 60}
         planeInfoEnabled={!inspectedAirport && !routeFrom}
         onBlockedPlaneClick={onBlockedPlaneClick}
+        onOpenSchedule={openSchedule}
+        airportDetail={airportDetail}
+        flownAirports={flownAirports}
         customIcons={customIcons}
         navaidsVersion={navaidsVersion}
         mapRef={mapRef}
@@ -2402,6 +2439,10 @@ export default function App() {
         friendAirlines={friendAirlines.length}
         planeIconScale={planeIconScale}
         onPlaneIconScale={setPlaneIconScale}
+        airportDetail={airportDetail}
+        onAirportDetail={setAirportDetail}
+        flownAirports={flownAirports}
+        onFlownAirports={setFlownAirports}
       />
 
       <NavRail
@@ -2588,6 +2629,7 @@ export default function App() {
           sandbox={gameMode === 'sandbox'}
           onOpenSchedule={(tail) => openSchedule(tail, null)}
           onScheduleTogether={startBulkSchedule}
+          onClearSchedules={clearSchedules}
           onSellOrReturn={sellOrReturnAircraft}
           onBuyOut={buyOutLease}
           onRename={renameAircraft}
@@ -2746,6 +2788,7 @@ export default function App() {
             onClose={() => setScheduleModal(null)}
             onUpdateFlight={updateFlight}
             onDeleteFlight={deleteFlightWithPair}
+            onDeleteFlights={deleteFlights}
             onSellOrReturnAircraft={sellOrReturnAircraft}
             onMarketSell={marketFlag && modalAircraft.acquisition === 'owned' && airlineFor(activeSaveId) ? sellOnMarket : undefined}
             liveryNames={liveries.map((l, i) => (i ? specialLabel(l) : l.name || 'Main livery'))}

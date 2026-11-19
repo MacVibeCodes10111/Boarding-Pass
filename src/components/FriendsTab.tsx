@@ -10,7 +10,7 @@ import { featureOn } from '../game/features';
 import { blockFriend, cleanFriendCode, formatFriendCode, loadFriends, newFriendCode, removeFriend, respondToFriend, sendFriendRequest, setFriendOnMap, unblockFriend, type AllianceBadge, type FriendCard, type FriendsData } from '../game/friends';
 import { refreshFriendsMap } from '../game/friendsMap';
 import { Icon } from '../ui/icons';
-import { Button, C, inputStyle } from '../ui/kit';
+import { Button, C, ConfirmButton, inputStyle } from '../ui/kit';
 import { ReportButton } from './ReportButton';
 
 type Act = (label: string, fn: () => Promise<unknown>) => Promise<void>;
@@ -76,26 +76,6 @@ export function AirlineName({ card, extra }: { card: FriendCard | null; extra?: 
 }
 
 /** Asks once more before something that's hard to take back. */
-export function ConfirmButton(props: { label: string; ask: string; disabled?: boolean; onConfirm: () => void }) {
-  const [asking, setAsking] = useState(false);
-  if (!asking)
-    return (
-      <Button size="sm" variant="ghost" disabled={props.disabled} onClick={() => setAsking(true)}>
-        {props.label}
-      </Button>
-    );
-  return (
-    <>
-      <Button size="sm" variant="danger" disabled={props.disabled} onClick={props.onConfirm}>
-        {props.ask}
-      </Button>
-      <Button size="sm" variant="ghost" onClick={() => setAsking(false)}>
-        Keep
-      </Button>
-    </>
-  );
-}
-
 export function FriendsTab(props: { me: MyAirline; busy: boolean; act: Act }) {
   const me = props.me.id;
   const [data, setData] = useState<FriendsData | null | undefined>(undefined);

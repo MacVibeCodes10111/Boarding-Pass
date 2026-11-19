@@ -17,6 +17,7 @@ import { DAY_NAMES_SHORT, dayIndexOf, formatClockShort } from '../game/time';
 import { TILT_HINT } from '../game/platform';
 import { DEV_BUILD, IS_DEV } from '../game/channel';
 import type { GameMode } from '../game/types';
+import type { AirportDetail, FlownAirports } from './LiveMap';
 import { Icon, type IconName } from '../ui/icons';
 import { Button, C, DISPLAY, FONT, IconButton, Segmented, floatShadow, glass } from '../ui/kit';
 import { isTouchFirst, useLayout } from '../ui/layout';
@@ -724,6 +725,10 @@ export function LayersMenu(props: {
   friendAirlines: number;
   planeIconScale: number;
   onPlaneIconScale: (v: number) => void;
+  airportDetail: AirportDetail;
+  onAirportDetail: (d: AirportDetail) => void;
+  flownAirports: FlownAirports;
+  onFlownAirports: (f: FlownAirports) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [credits, setCredits] = useState(false);
@@ -852,6 +857,35 @@ export function LayersMenu(props: {
                 />
               </div>
             )}
+          </MenuSection>
+
+          <MenuSection title="Airports">
+            <Segmented<AirportDetail>
+              size="sm"
+              block
+              value={props.airportDetail}
+              onChange={props.onAirportDetail}
+              options={[
+                { value: 'fewest', label: 'Fewest', title: 'Only the biggest airports until you zoom right in' },
+                { value: 'fewer', label: 'Fewer' },
+                { value: 'normal', label: 'Normal' },
+                { value: 'more', label: 'More' },
+                { value: 'most', label: 'Most', title: 'Smaller airports show further out' },
+              ]}
+            />
+            <div style={{ fontSize: 14, color: C.text, margin: '12px 0 6px' }}>Airports you fly to</div>
+            <Segmented<FlownAirports>
+              size="sm"
+              block
+              value={props.flownAirports}
+              onChange={props.onFlownAirports}
+              options={[
+                { value: 'always', label: 'Always', title: 'Every airport your flights use, at every zoom' },
+                { value: 'sooner', label: 'Sooner', title: 'They show a little further out than other airports' },
+                { value: 'same', label: 'Like others', title: 'They show at the same zoom as other airports' },
+              ]}
+            />
+            <div style={{ ...note, marginTop: 6 }}>Your hubs always show.</div>
           </MenuSection>
 
           <MenuSection

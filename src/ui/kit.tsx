@@ -400,6 +400,35 @@ export function Chip({
 }
 
 /** Segmented control: one choice out of a few. */
+/** A button that asks once before it acts: click, then click the red "ask" button (or Keep). */
+export function ConfirmButton(props: { label: string; ask: string; disabled?: boolean; onConfirm: () => void; title?: string }) {
+  const [asking, setAsking] = useState(false);
+  if (!asking)
+    return (
+      <Button size="sm" variant="ghost" disabled={props.disabled} title={props.title} onClick={() => setAsking(true)}>
+        {props.label}
+      </Button>
+    );
+  return (
+    <>
+      <Button
+        size="sm"
+        variant="danger"
+        disabled={props.disabled}
+        onClick={() => {
+          setAsking(false);
+          props.onConfirm();
+        }}
+      >
+        {props.ask}
+      </Button>
+      <Button size="sm" variant="ghost" onClick={() => setAsking(false)}>
+        Keep
+      </Button>
+    </>
+  );
+}
+
 export function Segmented<T extends string>({
   options,
   value,

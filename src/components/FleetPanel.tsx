@@ -5,7 +5,7 @@ import { leaseStatus, weeksText } from '../game/leasing';
 import { calcAircraftScheduleUsage, flightsForTail, getAircraftCircuitStatus } from '../game/scheduling';
 import { brandAllows } from '../game/subsidiaries';
 import type { AircraftModel, BrandKind, CabinConfig, PlayerAircraft, ScheduledFlight, Subsidiary } from '../game/types';
-import { Button, C, EmptyState, IconButton, SearchInput, Segmented, SidePanel, inputStyle } from '../ui/kit';
+import { Button, C, ConfirmButton, EmptyState, IconButton, SearchInput, Segmented, SidePanel, inputStyle } from '../ui/kit';
 import { useLayout } from '../ui/layout';
 import { BulkCabinModal, ManageAircraftModal, ReRegisterModal, ReplaceAircraftModal } from './FleetActions';
 import { BrandSections } from './BrandSections';
@@ -23,6 +23,8 @@ export interface FleetPanelProps {
   onOpenSchedule: (tailNumber: string) => void;
   /** Schedule several aircraft on one route together (picks the route on the map next). */
   onScheduleTogether: (tails: string[]) => void;
+  /** Deletes every flight of the aircraft given. */
+  onClearSchedules?: (tails: string[]) => void;
   onSellOrReturn: (tails: string[]) => void;
   onBuyOut: (tail: string) => void;
   onRename: (tail: string, reg: string) => string | null;
@@ -131,6 +133,7 @@ export function FleetPanel(props: FleetPanelProps) {
   // Selected aircraft that still exist (sold ones drop out)
   const picked = fleet.filter((a) => selected.has(a.tailNumber));
   const pickedTails = picked.map((a) => a.tailNumber);
+  const pickedFlights = schedule.filter((f) => selected.has(f.tailNumber)).length;
   const dialogAc = dialog ? fleet.filter((a) => dialog.tails.includes(a.tailNumber)) : [];
   const allShownPicked = shownTails.length > 0 && shownTails.every((t) => selected.has(t));
 
@@ -215,6 +218,14 @@ export function FleetPanel(props: FleetPanelProps) {
               <Button size="sm" onClick={() => props.onScheduleTogether(pickedTails)}>
                 Schedule
               </Button>
+              {props.onClearSchedules && pickedFlights > 0 && (
+                <ConfirmButton
+                  label="Clear schedules"
+                  ask={`Delete ${pickedFlights} flight${pickedFlights === 1 ? '' : 's'}`}
+                  title="Deletes every flight the selected aircraft fly"
+                  onConfirm={() => props.onClearSchedules!(pickedTails)}
+                />
+              )}
               <Button size="sm" disabled={picked.every((a) => a.model.is_cargo)} onClick={() => setDialog({ kind: 'cabin', tails: pickedTails })}>
                 Cabin
               </Button>

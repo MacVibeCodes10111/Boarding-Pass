@@ -52,7 +52,8 @@ import type { Airport, SaveGameState } from '../game/types';
 import { Icon } from '../ui/icons';
 import { Button, C, DISPLAY, IconButton, Segmented, inputStyle } from '../ui/kit';
 import { RouteMap } from './FriendAirline';
-import { AirlineChip, AirlineName, AllianceTag, ConfirmButton, badgeFor } from './FriendsTab';
+import { AirlineChip, AirlineName, AllianceTag, badgeFor } from './FriendsTab';
+import { ConfirmButton } from '../ui/kit';
 import { ReportButton } from './ReportButton';
 import type { MapStyleId } from './LiveMap';
 
