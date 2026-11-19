@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 3.2.0. Free to play. See [Credits and licences](#credits-and-licences).
+Version 3.3.0. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -20,6 +20,14 @@ Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 3.3.0, easier schedules:
+
+- **Open an aircraft's schedule from the map:** its info box has a Schedule button.
+- **Move a round trip together or apart:** when you change a flight's time, its return moves with it (onto the next day if it passes midnight), or pick the one flight to move it alone.
+- **Delete lots of flights at once:** Clear schedule empties an aircraft's week, Select picks the flights to delete, and in Fleet you can clear the schedules of every aircraft you select.
+- **Fewer airports on the map when you want:** Layers → Airports sets how many show as you zoom out, and whether the airports you fly to always show, show a little sooner than the rest, or like any other.
+- **Airlines from before online play** still come into your account during the 90 days when it's full: its limit grows to fit them. Each airline can come online once, in one account.
 
 Version 3.2.0, airlines online:
 
