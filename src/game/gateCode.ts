@@ -13,7 +13,8 @@
 //     F  65 to 80 m      A380, 747-8, An-124
 //
 //   Nobody publishes gate sizes for every airport, so an airport's letter is
-//   worked out: a list of the airports that take the A380 or 747-8 (F), then
+//   worked out: a few fixed by hand from players' reports (CODE_FIXED), a
+//   list of the airports that take the A380 or 747-8 (F), then
 //   its longest airline route (only widebodies fly the longest), its size and
 //   its runway. Saved routes that no longer fit keep flying, but new ones
 //   can't be scheduled.
@@ -106,6 +107,19 @@ const CODE_F = new Set(
   ).split(' ')
 );
 
+/**
+ * Airports whose worked-out letter is wrong, fixed by hand (from players'
+ * reports). These win over everything else, the A380 list included.
+ */
+const CODE_FIXED: Record<string, GateCode> = {
+  // Split: a United 767 in summer is the largest; no stands for anything bigger
+  SPU: 'D',
+  // San Carlos, California: a general aviation field with a 2,600 ft runway, light pistons and turboprops only
+  SQL: 'B',
+  // Portsmouth (Pease), New Hampshire: a former air force base, 11,300 ft runway; 747s, C-17s and An-124s visit
+  PSM: 'F',
+};
+
 /** Each airport's longest airline route (km), from the real network. */
 const longest = new WeakMap<NetworkData, Map<string, number>>();
 function longestRouteKm(iata: string): number {
@@ -141,6 +155,8 @@ export function airportGateCode(a: Pick<Airport, 'iata_code' | 'type' | 'max_run
 }
 
 function workOut(a: Pick<Airport, 'iata_code' | 'type' | 'max_runway_length_ft'>): GateCode {
+  const fixed = CODE_FIXED[a.iata_code];
+  if (fixed) return fixed;
   if (CODE_F.has(a.iata_code)) return 'F';
   const rwy = a.max_runway_length_ft || 0;
   const km = longestRouteKm(a.iata_code);
