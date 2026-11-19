@@ -10,8 +10,9 @@
 //   placed in (body and fin), so one design fits every type. Each layer is
 //   drawn as smooth anti-aliased shapes, cut to its region's mask and laid
 //   over white; the paint is then multiplied into the white picture so the
-//   template's shading, panel lines and windows show through. Painted
-//   pictures are cached as object URLs.
+//   template's shading, panel lines and windows show through. Cabin windows
+//   are glass, so paint never covers them (findWindows). Painted pictures
+//   are cached as object URLs.
 // ============================================================================
 import { modelOfArt, tipKeyOfArt } from './wingtips';
 import { aircraftArt } from './aircraftPhotos';
@@ -308,6 +309,67 @@ export interface Geometry {
   fin: Fin;
   /** A part's mask: the pixel array and which channel of it. */
   mask: (r: Region) => [Uint8ClampedArray, number];
+  /** How much of each pixel is cabin window glass (0 to 255), which paint doesn't cover. */
+  glass: Uint8ClampedArray;
+}
+
+/**
+ * The cabin windows: small dark spots on the fuselage that come in rows (at
+ * least 6 the same height and size), so doors, panel lines, aerials and the
+ * odd dark detail aren't taken for windows. 0 to 255 for each pixel, soft at
+ * the window's edge.
+ */
+export function findWindows(B: Uint8ClampedArray, M: Uint8ClampedArray, w: number, h: number): Uint8ClampedArray {
+  const n = w * h;
+  const lum = new Float32Array(n);
+  const lab = new Int32Array(n);
+  for (let p = 0, i = 0; p < n; p++, i += 4) {
+    lum[p] = 0.3 * B[i] + 0.59 * B[i + 1] + 0.11 * B[i + 2];
+    lab[p] = B[i + 3] > 128 && M[i + 1] > 128 && lum[p] < 150 ? -1 : 0;
+  }
+  // the dark spots, each with its box and size
+  const spots: { k: number; cy: number; s: number; x0: number; x1: number; y0: number; y1: number }[] = [];
+  const stack: number[] = [];
+  let k = 0;
+  for (let p0 = 0; p0 < n; p0++) {
+    if (lab[p0] !== -1) continue;
+    k++;
+    let s = 0, x0 = w, x1 = 0, y0 = h, y1 = 0;
+    lab[p0] = k;
+    stack.push(p0);
+    while (stack.length) {
+      const p = stack.pop()!;
+      const x = p % w, y = (p - x) / w;
+      s++;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+      if (x > 0 && lab[p - 1] === -1) (lab[p - 1] = k), stack.push(p - 1);
+      if (x < w - 1 && lab[p + 1] === -1) (lab[p + 1] = k), stack.push(p + 1);
+      if (y > 0 && lab[p - w] === -1) (lab[p - w] = k), stack.push(p - w);
+      if (y < h - 1 && lab[p + w] === -1) (lab[p + w] = k), stack.push(p + w);
+    }
+    const bh = y1 - y0 + 1, bw = x1 - x0 + 1;
+    // window-sized, roughly round or square, and solid
+    if (s >= 4 && s <= 250 && bw / bh >= 0.35 && bw / bh <= 2.5 && bh <= 24 && s >= 0.4 * bh * bw) spots.push({ k, cy: (y0 + y1 + 1) / 2, s, x0, x1, y0, y1 });
+  }
+  const glass = new Uint8ClampedArray(n);
+  for (const a of spots) {
+    let peers = 0;
+    for (const b of spots) if (Math.abs(b.cy - a.cy) <= 1.5 && b.s >= a.s * 0.5 && b.s <= a.s * 2) peers++;
+    if (peers < 6) continue;
+    // the window and its soft edge: full glass where dark, fading out by lum 190 (lighter edge pixels are paint)
+    for (let y = Math.max(0, a.y0 - 1); y <= Math.min(h - 1, a.y1 + 1); y++)
+      for (let x = Math.max(0, a.x0 - 1); x <= Math.min(w - 1, a.x1 + 1); x++) {
+        const p = y * w + x;
+        const near = lab[p] === a.k || (x > 0 && lab[p - 1] === a.k) || (x < w - 1 && lab[p + 1] === a.k) || (y > 0 && lab[p - w] === a.k) || (y < h - 1 && lab[p + w] === a.k);
+        if (!near || M[p * 4 + 1] <= 128) continue;
+        const v = Math.round(Math.max(0, Math.min(1, (190 - lum[p]) / 40)) * 255);
+        if (v > glass[p]) glass[p] = v;
+      }
+  }
+  return glass;
 }
 
 const geoCache = new Map<string, Promise<Geometry | null>>();
@@ -364,7 +426,8 @@ async function measure(id: string): Promise<Geometry | null> {
   // the parts that can be painted: wingtips only where there's a real winglet
   const parts = order.filter((r, k) => (r === 'winglets' ? seen[k] > 60 : r !== 'wings' && r !== 'stabiliser' && seen[k] > 20));
   // the type's id: a wingtip version (<model>~<wingtip>) keeps the type's livery adjustments
-  return { id: modelOfArt(id), art: id, tip: tipKeyOfArt(id), w, h, base, B, M, M2, parts, body, fin, mask };
+  const glass = findWindows(B, M, w, h);
+  return { id: modelOfArt(id), art: id, tip: tipKeyOfArt(id), w, h, base, B, M, M2, parts, body, fin, mask, glass };
 }
 
 function fakeFin(b: Body): Fin {
@@ -706,10 +769,17 @@ export function renderLiveryPixels(g: Geometry, livery: Livery, name: string, lo
   }
   // the neo mask, over every layer; painted on the fuselage only, so the cockpit windows show on top of it
   if (livery.neoMask && NEO_MASK_MODELS.includes(g.id)) layOn(() => drawNeoMask(sg, g), 'fuselage', 1);
-  // the paint multiplied into the picture
+  // the paint multiplied into the picture, except on the windows' glass
   const O = new Uint8ClampedArray(g.B);
-  for (let i = 0, j = 0; i < O.length; i += 4, j += 3) {
+  const G = g.glass;
+  for (let i = 0, j = 0, p = 0; i < O.length; i += 4, j += 3, p++) {
     if (!O[i + 3]) continue;
+    const gl = G[p];
+    if (gl) {
+      P[j] += (255 - P[j]) * (gl / 255);
+      P[j + 1] += (255 - P[j + 1]) * (gl / 255);
+      P[j + 2] += (255 - P[j + 2]) * (gl / 255);
+    }
     O[i] = (O[i] * P[j]) / 255;
     O[i + 1] = (O[i + 1] * P[j + 1]) / 255;
     O[i + 2] = (O[i + 2] * P[j + 2]) / 255;

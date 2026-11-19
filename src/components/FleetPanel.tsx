@@ -1,7 +1,8 @@
 import { AircraftPhoto, SpecialTag } from './AircraftPhoto';
 import { WINGTIP_LABEL, wingtipFitUsd, wingtipOf, wingtipOptions, type WingtipId } from '../game/wingtips';
 import { formatMoneyM } from '../game/time';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { fillBetween, pickGroups, rangeBetween, takeShare, type Share } from '../game/fleetSelect';
 import type { CabinPreset } from '../game/economics';
 import { leaseStatus, weeksText } from '../game/leasing';
 import { calcAircraftScheduleUsage, flightsForTail, getAircraftCircuitStatus } from '../game/scheduling';
@@ -10,7 +11,7 @@ import type { AircraftModel, BrandKind, CabinConfig, PlayerAircraft, ScheduledFl
 import { Button, C, ConfirmButton, EmptyState, IconButton, SearchInput, Segmented, SidePanel, inputStyle } from '../ui/kit';
 import { useLayout } from '../ui/layout';
 import { BulkCabinModal, ManageAircraftModal, ReRegisterModal, ReplaceAircraftModal } from './FleetActions';
-import { BrandSections } from './BrandSections';
+import { BrandSections, groupByBrand } from './BrandSections';
 
 /** Rows drawn per group before "Show more". */
 const ROW_PAGE = 40;
@@ -85,13 +86,32 @@ export function FleetPanel(props: FleetPanelProps) {
   // Big fleets: each group draws its first rows, with "Show more" for the rest
   const [limits, setLimits] = useState<Record<string, number>>({});
   const [dialog, setDialog] = useState<{ kind: 'manage' | 'cabin' | 'replace' | 'reregister'; tails: string[] } | null>(null);
-  const toggle = (tail: string) =>
-    setSelected((prev) => {
-      const n = new Set(prev);
-      if (n.has(tail)) n.delete(tail);
-      else n.add(tail);
-      return n;
-    });
+  /** The last aircraft picked or unpicked: shift-click picks everything from it. */
+  const anchor = useRef<string | null>(null);
+  const pick = (tail: string, shift: boolean) => {
+    const from = anchor.current;
+    if (shift && from && from !== tail && onScreen().includes(from)) {
+      // the run takes the first one's state: picked, or not
+      const on = selected.has(from);
+      const run = rangeBetween(onScreen(), from, tail);
+      setSelected((prev) => {
+        const n = new Set(prev);
+        for (const t of run) on ? n.add(t) : n.delete(t);
+        return n;
+      });
+    } else {
+      setSelected((prev) => {
+        const n = new Set(prev);
+        if (n.has(tail)) n.delete(tail);
+        else n.add(tail);
+        return n;
+      });
+    }
+    anchor.current = tail;
+  };
+  const [picker, setPicker] = useState(false);
+  const [pickGroup, setPickGroup] = useState('');
+  const [share, setShare] = useState<Share>(1);
 
   const all = useMemo(
     () => fleet.map((ac) => ({ ac, usage: calcAircraftScheduleUsage(ac, schedule), circuit: getAircraftCircuitStatus(ac, schedule) })),
@@ -145,6 +165,31 @@ export function FleetPanel(props: FleetPanelProps) {
   const tipCost = tipPick ? tipFit.reduce((s, a) => s + wingtipFitUsd(a, tipPick), 0) : 0;
   const dialogAc = dialog ? fleet.filter((a) => dialog.tails.includes(a.tailNumber)) : [];
   const allShownPicked = shownTails.length > 0 && shownTails.every((t) => selected.has(t));
+  // the list's order, brand sections and groups included (rows past "Show more" too)
+  const brandLists = subsidiaries.length ? groupByBrand(rows, (r) => r.ac, props.airlineName, subsidiaries).map((g) => g.items) : [rows];
+  const listOrder = brandLists.flatMap((list) => groupRows(list).flatMap(([, rs]) => rs));
+  /** The rows in the order they're on screen (not those past "Show more"). */
+  function onScreen(): string[] {
+    return brandLists.flatMap((list) =>
+      groupRows(list).flatMap(([name, rs]) => rs.slice(0, limits[`${list[0]?.ac.brand ?? 'main'}|${name}`] ?? ROW_PAGE).map((r) => r.ac.tailNumber))
+    );
+  }
+  const groups = pickGroups(
+    listOrder.map(({ ac, usage, circuit }) => ({
+      tail: ac.tailNumber,
+      type: ac.model.name,
+      base: ac.hubIata,
+      path: usage.flightCount ? circuit.chainPath : [],
+      idle: usage.flightCount === 0,
+      busy: usage.usedPct >= 85,
+      leased: ac.acquisition === 'leased',
+      brand: ac.brand,
+    })),
+    (b) => (b ? (subsidiaries.find((x) => x.kind === b)?.name ?? props.airlineName) : props.airlineName)
+  );
+  const group = groups.find((g) => g.id === pickGroup) ?? groups[0];
+  const toPick = group ? takeShare(group.tails, share) : [];
+  const between = fillBetween(listOrder.map((r) => r.ac.tailNumber), selected).filter((t) => !selected.has(t));
 
   return (
     <SidePanel
@@ -181,7 +226,53 @@ export function FleetPanel(props: FleetPanelProps) {
               <option value="base">By base</option>
               <option value="none">One list</option>
             </select>
+            <Button size="sm" variant={picker ? 'primary' : undefined} aria-expanded={picker} onClick={() => setPicker((v) => !v)} title="Pick all, half or a quarter of a type, base, route or airport">
+              Select…
+            </Button>
           </div>
+          {picker && groups.length > 0 && (
+            <div style={{ display: 'grid', gap: 8, padding: 10, marginBottom: 10, borderRadius: 12, border: `1px solid ${C.border}`, background: C.raised }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <select aria-label="Which aircraft" value={group?.id ?? ''} onChange={(e) => setPickGroup(e.target.value)} style={{ ...inputStyle, flex: '1 1 220px', width: 'auto', padding: '6px 8px' }}>
+                  {[...new Set(groups.map((g) => g.section))].map((sec) => (
+                    <optgroup key={sec} label={sec === 'Route' ? 'Flies the route' : sec === 'Airport' ? 'Flies to' : sec}>
+                      {groups
+                        .filter((g) => g.section === sec)
+                        .map((g) => (
+                          <option key={g.id} value={g.id}>
+                            {g.label} ({g.tails.length})
+                          </option>
+                        ))}
+                    </optgroup>
+                  ))}
+                </select>
+                <Segmented<string>
+                  size="sm"
+                  value={String(share)}
+                  onChange={(v) => setShare(Number(v) as Share)}
+                  options={[
+                    { value: '1', label: 'All' },
+                    { value: '0.5', label: 'Half' },
+                    { value: '0.25', label: 'Quarter' },
+                  ]}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <Button size="sm" variant="primary" disabled={!toPick.length} onClick={() => setSelected(new Set(toPick))}>
+                  Select {toPick.length}
+                </Button>
+                {picked.length > 0 && (
+                  <Button size="sm" disabled={toPick.every((t) => selected.has(t))} onClick={() => setSelected(new Set([...selected, ...toPick]))}>
+                    Add {toPick.filter((t) => !selected.has(t)).length} to the {picked.length} selected
+                  </Button>
+                )}
+                <span style={{ fontSize: 12, color: C.muted }}>
+                  {share < 1 ? 'The first ones in the list’s order: sort it to choose which. ' : ''}
+                  {phone ? 'Or tick the first and last aircraft, then In between.' : 'Or shift-click to pick every aircraft between two.'}
+                </span>
+              </div>
+            </div>
+          )}
           <div className="bp-scroll-x" style={{ marginBottom: 12 }}>
             <Segmented<Show>
               size="sm"
@@ -223,6 +314,11 @@ export function FleetPanel(props: FleetPanelProps) {
                 />
                 {picked.length} selected
               </label>
+              {between.length > 0 && (
+                <Button size="sm" onClick={() => setSelected(new Set([...selected, ...between]))} title="Also select every aircraft between the first and last selected">
+                  In between +{between.length}
+                </Button>
+              )}
               <span style={{ flex: 1 }} />
               <Button size="sm" onClick={() => props.onScheduleTogether(pickedTails)}>
                 Schedule
@@ -330,7 +426,14 @@ export function FleetPanel(props: FleetPanelProps) {
                     role="button"
                     tabIndex={0}
                     aria-label={`${ac.tailNumber}: open`}
-                    onClick={() => props.onOpenSchedule(ac.tailNumber)}
+                    onClick={(e) => {
+                      // shift-click picks a run, Cmd/Ctrl-click one aircraft; a plain click opens it
+                      if (e.shiftKey || e.metaKey || e.ctrlKey) {
+                        e.preventDefault();
+                        pick(ac.tailNumber, e.shiftKey);
+                      } else props.onOpenSchedule(ac.tailNumber);
+                    }}
+                    onMouseDown={(e) => e.shiftKey && e.preventDefault()}
                     onKeyDown={(e) => e.key === 'Enter' && e.target === e.currentTarget && props.onOpenSchedule(ac.tailNumber)}
                     style={{ display: 'flex', alignItems: 'center', gap: phone ? 10 : 14, padding: phone ? '10px 4px' : '9px 8px', cursor: 'pointer', borderRadius: 0 }}
                   >
@@ -338,8 +441,11 @@ export function FleetPanel(props: FleetPanelProps) {
                       type="checkbox"
                       aria-label={`Select ${ac.tailNumber}`}
                       checked={selected.has(ac.tailNumber)}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={() => toggle(ac.tailNumber)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        pick(ac.tailNumber, e.shiftKey);
+                      }}
+                      onChange={() => {}}
                       style={{ flex: 'none' }}
                     />
                     <AircraftPhoto model={ac.model} width={phone ? 58 : 72} fallback={iconForModel(ac.model)} tailNumber={ac.tailNumber} liveryIndex={ac.livery} brand={ac.brand} wingtip={ac.wingtip} style={{ flex: 'none' }} />
