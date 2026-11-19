@@ -68,12 +68,38 @@ import { LiveryContext, paintOf } from './AircraftPhoto';
 const EMPTY_FC = { type: 'FeatureCollection', features: [] as any[] };
 
 // ---------------------------------------------------------------------------
-// Ground traffic (taxiing, parked at gates) appears from this zoom level, at
-// true scale, on the taxiways the basemap shows.
+// Ground traffic (taxiing, parked at gates) fades in over these zoom levels,
+// on the taxiways the basemap shows.
 // ---------------------------------------------------------------------------
-const GROUND_MIN_ZOOM = 12.5;
+const GROUND_MIN_ZOOM = 11.5;
+const GROUND_FULL_ZOOM = 12.5;
 /** Icon size per zoom-0 for an aircraft of `lengthM` at `lat` (icon ~29 px long at size 1). */
 const groundIconScale = (lengthM: number, lat: number) => lengthM / (29 * 78271.517 * Math.cos((lat * Math.PI) / 180));
+/**
+ * One size curve for every aircraft, like FR24: icons grow a little with each
+ * zoom level all the way down, in the air and on the ground alike, so nothing
+ * jumps as you zoom. Times each aircraft's `icon_scale`.
+ */
+const ICON_ZOOM: [number, number][] = [[2, 0.42], [5, 0.65], [8, 0.88], [11, 1.12], [13, 1.24], [15, 1.36], [17, 1.45]];
+const iconZoomK = (z: number) => {
+  if (z <= ICON_ZOOM[0][0]) return ICON_ZOOM[0][1];
+  for (let i = 1; i < ICON_ZOOM.length; i++) {
+    const [z1, k1] = ICON_ZOOM[i];
+    const [z0, k0] = ICON_ZOOM[i - 1];
+    if (z <= z1) return k0 + ((k1 - k0) * (z - z0)) / (z1 - z0);
+  }
+  return ICON_ZOOM[ICON_ZOOM.length - 1][1];
+};
+const AIR_ICON_SIZE = ['interpolate', ['linear'], ['zoom'], ...ICON_ZOOM.flatMap(([z, k]) => [z, ['*', ['get', 'icon_scale'], k]])];
+/** On the ground: the same size as in the air, or true scale once that is bigger (zoomed right in, so parked aircraft fit their stands). */
+const GROUND_ICON_SIZE = [
+  'interpolate',
+  ['exponential', 2],
+  ['zoom'],
+  ...[GROUND_MIN_ZOOM, 12, 13, 14, 15, 16, 17, 18, 20, 22].flatMap((z) => [z, ['max', ['*', ['get', 'icon_scale'], iconZoomK(z)], ['*', ['get', 'gs'], 2 ** z]]]),
+];
+/** Fades in from nothing over the zoom range (`base` is the full opacity, a number or an expression). */
+const fadeIn = (from: number, to: number, base: unknown = 1) => ['interpolate', ['linear'], ['zoom'], from, 0, to, base];
 /** Joins two paths, shifting the second by whole turns of longitude so it continues the first. */
 function joinPaths(a: LonLat[], b: LonLat[]): LonLat[] {
   if (!a.length) return b.slice();
@@ -122,8 +148,12 @@ const aiIconName = (f: AiFlight) => `${f.friend ? 'friend' : 'ai'}-${f.group}`;
 const aiIconScale = (f: AiFlight) => (AI_ICON_SCALE[f.group] ?? 0.56) * (f.friend ? HIGHLIGHT_SCALE : 1);
 /** Your aircraft and friends' are drawn this much bigger than the other airlines', from the same size table. */
 const HIGHLIGHT_SCALE = 1.2;
-/** Callsigns appear from this zoom level, for every aircraft. */
+/** Callsigns fade in by this zoom level, for every aircraft. */
 const CALLSIGN_ZOOM = 6;
+const CALLSIGN_FIELD = (prop: string, z = CALLSIGN_ZOOM) => ['step', ['zoom'], '', z - 0.6, ['get', prop]];
+const CALLSIGN_OPACITY = (z = CALLSIGN_ZOOM) => fadeIn(z - 0.6, z);
+/** Dots and icons cross-fade over this many zoom levels, below the detail level's switch-over. */
+const DOT_FADE = 0.6;
 /** Dots are small: clicks and taps within this many pixels of one count. */
 const DOT_HIT_PX = 10;
 /** The picture at the top of a friend's aircraft's pop-up, and which livery to paint on it. */
@@ -709,18 +739,18 @@ function addLayers(map: any) {
     minzoom: AI_DETAIL_LEVELS.auto.dotsBelow,
     layout: {
       'icon-image': ['get', 'icon_name'],
-      'icon-size': ['interpolate', ['linear'], ['zoom'], 2, ['*', ['get', 'icon_scale'], 0.42], 5, ['*', ['get', 'icon_scale'], 0.65], 8, ['*', ['get', 'icon_scale'], 0.88], 11, ['*', ['get', 'icon_scale'], 1.12]],
+      'icon-size': AIR_ICON_SIZE,
       'icon-rotate': ['get', 'bearing'],
       'icon-rotation-alignment': 'map',
       'icon-allow-overlap': true,
       'icon-ignore-placement': true,
-      'text-field': ['step', ['zoom'], '', CALLSIGN_ZOOM, ['get', 'flightNumber']],
+      'text-field': CALLSIGN_FIELD('flightNumber'),
       'text-size': 9,
       'text-offset': [0, 1.1],
       'text-anchor': 'top',
       'text-optional': true,
     },
-    paint: { 'text-color': MAP_C.muted, 'text-halo-color': MAP_C.bg, 'text-halo-width': 1.4, 'icon-opacity': 0.9 },
+    paint: { 'text-color': MAP_C.muted, 'text-halo-color': MAP_C.bg, 'text-halo-width': 1.4, 'text-opacity': CALLSIGN_OPACITY(), 'icon-opacity': 0.9 },
   });
   map.addLayer({
     id: 'ai-planes-dot',
@@ -737,7 +767,9 @@ function addLayers(map: any) {
     maxzoom: AI_DETAIL_LEVELS.auto.dotsBelow,
     paint: { 'circle-radius': DOT_HIT_PX, 'circle-opacity': 0, 'circle-stroke-width': 0 },
   });
-  // Aircraft on the ground, at true scale so parked aircraft fit their stands
+  // Aircraft on the ground: the same size as in the air, true scale once zoomed
+  // right in. The ones not shown zoomed out (parked, other airlines') fade in.
+  const groundBase = ['case', ['==', ['get', 'kind'], 'player'], 1, 0.92];
   map.addLayer({
     id: 'ground-planes-symbol',
     type: 'symbol',
@@ -745,20 +777,12 @@ function addLayers(map: any) {
     minzoom: GROUND_MIN_ZOOM,
     layout: {
       'icon-image': ['get', 'icon_name'],
-      'icon-size': [
-        'interpolate',
-        ['exponential', 2],
-        ['zoom'],
-        12, ['max', ['*', ['get', 'gs'], 4096], 0.3],
-        14, ['max', ['*', ['get', 'gs'], 16384], 0.3],
-        16, ['*', ['get', 'gs'], 65536],
-        22, ['*', ['get', 'gs'], 4194304],
-      ],
+      'icon-size': GROUND_ICON_SIZE,
       'icon-rotate': ['get', 'bearing'],
       'icon-rotation-alignment': 'map',
       'icon-allow-overlap': true,
       'icon-ignore-placement': true,
-      'text-field': ['step', ['zoom'], '', 15, ['get', 'flightNumber']],
+      'text-field': CALLSIGN_FIELD('flightNumber', 15),
       'text-size': 9,
       'text-offset': [0, 1.3],
       'text-anchor': 'top',
@@ -768,7 +792,8 @@ function addLayers(map: any) {
       'text-color': ['case', ['==', ['get', 'kind'], 'player'], C.fleet, MAP_C.muted],
       'text-halo-color': MAP_C.bg,
       'text-halo-width': 1.4,
-      'icon-opacity': ['case', ['==', ['get', 'kind'], 'player'], 1, 0.92],
+      'text-opacity': CALLSIGN_OPACITY(15),
+      'icon-opacity': ['interpolate', ['linear'], ['zoom'], GROUND_MIN_ZOOM, ['case', ['==', ['get', 'fade'], 1], 0, groundBase], GROUND_FULL_ZOOM, groundBase],
     },
   });
   // Your aircraft follow the same level of detail as the other airlines': dots when zoomed far out
@@ -793,27 +818,19 @@ function addLayers(map: any) {
     minzoom: AI_DETAIL_LEVELS.auto.dotsBelow,
     layout: {
       'icon-image': ['get', 'icon_name'],
-      'icon-size': [
-        'interpolate',
-        ['linear'],
-        ['zoom'],
-        2, ['*', ['get', 'icon_scale'], 0.42],
-        5, ['*', ['get', 'icon_scale'], 0.65],
-        8, ['*', ['get', 'icon_scale'], 0.88],
-        11, ['*', ['get', 'icon_scale'], 1.12],
-      ],
+      'icon-size': AIR_ICON_SIZE,
       'icon-rotate': ['get', 'bearing'],
       'icon-rotation-alignment': 'map',
       'icon-allow-overlap': true,
       'icon-ignore-placement': true,
       // Callsigns only once zoomed in, like FR24
-      'text-field': ['step', ['zoom'], '', CALLSIGN_ZOOM, ['get', 'flightNumber']],
+      'text-field': CALLSIGN_FIELD('flightNumber'),
       'text-size': 10,
       'text-offset': [0, 1.15],
       'text-anchor': 'top',
       'text-optional': true,
     },
-    paint: { 'text-color': C.fleet, 'text-halo-color': MAP_C.bg, 'text-halo-width': 1.6 },
+    paint: { 'text-color': C.fleet, 'text-halo-color': MAP_C.bg, 'text-halo-width': 1.6, 'text-opacity': CALLSIGN_OPACITY() },
   });
   // 3D view: aircraft floating at their height, and the selected aircraft's
   // route at altitude with a curtain beneath it
@@ -849,7 +866,7 @@ function addLayers(map: any) {
     source: 'labels-3d',
     layout: {
       // Callsigns from the same zoom level as on the flat map
-      'text-field': ['step', ['zoom'], '', CALLSIGN_ZOOM, ['get', 'label']],
+      'text-field': CALLSIGN_FIELD('label'),
       'text-size': ['case', ['==', ['get', 'kind'], 'player'], 10, 9],
       'text-anchor': 'top',
       'text-offset': [0, 1],
@@ -2535,8 +2552,11 @@ export function LiveMap(props: LiveMapProps) {
                   groundKey: key,
                   flightNumber: f.flightNumber,
                   icon_name: aiIconName(f),
+                  icon_scale: Number((aiIconScale(f) * st.planeIconScale).toFixed(3)),
                   gs: groundIconScale(GROUP_LENGTH_M[f.group], pose.coordinates[1]),
                   bearing: pose.bearing,
+                  // the selected one also shows zoomed out (on the other layer), so it doesn't fade in
+                  fade: st.trackedFlightId === `aig:${key}` ? 0 : 1,
                 },
               });
               continue;
@@ -2574,7 +2594,10 @@ export function LiveMap(props: LiveMapProps) {
           }
         }
         // Zoomed out, your aircraft stay on the regular layer (drawn every frame)
-        if (groundZoom) for (const { pose, props } of player.values()) features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: pose.coordinates }, properties: props });
+        // (parked ones aren't shown zoomed out, so they fade in; moving ones are, so they don't)
+        if (groundZoom)
+          for (const { pose, props } of player.values())
+            features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: pose.coordinates }, properties: { ...props, fade: pose.state === 'gate' || pose.state === 'arrived' ? 1 : 0 } });
       }
       groundRef.current = { ai, player };
       if (features.length || groundHasData) {
@@ -2626,9 +2649,18 @@ export function LiveMap(props: LiveMapProps) {
         lod = AI_DETAIL_LEVELS[detail];
         budget = lod.budget;
         aiLastDraw = 0;
-        // Dots below the switch-over zoom, icons above: your aircraft and other airlines' alike
-        for (const id of ['ai-planes-dot', 'ai-planes-dot-hit', 'live-planes-dot', 'live-planes-dot-hit']) if (map.getLayer?.(id)) map.setLayerZoomRange?.(id, 0, Math.max(0.01, lod.dotsBelow));
-        for (const id of ['ai-planes-symbol', 'live-planes-symbol']) if (map.getLayer?.(id)) map.setLayerZoomRange?.(id, lod.dotsBelow, 24);
+        // Dots below the switch-over zoom, icons above: your aircraft and other airlines' alike,
+        // cross-fading just below it so they don't snap from one to the other
+        const d = lod.dotsBelow;
+        const from = Math.max(0, d - DOT_FADE);
+        const fading = d > from;
+        for (const id of ['ai-planes-dot', 'ai-planes-dot-hit', 'live-planes-dot', 'live-planes-dot-hit']) if (map.getLayer?.(id)) map.setLayerZoomRange?.(id, 0, Math.max(0.01, d));
+        for (const id of ['ai-planes-symbol', 'live-planes-symbol']) if (map.getLayer?.(id)) map.setLayerZoomRange?.(id, from, 24);
+        const aiDotOpacity = ['case', ['has', 'friend'], 1, 0.75];
+        if (map.getLayer?.('ai-planes-symbol')) map.setPaintProperty?.('ai-planes-symbol', 'icon-opacity', fading ? fadeIn(from, d, 0.9) : 0.9);
+        if (map.getLayer?.('live-planes-symbol')) map.setPaintProperty?.('live-planes-symbol', 'icon-opacity', fading ? fadeIn(from, d) : 1);
+        if (map.getLayer?.('ai-planes-dot')) map.setPaintProperty?.('ai-planes-dot', 'circle-opacity', fading ? ['interpolate', ['linear'], ['zoom'], from, aiDotOpacity, d, 0] : aiDotOpacity);
+        if (map.getLayer?.('live-planes-dot')) map.setPaintProperty?.('live-planes-dot', 'circle-opacity', fading ? ['interpolate', ['linear'], ['zoom'], from, 1, d, 0] : 1);
         probeStart = t;
         probeFrames = 0;
       }
