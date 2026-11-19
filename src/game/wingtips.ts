@@ -27,6 +27,17 @@ export const WINGTIP_LABEL: Record<WingtipId, string> = {
   enhanced: 'Enhanced winglets',
 };
 
+/** Short names, for buttons. */
+export const WINGTIP_SHORT: Record<WingtipId, string> = {
+  none: 'None',
+  winglet: 'Blended',
+  scimitar: 'Split scimitar',
+  fence: 'Fence',
+  sharklet: 'Sharklet',
+  standard: 'Standard',
+  enhanced: 'Enhanced',
+};
+
 /** Fuel saved on a long flight, against no winglets (shorter flights save less). */
 const SAVING: Record<WingtipId, number> = { none: 0, fence: 0, standard: 0, winglet: 0.04, scimitar: 0.055, sharklet: 0.04, enhanced: 0.015 };
 
@@ -97,6 +108,18 @@ export function artIdFor(modelId: string, wingtip?: string | null): string {
 }
 /** The type a picture belongs to (its livery adjustments are the type's). */
 export const modelOfArt = (artId: string) => artId.split('~')[0];
+
+/**
+ * The key a livery keeps changes for one kind of wingtips under (<model>~<wingtip>), for a
+ * picture: its own wingtips, or the type's usual ones. Null for types with only one kind.
+ */
+export function tipKeyOfArt(artId: string): string | null {
+  const model = modelOfArt(artId);
+  const t = WINGTIP_TYPES[model];
+  if (!t) return null;
+  const w = artId.includes('~') ? artId.split('~')[1] : t.usual;
+  return `${model}~${w}`;
+}
 
 const savingOf = (t: TypeWingtips, w: WingtipId) => t.saving?.[w] ?? SAVING[w];
 

@@ -13,7 +13,7 @@
 //   template's shading, panel lines and windows show through. Painted
 //   pictures are cached as object URLs.
 // ============================================================================
-import { modelOfArt } from './wingtips';
+import { modelOfArt, tipKeyOfArt } from './wingtips';
 import { aircraftArt } from './aircraftPhotos';
 import { FONT_CSS, NEO_MASK_MODELS, layerFor, layerText, liveryKey, type Frame, type Layer, type Livery, type PathCmd, type Region } from './livery';
 
@@ -293,6 +293,8 @@ export interface Geometry {
   id: string;
   /** The picture: the type's, or a wingtip version of it (game/wingtips.ts). */
   art: string;
+  /** Its wingtips as <model>~<wingtip>, for livery changes kept for them (null: one kind only). */
+  tip: string | null;
   w: number;
   h: number;
   base: HTMLImageElement;
@@ -362,7 +364,7 @@ async function measure(id: string): Promise<Geometry | null> {
   // the parts that can be painted: wingtips only where there's a real winglet
   const parts = order.filter((r, k) => (r === 'winglets' ? seen[k] > 60 : r !== 'wings' && r !== 'stabiliser' && seen[k] > 20));
   // the type's id: a wingtip version (<model>~<wingtip>) keeps the type's livery adjustments
-  return { id: modelOfArt(id), art: id, w, h, base, B, M, M2, parts, body, fin, mask };
+  return { id: modelOfArt(id), art: id, tip: tipKeyOfArt(id), w, h, base, B, M, M2, parts, body, fin, mask };
 }
 
 function fakeFin(b: Body): Fin {
@@ -697,7 +699,7 @@ export function renderLiveryPixels(g: Geometry, livery: Livery, name: string, lo
   };
   for (const shared of livery.layers) {
     // as it is on this aircraft model
-    const l = layerFor(shared, g.id);
+    const l = layerFor(shared, g.id, g.tip);
     if (!l) continue;
     if (l.hidden || l.opacity <= 0) continue;
     layOn(() => drawLayer(sg, g, l, name, logos, reg), l.region, l.opacity);
@@ -777,7 +779,7 @@ const [, measureCtx] = typeof document !== 'undefined' ? canvas(4, 4) : [null, n
 
 /** The layer's outline in picture pixels (a polygon), or null for a fill. */
 export function layerOutline(g: Geometry, shared: Layer, name: string, reg = ''): [number, number][] | null {
-  const l = layerFor(shared, g.id);
+  const l = layerFor(shared, g.id, g.tip);
   if (!l) return null;
   const box = (cx: number, cy: number, w: number, h: number, ang: number, ox = 0, oy = 0): [number, number][] => {
     const cs = Math.cos(ang), sn = Math.sin(ang);

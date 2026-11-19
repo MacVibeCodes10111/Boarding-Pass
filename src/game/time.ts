@@ -57,6 +57,11 @@ export function shiftDays(days: WeekDays, n: number): WeekDays {
   return [0, 1, 2, 3, 4, 5, 6].map((d) => days[(d - k + 7) % 7]);
 }
 
+/** Money in millions ($3.5M), and in billions and trillions once it gets there ($3.83B, $1.20T). */
 export function formatMoneyM(usd: number, digits = 1): string {
+  const a = Math.abs(usd);
+  const sign = usd < 0 ? '−' : '';
+  if (a >= 999.95e9) return `${sign}$${(a / 1e12).toFixed(2)}T`;
+  if (a >= 999.95e6) return `${sign}$${(a / 1e9).toFixed(2)}B`;
   return `$${(usd / 1_000_000).toFixed(digits)}M`;
 }

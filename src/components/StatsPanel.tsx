@@ -26,11 +26,12 @@ const sliceColor = (s: Slice, i: number) => (s.label === 'Other' ? OTHER : SERIE
 
 const num = (n: number) => Math.round(n).toLocaleString();
 const pct = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 100) : 0);
-/** Money in one consistent short form: $840, $12.5k, $646k, $3.2M, $1.05B. */
+/** Money in one consistent short form: $840, $12.5k, $646k, $3.2M, $1.05B, $2.4T. */
 function usd(v: number): string {
   const a = Math.abs(v);
   const sign = v < 0 ? '−' : '';
   const fix = (n: number, d: number) => n.toFixed(d).replace(/\.0+$/, '');
+  if (a >= 1e12) return `${sign}$${fix(a / 1e12, a >= 1e13 ? 1 : 2)}T`;
   if (a >= 1e9) return `${sign}$${fix(a / 1e9, a >= 1e10 ? 1 : 2)}B`;
   if (a >= 1e6) return `${sign}$${fix(a / 1e6, a >= 1e8 ? 0 : 1)}M`;
   if (a >= 1e4) return `${sign}$${fix(a / 1e3, a >= 1e5 ? 0 : 1)}k`;
@@ -39,7 +40,8 @@ function usd(v: number): string {
 const signedUsd = (v: number) => (v > 0 ? `+${usd(v)}` : usd(v));
 /** Big counts: 14,419,000 → 14.4M. */
 /** Up to 6 digits as they are, then 1.39M: big airlines' totals stay inside their boxes. */
-const compact = (n: number) => (Math.abs(n) >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 1 : 2)}M` : num(n));
+const compact = (n: number) =>
+  Math.abs(n) >= 1e12 ? `${(n / 1e12).toFixed(2)}T` : Math.abs(n) >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : Math.abs(n) >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 1 : 2)}M` : num(n);
 
 /** Width of an element in CSS pixels, so charts draw at 1:1 (text never scales). */
 function useWidth<T extends HTMLElement>(): [React.MutableRefObject<T | null>, number] {

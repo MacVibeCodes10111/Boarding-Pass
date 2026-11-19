@@ -387,7 +387,7 @@ export function goalProgressText(g: GoalDef, m: CareerMetrics): string {
 // ---------------------------------------------------------------------------
 export function usdShort(v: number): string {
   const a = Math.abs(v);
-  const s = a >= 1e9 ? `$${(a / 1e9).toFixed(a % 1e9 === 0 ? 0 : 2)}B` : a >= 1e6 ? `$${(a / 1e6).toFixed(a % 1e6 === 0 ? 0 : 1)}M` : `$${Math.round(a).toLocaleString()}`;
+  const s = a >= 1e12 ? `$${(a / 1e12).toFixed(a % 1e12 === 0 ? 0 : 2)}T` : a >= 1e9 ? `$${(a / 1e9).toFixed(a % 1e9 === 0 ? 0 : 2)}B` : a >= 1e6 ? `$${(a / 1e6).toFixed(a % 1e6 === 0 ? 0 : 1)}M` : `$${Math.round(a).toLocaleString()}`;
   return v < 0 ? `−${s}` : s;
 }
 /** Full figure for letters: $25,000,000. */

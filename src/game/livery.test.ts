@@ -34,3 +34,26 @@ describe('neo mask', () => {
     expect(liveryKey(on, 'Air')).not.toBe(liveryKey(off, 'Air'));
   });
 });
+
+describe('changes for one kind of wingtips', () => {
+  const tipped = {
+    v: 2,
+    logos: { a: 'data:image/png;base64,AAAA' },
+    layers: [
+      { id: 'l1', name: 'Logo', opacity: 1, region: 'winglets', kind: 'logo', frame: 'fin', logo: 'a', x: 0.5, y: 0.5, size: 1, rot: 0, adj: { 'b737-800': { size: 2 }, 'b737-800~scimitar': { size: 3, x: 0.7 }, 'b737-800~none': { hidden: true } } },
+      { id: 'l2', name: 'Stripe', opacity: 1, region: 'winglets', kind: 'fill', colour: '#ff0000', only: ['b737-800~scimitar'] },
+    ],
+  };
+  it('are kept when loading, and win over the type’s own', () => {
+    const [logoL, stripe] = normaliseLivery(tipped)!.layers;
+    const on = (l: typeof logoL, m: string, t?: string) => layerFor(l, m, t) as (typeof logoL & { size?: number; x?: number }) | null;
+    expect(on(logoL, 'b737-800', 'b737-800~winglet')?.size).toBe(2);
+    expect(on(logoL, 'b737-800', 'b737-800~scimitar')?.size).toBe(3);
+    expect(on(logoL, 'b737-800', 'b737-800~scimitar')?.x).toBe(0.7);
+    expect(on(logoL, 'b737-800', 'b737-800~none')).toBeNull();
+    expect(on(logoL, 'a320-200')?.size).toBe(1);
+    expect(layerFor(stripe, 'b737-800', 'b737-800~scimitar')).not.toBeNull();
+    expect(layerFor(stripe, 'b737-800', 'b737-800~winglet')).toBeNull();
+    expect(layerFor(stripe, 'b737-800')).toBeNull();
+  });
+});

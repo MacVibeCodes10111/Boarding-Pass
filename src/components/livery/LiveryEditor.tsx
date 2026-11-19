@@ -7,7 +7,13 @@
 //   frames (see livery.ts), so a design made on one type fits the others:
 //   the type picker at the top switches the preview.
 // ============================================================================
-import { WINGTIP_LABEL, WINGTIP_TYPES, artIdFor, wingtipOptions, type WingtipId } from '../../game/wingtips';
+import { WINGTIP_LABEL, WINGTIP_SHORT, WINGTIP_TYPES, artIdFor, wingtipOptions, type WingtipId } from '../../game/wingtips';
+
+/** "B737-800", or "B737-800 split scimitar" for one kind of wingtips. */
+const onlyLabel = (k: string) => {
+  const [m, w] = k.split('~');
+  return w ? `${m.toUpperCase()} ${(WINGTIP_SHORT as Record<string, string>)[w]?.toLowerCase() ?? w}` : m.toUpperCase();
+};
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AIRCRAFT_PHOTOS } from '../../game/aircraftPhotos';
 import { cloudSkyCss } from '../../game/cloudSky';
@@ -405,7 +411,8 @@ export function LiveryEditor(props: {
   };
   const selShared = doc.layers.find((l) => l.id === sel) ?? null;
   /** Changes for every aircraft, or only the model on screen (like TAS: where the shared placement doesn't fit a type). */
-  const [scope, setScope] = useState<'all' | 'model'>('all');
+  // where changes go: every type, this type, or this type with the wingtips on screen
+  const [scope, setScope] = useState<'all' | 'model' | 'wingtip'>('all');
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
 
@@ -466,12 +473,26 @@ export function LiveryEditor(props: {
   const modelRef = useRef(model);
   modelRef.current = model;
   /** The selected layer as it is on the aircraft on screen. */
-  const selLayer = selShared ? (layerFor(selShared, model) ?? selShared) : null;
   // Types with more than one kind of wingtip: the livery can be seen on each (changes still go on the type)
   const tipChoices = wingtipOptions(model);
   const [tipView, setTipView] = useState<WingtipId | null>(null);
   const tipShown = tipView && tipChoices.includes(tipView) ? tipView : (WINGTIP_TYPES[model]?.usual ?? null);
   const art = artIdFor(model, tipShown);
+  /** The wingtips on screen as <model>~<wingtip> (null: the type has one kind only). */
+  const tipKey = tipChoices.length > 1 && tipShown ? `${model}~${tipShown}` : null;
+  const tipKeyRef = useRef(tipKey);
+  tipKeyRef.current = tipKey;
+  /** The selected layer as it is on the aircraft on screen. */
+  const selLayer = selShared ? (layerFor(selShared, model, tipKey) ?? selShared) : null;
+  /** What changes are kept for: the type, or the type with these wingtips. */
+  const ek = scope === 'wingtip' && tipKey ? tipKey : model;
+  const editKey = () => (scopeRef.current === 'wingtip' && tipKeyRef.current ? tipKeyRef.current : modelRef.current);
+  const ekLabelFor = (sc: typeof scope) => (sc === 'wingtip' && tipKey ? `${model.toUpperCase()} with ${WINGTIP_LABEL[tipShown!].toLowerCase()}` : model.toUpperCase());
+  const ekLabel = ekLabelFor(scope);
+  // a type with one kind of wingtips: "these wingtips only" is the type itself
+  useEffect(() => {
+    if (scope === 'wingtip' && !tipKey) setScope('model');
+  }, [scope, tipKey]);
   const [geo, setGeo] = useState<Geometry | null>(null);
   useEffect(() => {
     let ok = true;
@@ -521,13 +542,14 @@ export function LiveryEditor(props: {
   /** A change to a layer: on every aircraft, or (this aircraft only) kept for the model on screen. */
   const scoped = (l: Layer, p: Partial<Layer>): Layer => {
     if (scopeRef.current === 'all' || l.only) return { ...l, ...p } as Layer;
-    const a: ModelAdjust = { ...(l.adj?.[modelRef.current] ?? {}) };
+    const key = editKey();
+    const a: ModelAdjust = { ...(l.adj?.[key] ?? {}) };
     const rest: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(p)) {
       if ((ADJ_KEYS as readonly string[]).includes(k) && k in l && !(l.kind === 'paint')) (a as Record<string, unknown>)[k] = v;
       else rest[k] = v;
     }
-    return { ...l, ...rest, adj: { ...(l.adj ?? {}), [modelRef.current]: a } } as Layer;
+    return { ...l, ...rest, adj: { ...(l.adj ?? {}), [key]: a } } as Layer;
   };
   const patch = (id: string, p: Partial<Layer>, isLive = false) => {
     const next = { ...docRef.current, layers: docRef.current.layers.map((l) => (l.id === id ? scoped(l, p) : l)) };
@@ -548,7 +570,7 @@ export function LiveryEditor(props: {
     }
   };
   const addLayer = (l0: Layer) => {
-    const l: Layer = scopeRef.current === 'model' ? { ...l0, only: [modelRef.current] } : l0;
+    const l: Layer = scopeRef.current !== 'all' ? { ...l0, only: [editKey()] } : l0;
     const d = docRef.current;
     if (d.layers.length >= MAX_LAYERS) {
       flash(`A livery can have up to ${MAX_LAYERS} layers.`);
@@ -662,7 +684,7 @@ export function LiveryEditor(props: {
         const t = titlesPosition(geo, l, name, reg);
         return { ...l, auto: undefined, x: t.x, y: t.y, size: t.size };
       };
-      drag.current = { kind: 'move', from, id: target.id, start: [px, py], startLayer: placed(layerFor(shared, model) ?? shared), startShared: placed(shared) };
+      drag.current = { kind: 'move', from, id: target.id, start: [px, py], startLayer: placed(layerFor(shared, modelRef.current, tipKeyRef.current) ?? shared), startShared: placed(shared) };
       return;
     }
     if (tool === 'brush' || tool === 'eraser' || tool === 'line') {
@@ -753,9 +775,9 @@ export function LiveryEditor(props: {
                 : l;
       const base = d.startShared ?? l0;
       let n: Layer;
-      if (scopeRef.current === 'model' && !base.only) {
-        // moved on this aircraft only: kept as this model's change
-        const m = modelRef.current;
+      if (scopeRef.current !== 'all' && !base.only) {
+        // moved on this aircraft only: kept as this model's change (or its wingtips')
+        const m = editKey();
         const orig = cur.layers.find((l) => l.id === d.id) ?? base;
         const prev = { ...(orig.adj?.[m] ?? {}) };
         const a: ModelAdjust =
@@ -1145,18 +1167,18 @@ export function LiveryEditor(props: {
   );
   const layerSection = (
     <div style={{ display: 'grid', gap: 10 }}>
-      {selShared && (scope === 'model' || selShared.only || selShared.adj?.[model]) && (
+      {selShared && (scope !== 'all' || selShared.only || selShared.adj?.[ek]) && (
         <div style={section}>
-          {head(`On the ${model.toUpperCase()}`)}
+          {head(`On the ${ekLabel}`)}
           {selShared.only ? (
             <>
               <div style={{ fontSize: 12.5, color: C.muted }}>
-                {selShared.name} is only on the {selShared.only.map((m) => m.toUpperCase()).join(', ')}.
+                {selShared.name} is only on the {selShared.only.map(onlyLabel).join(', ')}.
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {!selShared.only.includes(model) && (
-                  <Button size="sm" onClick={() => commit({ ...docRef.current, layers: docRef.current.layers.map((l) => (l.id === selShared.id ? { ...l, only: [...(l.only ?? []), model] } : l)) })}>
-                    Add the {model.toUpperCase()}
+                {!selShared.only.includes(ek) && (
+                  <Button size="sm" onClick={() => commit({ ...docRef.current, layers: docRef.current.layers.map((l) => (l.id === selShared.id ? { ...l, only: [...(l.only ?? []), ek] } : l)) })}>
+                    Add the {ekLabel}
                   </Button>
                 )}
                 <Button size="sm" onClick={() => commit({ ...docRef.current, layers: docRef.current.layers.map((l) => (l.id === selShared.id ? { ...l, only: undefined } : l)) })}>
@@ -1169,20 +1191,20 @@ export function LiveryEditor(props: {
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
                 <input
                   type="checkbox"
-                  checked={Boolean(selShared.adj?.[model]?.hidden)}
+                  checked={Boolean(selShared.adj?.[ek]?.hidden)}
                   onChange={(e) =>
                     commit({
                       ...docRef.current,
-                      layers: docRef.current.layers.map((l) => (l.id === selShared.id ? { ...l, adj: { ...(l.adj ?? {}), [model]: { ...(l.adj?.[model] ?? {}), hidden: e.target.checked || undefined } } } : l)),
+                      layers: docRef.current.layers.map((l) => (l.id === selShared.id ? { ...l, adj: { ...(l.adj ?? {}), [ek]: { ...(l.adj?.[ek] ?? {}), hidden: e.target.checked || undefined } } } : l)),
                     })
                   }
                 />
-                Hide it on the {model.toUpperCase()}
+                Hide it on the {ekLabel}
               </label>
               <div style={{ fontSize: 12, color: C.muted }}>
-                {selShared.adj?.[model] ? 'This aircraft has its own placement or colour for this layer.' : 'Move it, resize it or change its colour with “Only ' + model.toUpperCase() + '” on, and only this type changes.'}
+                {selShared.adj?.[ek] ? (ek === model ? 'This aircraft' : 'These wingtips') + ' have their own placement or colour for this layer.' : `Move it, resize it or change its colour with “Only the ${ekLabel}” on, and only ${ek === model ? 'this type' : 'these wingtips'} change${ek === model ? 's' : ''}.`}
               </div>
-              {selShared.adj?.[model] && (
+              {selShared.adj?.[ek] && (
                 <Button
                   size="sm"
                   onClick={() =>
@@ -1190,7 +1212,7 @@ export function LiveryEditor(props: {
                       ...docRef.current,
                       layers: docRef.current.layers.map((l) => {
                         if (l.id !== selShared.id || !l.adj) return l;
-                        const { [model]: _gone, ...rest } = l.adj;
+                        const { [ek]: _gone, ...rest } = l.adj;
                         return { ...l, adj: Object.keys(rest).length ? rest : undefined };
                       }),
                     })
@@ -1216,14 +1238,14 @@ export function LiveryEditor(props: {
   const partFill = (r: Region) => {
     const ls = docRef.current.layers;
     for (let i = ls.length - 1; i >= 0; i--) {
-      const l = layerFor(ls[i], model);
+      const l = layerFor(ls[i], model, tipKey);
       if (l && l.kind === 'fill' && !l.hidden && (l.region === r || (r === 'fuselage' && l.region === 'all'))) return l;
     }
     return null;
   };
   const setPartColour = (r: Region, c: string) => {
     const d = docRef.current;
-    const own = [...d.layers].reverse().find((l) => l.kind === 'fill' && l.region === r && layerFor(l, model));
+    const own = [...d.layers].reverse().find((l) => l.kind === 'fill' && l.region === r && layerFor(l, model, tipKey));
     if (own) return patch(own.id, { colour: c } as Partial<Layer>);
     if (d.layers.length >= MAX_LAYERS) return flash(`A livery can have up to ${MAX_LAYERS} layers.`);
     // a new fill goes just above the other fills: under stripes, titles and logos
@@ -1233,7 +1255,7 @@ export function LiveryEditor(props: {
     });
     const layers = [...d.layers];
     const f = fillLayer(partLabel(r), r, c);
-    layers.splice(at, 0, scope === 'model' ? { ...f, only: [model] } : f);
+    layers.splice(at, 0, scope !== 'all' ? { ...f, only: [ek] } : f);
     setLayers(layers);
   };
   const clearPart = (r: Region) => {
@@ -1345,8 +1367,19 @@ export function LiveryEditor(props: {
       )}
       <div role="listbox" aria-label="Layers" style={{ display: 'grid', gap: 2, maxHeight: phone ? undefined : 300, overflowY: 'auto' }}>
         {[...doc.layers].reverse().map((l) => {
-          const shown = layerFor(l, model);
-          const tag = l.only ? (l.only.includes(model) ? 'only this aircraft' : `only on ${l.only.map((m) => m.toUpperCase()).join(', ')}`) : l.adj?.[model] ? (l.adj[model].hidden ? 'hidden on this aircraft' : 'changed on this aircraft') : '';
+          const shown = layerFor(l, model, tipKey);
+          const tipAdj = tipKey ? l.adj?.[tipKey] : undefined;
+          const tag = l.only
+            ? l.only.includes(model)
+              ? 'only this aircraft'
+              : tipKey && l.only.includes(tipKey)
+                ? 'only these wingtips'
+                : `only on ${l.only.map(onlyLabel).join(', ')}`
+            : tipAdj
+              ? tipAdj.hidden ? 'hidden with these wingtips' : 'changed with these wingtips'
+              : l.adj?.[model]
+                ? l.adj[model].hidden ? 'hidden on this aircraft' : 'changed on this aircraft'
+                : '';
           return (
           <div
             key={l.id}
@@ -1543,9 +1576,9 @@ export function LiveryEditor(props: {
       </span>
       {/* the aircraft on screen, and whether changes are for every type or only this one */}
       <span style={{ position: 'relative', minWidth: 0 }} data-menu>
-        <Button size="sm" aria-haspopup="menu" aria-expanded={menu === 'aircraft'} onClick={() => setMenu((m) => (m === 'aircraft' ? null : 'aircraft'))} style={{ maxWidth: phone ? 120 : 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderColor: scope === 'model' ? C.brand : undefined }}>
+        <Button size="sm" aria-haspopup="menu" aria-expanded={menu === 'aircraft'} onClick={() => setMenu((m) => (m === 'aircraft' ? null : 'aircraft'))} style={{ maxWidth: phone ? 120 : 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderColor: scope !== 'all' ? C.brand : undefined }}>
           {model.toUpperCase()}
-          {scope === 'model' ? <span style={{ color: C.brand }}> · only</span> : null} ▾
+          {scope === 'model' ? <span style={{ color: C.brand }}> · only</span> : scope === 'wingtip' && tipKey ? <span style={{ color: C.brand }}> · these wingtips</span> : null} ▾
         </Button>
         {menu === 'aircraft' && (
           <div role="menu" style={{ ...menuBox, width: phone ? undefined : 300 }}>
@@ -1560,18 +1593,6 @@ export function LiveryEditor(props: {
                 ))}
               </select>
             </label>
-            {tipChoices.length > 1 && tipShown && (
-              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: C.muted, padding: '2px 4px' }}>
-                Wingtips (each kind shows the same livery)
-                <select aria-label="Wingtips to preview" value={tipShown} onChange={(e) => setTipView(e.target.value as WingtipId)} style={{ background: C.bg, color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 8px', fontSize: 13 }}>
-                  {tipChoices.map((w) => (
-                    <option key={w} value={w}>
-                      {WINGTIP_LABEL[w]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
             <div style={{ height: 1, background: C.line, margin: '4px 0' }} />
             <div style={{ fontSize: 12, color: C.muted, padding: '0 4px' }}>Your changes go on</div>
             <button type="button" role="menuitemradio" aria-checked={scope === 'all'} style={menuItem(scope === 'all')} onClick={() => { setScope('all'); setMenu(null); }}>
@@ -1591,9 +1612,44 @@ export function LiveryEditor(props: {
               {scope === 'model' ? '● ' : '○ '}Only the {model.toUpperCase()}
               <div style={{ fontSize: 11.5, color: C.muted, fontWeight: 400, marginTop: 2 }}>To fix a logo or title that sits wrong on this type, without moving it on the others.</div>
             </button>
+            {tipKey && (
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={scope === 'wingtip'}
+                style={menuItem(scope === 'wingtip')}
+                onClick={() => {
+                  setScope('wingtip');
+                  setMenu(null);
+                  flash(`Only the ${ekLabelFor('wingtip')} now: what you change, and layers you add, apply to these wingtips alone.`);
+                }}
+              >
+                {scope === 'wingtip' ? '● ' : '○ '}Only the {model.toUpperCase()} with {WINGTIP_LABEL[tipShown!].toLowerCase()}
+                <div style={{ fontSize: 11.5, color: C.muted, fontWeight: 400, marginTop: 2 }}>
+                  A different wingtip design for each kind: switch wingtips above the picture to see each one.
+                </div>
+              </button>
+            )}
           </div>
         )}
       </span>
+      {/* the wingtips on screen, for types built with more than one kind */}
+      {tipChoices.length > 1 && tipShown && (
+        <span role="group" aria-label="Wingtips on screen" style={{ display: 'inline-flex', gap: 2, padding: 2, borderRadius: 999, background: C.raised, border: `1px solid ${scope === 'wingtip' ? C.brand : C.border}`, maxWidth: '100%', overflowX: 'auto' }}>
+          {tipChoices.map((w) => (
+            <button
+              key={w}
+              type="button"
+              aria-pressed={w === tipShown}
+              onClick={() => setTipView(w)}
+              title={`See it with ${WINGTIP_LABEL[w].toLowerCase()}`}
+              style={{ border: 0, borderRadius: 999, padding: '5px 10px', fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', cursor: 'pointer', font: 'inherit', background: w === tipShown ? C.brand : 'transparent', color: w === tipShown ? C.brandInk : C.textSoft }}
+            >
+              {WINGTIP_SHORT[w]}
+            </button>
+          ))}
+        </span>
+      )}
       {phone && <span style={{ flex: 1 }} />}
       <Button size="sm" onClick={undo} disabled={!past.current.length} title="Undo (Ctrl/Cmd+Z)" aria-label="Undo">
         {phone ? '↶' : 'Undo'}

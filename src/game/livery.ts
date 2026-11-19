@@ -42,9 +42,12 @@ interface Base {
   /** 0 to 1. */
   opacity: number;
   region: Region;
-  /** Only on these aircraft models (v2.71); on every model when unset. */
+  /** Only on these aircraft models (v2.71), or one kind of wingtips on a model (<model>~<wingtip>, 2026-11); on every model when unset. */
   only?: string[];
-  /** Changes for single aircraft models (v2.71), by model id: where the shared placement doesn't fit a type. */
+  /**
+   * Changes for single aircraft models (v2.71), by model id: where the shared placement doesn't fit a type.
+   * <model>~<wingtip> (2026-11): changes for that model only with those wingtips, on top of the model's own.
+   */
   adj?: Record<string, ModelAdjust>;
 }
 
@@ -66,12 +69,18 @@ export interface ModelAdjust {
 export const ADJ_KEYS = ['x', 'y', 'size', 'w', 'h', 'rot', 'v0', 'v1', 'dx', 'dy', 'colour'] as const;
 const MAX_ADJ_MODELS = 60;
 
-/** A layer as it is on one aircraft model: null when it isn't shown there. */
-export function layerFor(l: Layer, model: string): Layer | null {
-  if (l.only && !l.only.includes(model)) return null;
-  const a = l.adj?.[model];
-  if (!a) return l;
-  if (a.hidden) return null;
+/**
+ * A layer as it is on one aircraft model: null when it isn't shown there.
+ * `tip`: the model's wingtips as <model>~<wingtip>, for changes kept for just those wingtips.
+ */
+export function layerFor(l: Layer, model: string, tip?: string | null): Layer | null {
+  if (l.only && !l.only.includes(model) && !(tip && l.only.includes(tip))) return null;
+  const am = l.adj?.[model];
+  const at = tip ? l.adj?.[tip] : undefined;
+  if (!am && !at) return l;
+  if (am?.hidden || at?.hidden) return null;
+  // the wingtips' own changes win over the model's
+  const a: ModelAdjust = { ...(am ?? {}), ...(at ?? {}) };
   const o: Record<string, unknown> = { ...l };
   for (const k of ADJ_KEYS) {
     if (a[k] === undefined) continue;
@@ -427,7 +436,8 @@ const FRAMES: Frame[] = ['body', 'fin'];
 const SHAPES: ShapeKind[] = ['rect', 'ellipse', 'triangle', 'star', 'chevron'];
 const FONTS: FontId[] = ['sans', 'serif', 'italic', 'condensed', 'script'];
 
-const MODEL_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
+// a model, or a model with one kind of wingtips (b737-800~scimitar)
+const MODEL_ID = /^[a-z0-9][a-z0-9-]{0,39}(~[a-z]{1,12})?$/;
 function modelList(x: unknown): string[] | undefined {
   if (!Array.isArray(x)) return undefined;
   const v = [...new Set(x.filter((m): m is string => typeof m === 'string' && MODEL_ID.test(m)))].slice(0, MAX_ADJ_MODELS);
