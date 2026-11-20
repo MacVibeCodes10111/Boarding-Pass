@@ -280,7 +280,7 @@ export const globalCss = () => `
   html[data-layout=phone] .bp-sheet-popup.bp-sheet-phone { left: 0 !important; right: 0 !important; bottom: var(--bp-bottom-h) !important; max-width: none !important; }
   html .bp-sheet-popup.bp-sheet-phone .maplibregl-popup-content { background: ${C.panel} !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
     border-radius: 18px 18px 0 0 !important; border: none !important; border-top: 1px solid ${C.border} !important; box-shadow: 0 -10px 30px ${shade(0.3)} !important;
-    padding: 0 14px !important; max-height: none; overflow: hidden; touch-action: none; transition: transform .18s ease-out; cursor: default; }
+    padding: 0 14px !important; max-height: none; overflow: hidden; touch-action: none; cursor: default; will-change: height; }
   .bp-sheet-phone.bp-sheet-open .maplibregl-popup-content { max-height: calc(100dvh - var(--bp-top-h) - var(--bp-bottom-h) - 8px); overflow-y: auto; touch-action: pan-y; }
   .bp-sheet-phone .bp-sheet-grab { display: flex; justify-content: center; padding: 8px 0 8px; margin: 0 -14px; cursor: grab; touch-action: none; position: sticky; top: 0; z-index: 2; background: ${C.panel}; }
   .bp-sheet-phone .bp-sheet-grab span { width: 40px; height: 5px; border-radius: 3px; background: ${C.border}; }
@@ -295,12 +295,14 @@ export const globalCss = () => `
   .bp-sheet-phone .bp-pop-city { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 42vw; }
   .bp-sheet-phone .bp-pop-stats { margin: 10px 0 0 !important; }
   .bp-sheet-phone .bp-pop-actions { position: sticky; bottom: 0; z-index: 2; background: ${C.panel}; margin: 12px -14px 0 !important; padding: 8px 14px 10px; border-top: 1px solid ${C.line}; }
-  .bp-sheet-phone.bp-sheet-open .bp-pop-hero { margin-top: 0 !important; }
   /* the short card: the picture is a thumbnail beside the name */
-  .bp-sheet-phone:not(.bp-sheet-open) .bp-pop-hero { position: absolute !important; top: 24px; right: 48px; width: 108px; aspect-ratio: 2.3 !important; margin: 0 !important; }
-  .bp-sheet-phone:not(.bp-sheet-open) .bp-pop-hero :is(.bp-pop-badge, .bp-pop-special) { display: none !important; }
-  .bp-sheet-phone:not(.bp-sheet-open) .maplibregl-popup-content:has(.bp-pop-hero) :is(.bp-pop-head, .bp-pop-sub) { padding-right: 150px; }
-  .bp-sheet-phone:not(.bp-sheet-open) .bp-pop-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bp-sheet-phone .bp-pop-hero { position: absolute !important; top: 24px; right: 48px; width: 108px; aspect-ratio: 2.3 !important; margin: 0 !important; }
+  .bp-sheet-phone .bp-pop-hero :is(.bp-pop-badge, .bp-pop-special) { display: none !important; }
+  .bp-pop-hero-big { display: none; }
+  .bp-sheet-phone .bp-pop-hero-big { display: block; margin: 12px 0 0 !important; }
+  .bp-sheet-phone:not(.bp-sheet-open) .bp-pop-hero-big { display: none; }
+  .bp-sheet-phone .maplibregl-popup-content:has(.bp-pop-hero) :is(.bp-pop-head, .bp-pop-sub) { padding-right: 150px; }
+  .bp-sheet-phone .bp-pop-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   html[data-layout=phone] .bp-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   html[data-layout=phone] .bp-tiles > :first-child { grid-column: 1 / -1; }
   html[data-layout=phone] .bp-debt-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }

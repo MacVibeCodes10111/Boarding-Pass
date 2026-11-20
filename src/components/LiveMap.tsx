@@ -1230,8 +1230,11 @@ function attachOrbit(map: any, popup: any) {
 
 /**
  * Phones, like FR24: a short card above the tab bar (who, where from and to,
- * how far along, height and speed). Swipe it up, tap its handle or More for
- * everything else; swipe down to shrink it again, or to close it when short.
+ * how far along, height and speed). Drag it up, tap its handle or More for
+ * everything else; it follows the finger and glides to short or full on
+ * release. Drag down to shrink it again, or to close it when it's short.
+ * The top of the card is the same in both, so nothing jumps: the extra
+ * details (and the big picture) are uncovered underneath as it grows.
  */
 function attachPhoneSheet(popup: any, root: HTMLElement) {
   const box = root.querySelector('.maplibregl-popup-content') as HTMLElement | null;
@@ -1243,67 +1246,191 @@ function attachPhoneSheet(popup: any, root: HTMLElement) {
   grab.setAttribute('aria-label', 'Show more about this flight');
   grab.innerHTML = '<span></span>';
   box.prepend(grab);
+
+  // The picture: a thumbnail beside the name, and a big copy in the details (kept in step as it's painted)
+  const hero = box.querySelector('.bp-pop-hero') as HTMLElement | null;
+  const actions = box.querySelector('.bp-pop-actions');
+  let watch: MutationObserver | undefined;
+  if (hero && actions) {
+    const big = document.createElement('div');
+    big.className = 'bp-pop-hero-big';
+    big.setAttribute('aria-hidden', 'true');
+    big.style.cssText = hero.style.cssText;
+    const copy = () => (big.innerHTML = hero.innerHTML);
+    copy();
+    actions.before(big);
+    watch = new MutationObserver(copy);
+    watch.observe(hero, { subtree: true, childList: true, attributes: true, characterData: true });
+  }
+
   const moreBtn = box.querySelector('.bp-pop-more-btn') as HTMLElement | null;
-  const setOpen = (on: boolean) => {
-    root.classList.toggle('bp-sheet-open', on);
-    box.scrollTop = 0;
+  const EASE = 'cubic-bezier(.22,.8,.24,1)';
+  const isOpen = () => root.classList.contains('bp-sheet-open');
+  const label = (on: boolean) => {
     grab.setAttribute('aria-label', on ? 'Show less' : 'Show more about this flight');
-    if (moreBtn) {
-      moreBtn.setAttribute('aria-expanded', String(on));
-      const label = moreBtn.querySelector('span');
-      if (label) label.textContent = on ? 'Less' : 'More';
-      const svg = moreBtn.querySelector('svg') as SVGElement | null;
-      if (svg) svg.style.transform = on ? 'rotate(180deg)' : '';
+    if (!moreBtn) return;
+    moreBtn.setAttribute('aria-expanded', String(on));
+    const t = moreBtn.querySelector('span');
+    if (t) t.textContent = on ? 'Less' : 'More';
+    const svg = moreBtn.querySelector('svg') as SVGElement | null;
+    if (svg) {
+      svg.style.transition = `transform .3s ${EASE}`;
+      svg.style.transform = on ? 'rotate(180deg)' : '';
     }
   };
-  const isOpen = () => root.classList.contains('bp-sheet-open');
+  /** Short and full heights, read without showing either. */
+  const heights = () => {
+    const was = isOpen();
+    const h = box.style.height;
+    box.style.height = '';
+    root.classList.remove('bp-sheet-open');
+    const short = box.offsetHeight;
+    root.classList.add('bp-sheet-open');
+    const full = Math.max(short, box.offsetHeight);
+    root.classList.toggle('bp-sheet-open', was);
+    box.style.height = h;
+    return { short, full };
+  };
+  let done: (() => void) | undefined;
+  const finish = () => {
+    const f = done;
+    done = undefined;
+    f?.();
+  };
+  box.addEventListener('transitionend', (e) => {
+    if (e.target === box) finish();
+  });
+  /** Glide to short or full; ms grows with the distance, like a flick. */
+  const glideTo = (on: boolean, from?: number) => {
+    finish();
+    const { short, full } = heights();
+    const start = from ?? box.offsetHeight;
+    const target = on ? full : short;
+    box.scrollTop = 0;
+    root.classList.add('bp-sheet-open'); // the details stay in place while it moves
+    box.style.overflowY = 'hidden';
+    box.style.transition = 'none';
+    box.style.transform = '';
+    box.style.height = `${start}px`;
+    void box.offsetHeight;
+    const ms = Math.round(Math.min(380, 200 + Math.abs(target - start) * 0.35));
+    box.style.transition = `height ${ms}ms ${EASE}`;
+    box.style.height = `${target}px`;
+    label(on);
+    done = () => {
+      box.style.transition = '';
+      box.style.height = '';
+      box.style.overflowY = '';
+      root.classList.toggle('bp-sheet-open', on);
+    };
+    if (start === target) finish();
+    else window.setTimeout(() => done && finish(), ms + 80); // in case transitionend never comes
+  };
+  const closeDown = () => {
+    finish();
+    box.style.transition = `transform .22s ${EASE}`;
+    box.style.transform = `translateY(${box.offsetHeight + 20}px)`;
+    window.setTimeout(() => popup.remove(), 200);
+  };
+
   for (const ev of ['mousedown', 'touchstart', 'pointerdown']) moreBtn?.addEventListener(ev, (e) => e.stopPropagation());
   moreBtn?.addEventListener('click', (e) => {
     e.stopPropagation();
-    setOpen(!isOpen());
+    glideTo(!isOpen());
   });
 
-  let y0 = 0;
-  let dy = 0;
-  let id = -1;
-  let fromGrab = false;
-  box.addEventListener('pointerdown', (e: PointerEvent) => {
-    const t = e.target as HTMLElement;
-    if (t.closest('button, a, input, .maplibregl-popup-close-button')) return;
-    fromGrab = Boolean(t.closest('.bp-sheet-grab'));
-    // Opened and scrolled down: the finger scrolls the details, except on the handle
-    if (isOpen() && !fromGrab && box.scrollTop > 0) return;
-    id = e.pointerId;
-    y0 = e.clientY;
-    dy = 0;
-  });
-  const end = (e: PointerEvent) => {
-    if (e.pointerId !== id) return;
-    id = -1;
-    box.style.transform = '';
-    box.style.transition = '';
-    if (dy < -40) setOpen(true);
-    else if (dy > 50) {
-      if (isOpen()) setOpen(false);
-      else popup.remove();
-    } else if (Math.abs(dy) < 6 && fromGrab) setOpen(!isOpen());
+  // Dragging: touch (so a drag at the top of the details can move the sheet, not scroll) and mouse
+  type Drag = { y0: number; startH: number; short: number; full: number; mine: boolean | null; grab: boolean; wasOpen: boolean; samples: [number, number][] };
+  let d: Drag | null = null;
+  const begin = (y: number, target: EventTarget | null) => {
+    const t = target as HTMLElement;
+    if (t?.closest?.('button, a, input, select, .maplibregl-popup-close-button')) return;
+    finish();
+    const { short, full } = heights();
+    d = { y0: y, startH: box.offsetHeight, short, full, mine: null, grab: Boolean(t?.closest?.('.bp-sheet-grab')), wasOpen: isOpen(), samples: [[performance.now(), y]] };
   };
-  const move = (e: PointerEvent) => {
-    if (e.pointerId !== id) return;
-    dy = e.clientY - y0;
-    // follows the finger down; resists a little going up
-    if (Math.abs(dy) > 4) {
+  /** Returns true when the sheet took the move (so the page mustn't scroll). */
+  const drag = (y: number): boolean => {
+    if (!d) return false;
+    const dy = y - d.y0;
+    if (d.mine === null) {
+      if (Math.abs(dy) < 5) return d.wasOpen ? false : true;
+      // Opened: a drag in the details scrolls them, unless it pulls down from the very top
+      d.mine = !d.wasOpen || d.grab || (box.scrollTop <= 0 && dy > 0);
+      if (!d.mine) {
+        d = null;
+        return false;
+      }
+      root.classList.add('bp-sheet-open');
+      box.style.overflowY = 'hidden';
       box.style.transition = 'none';
-      box.style.transform = `translateY(${dy > 0 ? dy : dy * 0.25}px)`;
     }
+    if (!d.mine) return false;
+    d.samples.push([performance.now(), y]);
+    if (d.samples.length > 6) d.samples.shift();
+    let h = d.startH - dy;
+    let pull = 0;
+    if (h > d.full) h = d.full + (h - d.full) * 0.2; // a little give past full
+    if (h < d.short) {
+      pull = d.short - h; // past short: the whole card follows the finger down
+      h = d.short;
+    }
+    box.style.height = `${h}px`;
+    box.style.transform = pull ? `translateY(${pull}px)` : '';
+    return true;
   };
-  window.addEventListener('pointermove', move);
-  window.addEventListener('pointerup', end);
-  window.addEventListener('pointercancel', end);
+  const release = () => {
+    const g = d;
+    d = null;
+    if (!g) return;
+    if (!g.mine) {
+      if (g.grab) glideTo(!g.wasOpen); // a tap on the handle
+      else if (!g.wasOpen) {
+        box.style.overflowY = '';
+      }
+      return;
+    }
+    const [t0, y0] = g.samples[0];
+    const [t1, y1] = g.samples[g.samples.length - 1];
+    const v = (y1 - y0) / Math.max(1, t1 - t0); // px per ms, + is down
+    const h = box.offsetHeight;
+    const pull = parseFloat(box.style.transform.replace(/[^\d.-]/g, '')) || 0;
+    if (!g.wasOpen && (pull > 70 || (pull > 10 && v > 0.5))) return closeDown();
+    box.style.transform = '';
+    let open: boolean;
+    if (v < -0.35) open = true;
+    else if (v > 0.35) open = false;
+    else open = h - g.short > (g.full - g.short) / 2;
+    glideTo(open, h);
+  };
+
+  box.addEventListener('touchstart', (e: TouchEvent) => {
+    e.stopPropagation();
+    if (e.touches.length === 1) begin(e.touches[0].clientY, e.target);
+  }, { passive: true });
+  box.addEventListener('touchmove', (e: TouchEvent) => {
+    e.stopPropagation();
+    if (e.touches.length === 1 && drag(e.touches[0].clientY) && e.cancelable) e.preventDefault();
+  }, { passive: false });
+  box.addEventListener('touchend', (e) => {
+    e.stopPropagation();
+    release();
+  });
+  box.addEventListener('touchcancel', release);
+  box.addEventListener('mousedown', (e: MouseEvent) => {
+    e.stopPropagation();
+    if (e.button === 0) begin(e.clientY, e.target);
+  });
+  const mmove = (e: MouseEvent) => {
+    if (d && drag(e.clientY)) e.preventDefault();
+  };
+  const mup = () => d && release();
+  window.addEventListener('mousemove', mmove);
+  window.addEventListener('mouseup', mup);
   popup.on?.('close', () => {
-    window.removeEventListener('pointermove', move);
-    window.removeEventListener('pointerup', end);
-    window.removeEventListener('pointercancel', end);
+    window.removeEventListener('mousemove', mmove);
+    window.removeEventListener('mouseup', mup);
+    watch?.disconnect();
   });
 }
 
