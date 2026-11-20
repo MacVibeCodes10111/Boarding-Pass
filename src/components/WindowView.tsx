@@ -302,7 +302,9 @@ export function WindowView(props: {
   // Raked tips: the wing carries on, more swept, to a point
   const raked = props.tip === 'raked';
   const rakeTip: V3 = [spanX + (spanX - x0) * 0.075, tipLE[1] - (spanX - x0) * 0.075 * Math.tan((sp.sweep + 22) * DEG) + tipChordV * 0.15, tipLE[2] + 0.004];
-  const wingTop = path([at(0, 0), at(0.33, 0), tipLE, ...(raked ? [rakeTip] : []), tipTE, at(0.33, 1), at(0, 1)]);
+  // The aileron sits in a cut-out of the wing (drawn on its own, so it never shows twice)
+  const ail0 = (prop ? 0.7 : 0.64) + 0.02, ail1 = 0.92;
+  const wingTop = path([at(0, 0), at(0.33, 0), tipLE, ...(raked ? [rakeTip] : []), tipTE, at(ail1, 1), at(ail1, 0.76), at(ail0, 0.76), at(ail0, 1), at(0.33, 1), at(0, 1)]);
   // Wingtip devices (heights in half-lengths: about 2.4 m on an A320)
   const up = (p: V3, dx: number, dy: number, dz: number): V3 => [p[0] + dx, p[1] + dy, p[2] + dz];
   const c = tipChordV; // negative: aft
@@ -333,12 +335,14 @@ export function WindowView(props: {
   // Moving parts: flaps, spoilers, aileron, slats (jets)
   const flapSpan = prop ? 0.7 : 0.64;
   const fl = props.wing.flaps;
-  const flapSpans: [number, number][] = prop ? [[0, flapSpan]] : [[0, 0.33], [0.34, flapSpan]];
+  // Inner and outer flaps meet (no gap between them when they're out)
+  const flapSpans: [number, number][] = prop ? [[0, flapSpan]] : [[0, 0.335], [0.335, flapSpan]];
   // Out: back by up to a seventh of the chord and down by up to 25°
   const flapPanels = flapSpans.map(([a0, a1]) => hinged(a0, a1, 0.73, 1, fl * 25, fl * 0.14));
   const flapLines = flapSpans.map(([a0, a1]) => panel(a0, a1, 0.73, 1)).join(' ');
-  const aileron = hinged(flapSpan + 0.02, 0.92, 0.76, 1, props.wing.aileron * -12);
-  const aileronLines = panel(flapSpan + 0.02, 0.92, 0.76, 1);
+  // A few degrees, as you see them move from the window
+  const aileron = hinged(ail0, ail1, 0.76, 1, props.wing.aileron * -7);
+  const aileronLines = panel(ail0, ail1, 0.76, 1);
   const spoilerSpans = prop ? [] : [0.1, 0.22, 0.34, 0.46];
   const spoilerLines = spoilerSpans.map((s0) => panel(s0, s0 + 0.11, 0.58, 0.71)).join(' ');
   // Up: hinged at the front, the back edge rising up to 45°
@@ -445,13 +449,15 @@ export function WindowView(props: {
                 </defs>
                 {/* under a low wing: the engines show ahead of it; under a high wing they hang in front of it */}
                 {!high && engineEls}
-                {/* the wing without its flaps and aileron; they hang off its back edge, moving in 3D */}
+                {/* the flaps first: they slide out from under the wing's back edge, moving in 3D */}
+                {fl >= 0.03 &&
+                  flapPanels.map((d, i) => (
+                    <path key={i} d={d} fill={mixHex(surface, l.wingDark, 0.3 + fl * 0.3)} stroke={l.wingDark} strokeOpacity="0.55" strokeWidth="1" strokeLinejoin="round" />
+                  ))}
+                {/* the wing (with a cut-out for the aileron, drawn on its own) */}
                 <path d={wingTop} fill="url(#bp-win-wing)" />
-                {flapPanels.map((d, i) => (
-                  <path key={i} d={d} fill={mixHex(surface, l.wingDark, 0.2 + fl * 0.25)} stroke={l.wingDark} strokeOpacity="0.55" strokeWidth="1" strokeLinejoin="round" />
-                ))}
                 {fl < 0.03 && <path d={flapLines} fill="none" stroke={l.wingDark} strokeOpacity="0.5" strokeWidth="1" />}
-                <path d={aileron} fill={mixHex(surface, l.wingDark, 0.2)} stroke={l.wingDark} strokeOpacity="0.55" strokeWidth="1" strokeLinejoin="round" />
+                <path d={aileron} fill="url(#bp-win-wing)" stroke={l.wingDark} strokeOpacity="0.45" strokeWidth="1" strokeLinejoin="round" />
                 {Math.abs(props.wing.aileron) < 0.05 && <path d={aileronLines} fill="none" stroke={l.wingDark} strokeOpacity="0.4" strokeWidth="1" />}
                 {spoilerLines && <path d={spoilerLines} fill="none" stroke={l.wingDark} strokeOpacity="0.45" strokeWidth="1" />}
                 {spoilersUp && <path d={spoilersUp} fill={mixHex(surface, '#ffffff', 0.2)} stroke="#0b0e12" strokeOpacity="0.55" strokeWidth="1.5" strokeLinejoin="round" />}

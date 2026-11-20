@@ -9,7 +9,8 @@
 // The lights are NASA's Earth at night (Black Marble, from GIBS): 64 tiles
 // (zoom 3, about 2 MB) put straight into one world texture, so the shader can
 // light each point by its own sun. Projection to the flat map or the globe is
-// MapLibre's own (projectTileFor3D), like the aircraft layer.
+// MapLibre's own (projectTileFor3D); the globe's far side is cut away for each
+// pixel (cutting whole grid cells left a lit strip at the horizon).
 // ============================================================================
 
 const DEG = Math.PI / 180;
@@ -40,7 +41,7 @@ layout(location = 0) in vec2 a_merc;
 out vec2 v_merc;
 void main() {
   v_merc = a_merc;
-  gl_Position = projectTileFor3D(a_merc, 0.0);
+  gl_Position = projectTileFor3D(a_merc, 0.0); // (the globe's far side is cut away pixel by pixel, below)
 }`;
 
 const FRAGMENT = `#version 300 es
@@ -50,10 +51,20 @@ uniform vec3 u_sun;       // towards the sun (x: lng 0 on the equator, y: lng 90
 uniform float u_shade;    // how dark the night side goes
 uniform float u_glow;     // the city lights' strength (they fade as you zoom in)
 uniform float u_ready;    // the lights' picture has loaded
+uniform float u_globe;    // drawn on the globe (1): hide its far side
+uniform vec4 u_projection_clipping_plane;
 in vec2 v_merc;
 out vec4 fragColor;
 const float PI = 3.141592653589793;
 void main() {
+  if (u_globe > 0.5) {
+    // The same place on MapLibre's sphere, and the same test it uses for the horizon
+    float sx = v_merc.x * PI * 2.0 + PI;
+    float t = exp(PI - v_merc.y * PI * 2.0);
+    float t2 = t * t;
+    vec3 sp = vec3(sin(sx) * (2.0 * t) / (t2 + 1.0), (t2 - 1.0) / (t2 + 1.0), cos(sx) * (2.0 * t) / (t2 + 1.0));
+    if (dot(sp, u_projection_clipping_plane.xyz) + u_projection_clipping_plane.w < -0.0005) discard;
+  }
   float lng = v_merc.x * 2.0 * PI - PI;
   float lat = atan(sinh(PI * (1.0 - 2.0 * v_merc.y)));
   vec3 p = vec3(cos(lat) * cos(lng), cos(lat) * sin(lng), sin(lat));
@@ -111,7 +122,7 @@ export function createNightLayer(id: string): NightLayerHandle {
     gl.deleteShader(fs);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error('night program: ' + gl.getProgramInfoLog(prog));
     const u: Record<string, WebGLUniformLocation | null> = {};
-    for (const name of ['u_projection_fallback_matrix', 'u_projection_matrix', 'u_projection_tile_mercator_coords', 'u_projection_clipping_plane', 'u_projection_transition', 'u_lights', 'u_sun', 'u_shade', 'u_glow', 'u_ready'])
+    for (const name of ['u_projection_fallback_matrix', 'u_projection_matrix', 'u_projection_tile_mercator_coords', 'u_projection_clipping_plane', 'u_projection_transition', 'u_lights', 'u_sun', 'u_shade', 'u_glow', 'u_ready', 'u_globe'])
       u[name] = gl.getUniformLocation(prog, name);
     p = { prog, u };
     programs.set(key, p);
@@ -228,6 +239,7 @@ export function createNightLayer(id: string): NightLayerHandle {
       gl.uniform1f(u.u_shade, shade);
       gl.uniform1f(u.u_glow, glow);
       gl.uniform1f(u.u_ready, tex && loaded > 0 ? 1 : 0);
+      gl.uniform1f(u.u_globe, shaderData.variantName === 'globe' && pd.projectionTransition > 0.001 ? 1 : 0);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.uniform1i(u.u_lights, 0);
