@@ -189,6 +189,15 @@ export const globalCss = () => `
   ::-webkit-scrollbar-thumb { background: ${C.border}; border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-corner { background: transparent; }
+  /* Window view: the wing flexes a little (more in the climb, the descent and taxiing), the tip light flashes */
+  @keyframes bpWingFlex { 0%, 100% { transform: translateY(0); } 27% { transform: translateY(calc(var(--bp-flex) * -1)); } 55% { transform: translateY(calc(var(--bp-flex) * 0.6)); } 80% { transform: translateY(calc(var(--bp-flex) * -0.3)); } }
+  @keyframes bpStrobe { 0%, 5% { opacity: .95; } 6%, 100% { opacity: 0; } }
+  .bp-win-wing { animation: bpWingFlex 3.4s ease-in-out infinite; }
+  .bp-win-strobe { opacity: 0; animation: bpStrobe 1.4s linear infinite; }
+  @media (prefers-reduced-motion: reduce) { .bp-win-wing, .bp-win-strobe { animation: none; } }
+  html:has(.bp-window-view) :is(.bp-layers-fab, .bp-zoom, .bp-camera-alt, .maplibregl-popup) { visibility: hidden !important; }
+  html[data-layout=phone] .bp-window-stats { display: none; }
+  .bp-sheet-phone .bp-pop-window span { display: none; }
   .bp-row:hover { background: ${C.panelAlt}; }
   .bp-saved-item:hover { background: ${C.panelAlt}; }
   .bp-manual p { margin: 0; }

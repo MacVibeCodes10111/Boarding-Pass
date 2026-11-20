@@ -2395,6 +2395,7 @@ export default function App() {
         mapStyle={mapStyle}
         globe={globe}
         threeD={threeD}
+        onThreeD={setThreeD}
         detailed3d={detailed3d}
         showAllRoutes={showAllRoutes}
         planeIconScale={planeIconScale}
