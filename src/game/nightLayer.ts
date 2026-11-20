@@ -43,8 +43,10 @@ void main() {
   v_merc = a_merc;
   vec4 p = projectTileFor3D(a_merc, 0.0); // (the globe's far side is cut away pixel by pixel, below)
   // Never cut at the map's far distance: the grid's big cells were cut short of the
-  // horizon there, leaving a strip of daylight ground (only what's behind the eye is cut)
-  if (p.w > 0.0) p.z = clamp(p.z, -p.w * 0.999, p.w * 0.999);
+  // horizon there, leaving a strip of daylight ground. This keeps the near cut exactly
+  // where it was (z + w is only scaled, so it's still 0 at the near plane) and keeps
+  // everything in front inside the far one (z <= w for any w > 0).
+  p.z = 0.5 * (p.z + p.w) - p.w;
   gl_Position = p;
 }`;
 
