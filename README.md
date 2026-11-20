@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 3.5.1. Free to play. See [Credits and licences](#credits-and-licences).
+Version 3.6.0. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -20,6 +20,18 @@ Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 3.6.0, the window seat and the night:
+
+- **Sit by a window** of any aircraft, yours or another airline's, at its real height: the wing with its winglet, nav light and strobe, flaps, spoilers and ailerons that move, and the ground going by. Look left or right, drag to look round, and follow the route on a small map.
+- **Real take-offs and landings** from the window: rotation, climbs and turns that bank, a flare and a touchdown, in a dozen styles from feather-light to firm, with a little turbulence in bad weather.
+- **Haze with distance:** the ground is clear straight down and fades into blue towards the horizon, more the higher you fly, and the sky follows the sun.
+- **Day and night** on the satellite map: the sun sits where it really is at your game's time, with a real dusk line, and the night side lights up with cities, streets and airports. From the window you see the city lights at cruise and the street and airport lights as you come in to land.
+- **Street lights** on any map, Dark, Light or Satellite: streets, runway edge lights and green taxiway lights, a switch in the Map menu.
+- **Aircraft on the ground in 3D** on the 3D map, and the map follows an aircraft smoothly without bouncing.
+- **Watch faster:** a map timelapse (60×, 300×, 1200×) just for watching; your airline's clock doesn't change.
+- **Realistic cruise heights:** long flights go up to FL390, shorter ones cruise lower.
+- **Phones:** a new aircraft card that slides up for the details, and fixes for overlaps in the livery editor, Fleet and the route hint.
 
 Version 3.5.1, smooth zooming:
 
