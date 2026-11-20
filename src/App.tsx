@@ -172,8 +172,8 @@ function readPrefs(): {
   aiDetail?: AiDetail;
   hideMilestoneCard?: boolean;
   mapStyle?: MapStyleChoice;
-  /** Day, night, or by the sun (v3.6). */
-  mapTime?: 'day' | 'night' | 'auto';
+  /** Satellite map: day and night by the sun (v3.6, off unless turned on). */
+  dayNight?: boolean;
   globe?: boolean;
   threeD?: boolean;
   /** 3D: detailed aircraft shapes (on unless turned off). */
@@ -382,13 +382,10 @@ export default function App() {
     setMapStyleState(m);
     writePrefs({ mapStyle: m });
   };
-  const [mapTime, setMapTimeState] = useState<'day' | 'night' | 'auto'>(() => {
-    const v = readPrefs().mapTime;
-    return v === 'night' || v === 'auto' ? v : 'day';
-  });
-  const setMapTime = (v: 'day' | 'night' | 'auto') => {
-    setMapTimeState(v);
-    writePrefs({ mapTime: v });
+  const [dayNight, setDayNightState] = useState(() => readPrefs().dayNight === true);
+  const setDayNight = (v: boolean) => {
+    setDayNightState(v);
+    writePrefs({ dayNight: v });
   };
   const [globe, setGlobeState] = useState(() => readPrefs().globe === true);
   const setGlobe = (g: boolean) => {
@@ -2403,7 +2400,7 @@ export default function App() {
         showApproaches={showApproaches}
         showNavaids={showNavaids}
         mapStyle={mapStyle}
-        mapTime={mapTime}
+        dayNight={dayNight}
         globe={globe}
         threeD={threeD}
         onThreeD={setThreeD}
@@ -2457,8 +2454,8 @@ export default function App() {
       <LayersMenu
         mapStyle={mapStyle}
         onMapStyle={setMapStyle}
-        mapTime={mapTime}
-        onMapTime={setMapTime}
+        dayNight={dayNight}
+        onDayNight={setDayNight}
         globe={globe}
         onGlobe={setGlobe}
         threeD={threeD}

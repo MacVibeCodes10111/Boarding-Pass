@@ -753,8 +753,8 @@ export type FriendsCap = '100' | '300' | '1000' | 'all';
 export function LayersMenu(props: {
   mapStyle: MapStyleChoice;
   onMapStyle: (v: MapStyleChoice) => void;
-  mapTime: 'day' | 'night' | 'auto';
-  onMapTime: (v: 'day' | 'night' | 'auto') => void;
+  dayNight: boolean;
+  onDayNight: (v: boolean) => void;
   globe: boolean;
   onGlobe: (v: boolean) => void;
   threeD: boolean;
@@ -894,22 +894,10 @@ export function LayersMenu(props: {
               { value: 'satellite', label: 'Satellite' },
             ]}
           />
-          {/* Night: city lights, street lights and airport lights (Auto: by the sun where you're looking) */}
-          <div style={{ marginTop: 6 }}>
-            <Segmented<'day' | 'night' | 'auto'>
-              size="sm"
-              block
-              value={props.mapTime}
-              onChange={props.onMapTime}
-              options={[
-                { value: 'day', label: 'Day' },
-                { value: 'night', label: 'Night' },
-                { value: 'auto', label: 'By the sun' },
-              ]}
-            />
-          </div>
           <div style={{ marginTop: 6 }}>
             {props.globeAvailable && <Switch on={props.globe} onChange={props.onGlobe} label="Globe" />}
+            {/* Satellite: night falls where the sun has set (city lights, street and airport lights) */}
+            {props.mapStyle === 'satellite' && <Switch on={props.dayNight} onChange={props.onDayNight} label="Day and night" />}
             <Switch on={props.threeD} onChange={props.onThreeD} label="3D" />
             {props.threeD && <Switch on={props.detailed3d} onChange={props.onDetailed3d} label="Detailed aircraft" />}
             {props.threeD && <div style={{ ...note, margin: '2px 0 4px' }}>{TILT_HINT}.</div>}

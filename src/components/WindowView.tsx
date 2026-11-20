@@ -103,6 +103,8 @@ function hull(pts: V2[]): V2[] {
 export function WindowView(props: {
   side: WindowSide;
   light: WindowLight;
+  /** The map itself goes dark at night (satellite): only a little shade on top. */
+  mapNight?: boolean;
   hud: WindowHud;
   wing: WingParts;
   group: RadarIconGroup;
@@ -414,7 +416,7 @@ export function WindowView(props: {
           {/* Drawn in layers the screen can move without painting again: a little night
               shade over the world (the map itself goes dark, with its lights); the wing (turned as a whole as it flexes); its propeller
               blur and strobe (they flicker on their own); the cabin wall (still) */}
-          {l.night > 0.02 && <div style={{ position: 'absolute', inset: 0, background: '#0a1330', opacity: l.night * 0.35, mixBlendMode: 'multiply' }} />}
+          {l.night > 0.02 && <div style={{ position: 'absolute', inset: 0, background: '#0a1330', opacity: l.night * (props.mapNight ? 0.35 : 0.74), mixBlendMode: 'multiply' }} />}
           {show.wing && (
             <div ref={wingRef} style={{ position: 'absolute', inset: 0, transformOrigin: `${flexAt.current.root[0]}px ${flexAt.current.root[1]}px`, willChange: 'transform' }}>
               {!high && propSvg}

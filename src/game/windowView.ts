@@ -494,6 +494,9 @@ export function windowCamera(w: WindowState, t: number, mapRate: number) {
   return { lng, lat, altM: Math.max(0.5, Math.max(f2.alt[0], w.eyeM * 0.8) + bumpZ + bounceZ), bearing, pitch, roll, base, aglFt: shown, gsKts: gs, wing, fpm: w.fpm, flex: Math.max(-1, Math.min(1, flex)), style: st.name };
 }
 
+/** The highest the map's own camera looks (degrees from straight down): just under level. */
+const PITCH_CAP = 88.5;
+
 /** Moves the map's camera to the window (at most ~30 times a second). */
 export function placeWindowCamera(map: any, w: WindowState, t: number, mapRate: number): boolean {
   if (t - w.lastPlace < PLACE_MS) return false;
@@ -503,8 +506,18 @@ export function placeWindowCamera(map: any, w: WindowState, t: number, mapRate: 
   w.last = cam;
   try {
     if ((map.getMaxPitch?.() ?? 85) < 100) map.setMaxPitch?.(100);
-    const opts = map.calculateCameraOptionsFromCameraLngLatAltRotation?.([cam.lng, cam.lat], cam.altM, cam.bearing, cam.pitch, cam.roll);
-    if (opts) map.jumpTo(opts);
+    // The map draws no ground once the camera looks above level (a bank away from the
+    // window looks up into the sky): it stays just under level, and the rest of the look
+    // up is a lens shift (the picture slides down, the ground stays in the window's foot)
+    const pitch = Math.min(cam.pitch, PITCH_CAP);
+    const opts = map.calculateCameraOptionsFromCameraLngLatAltRotation?.([cam.lng, cam.lat], cam.altM, cam.bearing, pitch, cam.roll);
+    if (opts) {
+      const h = map.getCanvas?.()?.clientHeight ?? 0;
+      const fov = map.getVerticalFieldOfView?.() ?? 36.87;
+      const shift = h && cam.pitch > PITCH_CAP ? ((h / 2) / Math.tan((fov * DEG) / 2)) * Math.tan((cam.pitch - PITCH_CAP) * DEG) : 0;
+      opts.padding = { top: Math.min(h * 0.9, 2 * shift), bottom: 0, left: 0, right: 0 };
+      map.jumpTo(opts);
+    }
   } catch {
     return false;
   }

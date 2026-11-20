@@ -34,6 +34,7 @@ import {
 } from '../game/groundTraffic';
 import { fetchAerowayAround } from '../game/mvt';
 import { AI_3D_MAX, labelHeightM, PitchTracker, plane3dInstance, pushPlane3d, pushRoute3d, scaleFor, thinRoute, type RoutePoint, type Scale3d } from '../game/planes3d';
+import { createNightLayer, type NightLayerHandle } from '../game/nightLayer';
 import { createAircraftLayer, hexToRgb, type Aircraft3d, type AircraftLayerHandle } from '../game/aircraftLayer';
 import { contrast, mix } from '../ui/theme';
 import type { LonLat } from '../game/geo';
@@ -258,15 +259,8 @@ export class TrustedCredits {
   private eox?: HTMLElement;
   private update = () => {
     if (this.eox) this.eox.hidden = !this.map?.getSource?.('s2cloudless');
-    if (this.nasa) {
-      let on = false;
-      try {
-        on = Boolean(this.map?.getLayer?.('night-lights')) && Number(this.map.getPaintProperty('night-lights', 'raster-opacity') || 0) > 0;
-      } catch {
-        /* style changing */
-      }
-      this.nasa.hidden = !on;
-    }
+    // The night lights are a satellite map overlay
+    if (this.nasa) this.nasa.hidden = !this.map?.getSource?.('s2cloudless');
   };
   private nasa?: HTMLElement;
   onAdd(map: any) {
@@ -446,8 +440,8 @@ export interface LiveMapProps {
   /** Radio navigation beacons (VOR, DME…). */
   showNavaids: boolean;
   mapStyle: MapStyleId;
-  /** Day, night, or by the sun where you're looking (the map and the window view). */
-  mapTime?: MapTime;
+  /** Day and night over the satellite map, by the sun at the game's time. */
+  dayNight?: boolean;
   /** 3D globe instead of the flat map (MapLibre 5). */
   globe: boolean;
   /** Tilted view with aircraft drawn in 3D at their altitude. */
@@ -571,74 +565,87 @@ export function airportLodFilter(detail: AirportDetail = 'normal', flown: FlownA
 const AIRPORT_LOD_FILTER = airportLodFilter();
 
 // ---------------------------------------------------------------------------
-// Night (v3.6): the Earth at night from NASA (city lights, public domain),
-// street lights along the roads up close, and airport lights: runway edge and
-// centre lights, taxiway lights, lit aprons. Day, night, or by the sun where
-// you're looking. One set of layers, faded in and out (nothing is reloaded).
+// Day and night (v3.6, an overlay on the satellite map): the night side of the
+// Earth dark with NASA's city lights (nightLayer.ts), and up close street
+// lights along the roads and airport lights (runway edge and centre lights,
+// taxiway lights, lit aprons). The sun is where it is at the game's time.
 // ---------------------------------------------------------------------------
-export type MapTime = 'day' | 'night' | 'auto';
-const NIGHT_SRC = 'bp-night-lights';
-const NIGHT_TILES = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/default/2016-01-01/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png';
+const NIGHT_LAYER = 'night-sky';
+const NIGHT_LINE_LAYERS = ['night-apron', 'night-roads', 'night-taxiway', 'night-runway-edge', 'night-runway-centre'];
+const nightLayers = new WeakMap<object, NightLayerHandle>();
+const nightLayerFor = (map: any): NightLayerHandle => {
+  let h = nightLayers.get(map);
+  if (!h) {
+    h = createNightLayer(NIGHT_LAYER);
+    nightLayers.set(map, h);
+  }
+  return h;
+};
 const isLine = ['==', ['geometry-type'], 'LineString'];
 function addNightLayers(map: any) {
-  if (map.getLayer?.('night-lights')) return;
+  if (map.getLayer?.(NIGHT_LAYER)) return;
   try {
-    if (!map.getSource?.(NIGHT_SRC))
-      map.addSource(NIGHT_SRC, { type: 'raster', tiles: [NIGHT_TILES], tileSize: 256, maxzoom: 8, attribution: 'NASA Earth Observatory / GIBS' });
     if (!map.getSource?.(AERO_SOURCE)) map.addSource(AERO_SOURCE, { type: 'vector', url: AERO_TILES });
     // Under the place names (they stay readable), over the ground
     const firstLabel = (map.getStyle?.()?.layers ?? []).find((l: any) => l.type === 'symbol')?.id;
     const add = (layer: any) => map.addLayer(layer, firstLabel);
-    // The ground goes dark under the lights (one full-screen fill: works on every map style)
-    add({ id: 'night-shade', type: 'background', paint: { 'background-color': '#030712', 'background-opacity': 0 } });
-    add({ id: 'night-lights', type: 'raster', source: NIGHT_SRC, paint: { 'raster-opacity': 0, 'raster-fade-duration': 0 } });
-    add({ id: 'night-apron', type: 'fill', source: AERO_SOURCE, 'source-layer': 'aeroway', minzoom: 12, filter: ['all', ['==', ['geometry-type'], 'Polygon'], ['==', ['get', 'class'], 'apron']], paint: { 'fill-color': '#ffd59a', 'fill-opacity': 0 } });
+    add(nightLayerFor(map).layer);
+    const off = { visibility: 'none' };
+    add({ id: 'night-apron', type: 'fill', source: AERO_SOURCE, 'source-layer': 'aeroway', minzoom: 12, layout: off, filter: ['all', ['==', ['geometry-type'], 'Polygon'], ['==', ['get', 'class'], 'apron']], paint: { 'fill-color': '#ffd59a', 'fill-opacity': 0 } });
     add({
-      id: 'night-roads', type: 'line', source: AERO_SOURCE, 'source-layer': 'transportation', minzoom: 9,
+      id: 'night-roads', type: 'line', source: AERO_SOURCE, 'source-layer': 'transportation', minzoom: 8.5, layout: off,
       filter: ['in', ['get', 'class'], ['literal', ['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'minor', 'service']]],
       paint: { 'line-color': '#ffb259', 'line-blur': ['interpolate', ['linear'], ['zoom'], 9, 0.6, 15, 2.5], 'line-width': ['interpolate', ['linear'], ['zoom'], 9, 0.35, 13, 1, 16, 3, 18, 6], 'line-opacity': 0 },
     });
-    add({ id: 'night-taxiway', type: 'line', source: AERO_SOURCE, 'source-layer': 'aeroway', minzoom: 12, filter: ['all', isLine, ['==', ['get', 'class'], 'taxiway']], layout: { 'line-cap': 'round' }, paint: { 'line-color': '#4dff9e', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 0.6, 16, 2, 18, 3.5], 'line-blur': 0.8, 'line-dasharray': [0.3, 2.2], 'line-opacity': 0 } });
+    add({ id: 'night-taxiway', type: 'line', source: AERO_SOURCE, 'source-layer': 'aeroway', minzoom: 12, filter: ['all', isLine, ['==', ['get', 'class'], 'taxiway']], layout: { ...off, 'line-cap': 'round' }, paint: { 'line-color': '#4dff9e', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 0.6, 16, 2, 18, 3.5], 'line-blur': 0.8, 'line-dasharray': [0.3, 2.2], 'line-opacity': 0 } });
     // Two rows of edge lights either side of the runway, and its centre line
     add({
-      id: 'night-runway-edge', type: 'line', source: AERO_SOURCE, 'source-layer': 'aeroway', minzoom: 10, filter: ['all', isLine, ['==', ['get', 'class'], 'runway']], layout: { 'line-cap': 'round' },
+      id: 'night-runway-edge', type: 'line', source: AERO_SOURCE, 'source-layer': 'aeroway', minzoom: 10, filter: ['all', isLine, ['==', ['get', 'class'], 'runway']], layout: { ...off, 'line-cap': 'round' },
       paint: { 'line-color': '#fff1c4', 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 0.8, 14, 1.6, 18, 4], 'line-gap-width': ['interpolate', ['exponential', 2], ['zoom'], 10, 0.4, 14, 6, 18, 96], 'line-blur': 0.7, 'line-dasharray': [0.4, 2], 'line-opacity': 0 },
     });
-    add({ id: 'night-runway-centre', type: 'line', source: AERO_SOURCE, 'source-layer': 'aeroway', minzoom: 13, filter: ['all', isLine, ['==', ['get', 'class'], 'runway']], layout: { 'line-cap': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 0.6, 18, 2.5], 'line-blur': 0.5, 'line-dasharray': [0.3, 3], 'line-opacity': 0 } });
+    add({ id: 'night-runway-centre', type: 'line', source: AERO_SOURCE, 'source-layer': 'aeroway', minzoom: 13, filter: ['all', isLine, ['==', ['get', 'class'], 'runway']], layout: { ...off, 'line-cap': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 0.6, 18, 2.5], 'line-blur': 0.5, 'line-dasharray': [0.3, 3], 'line-opacity': 0 } });
   } catch {
     /* style not ready */
   }
 }
-/** Turns the night up or down: 0 day … 1 full night. */
-function applyNight(map: any, n: number, styleId: MapStyleId, base: { buildings?: unknown }) {
+/**
+ * The night: `on` (the overlay, satellite only), the sun at `ms` (UTC, game
+ * time); `local` is how dark it is where you're looking (0 day … 1 night),
+ * for the lights that are only drawn up close.
+ */
+function applyNight(map: any, on: boolean, ms: number, zoom: number, base: { buildings?: unknown }): number {
+  const h = nightLayerFor(map);
+  // NASA's picture is sharp to about zoom 6; closer in, the street and airport lights take over
+  const glow = on ? Math.max(0, Math.min(1, (9 - zoom) / 3)) : 0;
+  h.set(ms, on ? 0.82 : 0, glow);
+  const c = map.getCenter?.() ?? { lat: 0, lng: 0 };
+  const k = on ? h.nightAt(c.lat, c.lng) : 0;
   try {
-    const k = Math.max(0, Math.min(1, n));
-    if (map.getLayer?.('night-shade')) map.setPaintProperty('night-shade', 'background-opacity', k * (styleId === 'dark' ? 0.55 : 0.85));
-    // NASA's picture is sharp to about zoom 8; closer in, the street and airport lights take over
-    const lights = k * 0.9;
-    if (map.getLayer?.('night-lights')) map.setPaintProperty('night-lights', 'raster-opacity', ['interpolate', ['linear'], ['zoom'], 7.5, lights, 10, 0]);
-    if (map.getLayer?.('night-apron')) map.setPaintProperty('night-apron', 'fill-opacity', k * 0.16);
-    if (map.getLayer?.('night-roads')) map.setPaintProperty('night-roads', 'line-opacity', k * 0.75);
-    if (map.getLayer?.('night-taxiway')) map.setPaintProperty('night-taxiway', 'line-opacity', k * 0.9);
-    if (map.getLayer?.('night-runway-edge')) map.setPaintProperty('night-runway-edge', 'line-opacity', k);
-    if (map.getLayer?.('night-runway-centre')) map.setPaintProperty('night-runway-centre', 'line-opacity', k * 0.85);
+    // Off in the day (not just see-through: hidden layers fetch no tiles)
+    for (const id of NIGHT_LINE_LAYERS) if (map.getLayer?.(id)) map.setLayoutProperty(id, 'visibility', k > 0.005 ? 'visible' : 'none');
+    if (k > 0.005) {
+      map.setPaintProperty('night-apron', 'fill-opacity', k * 0.16);
+      map.setPaintProperty('night-roads', 'line-opacity', k * 0.75);
+      map.setPaintProperty('night-taxiway', 'line-opacity', k * 0.9);
+      map.setPaintProperty('night-runway-edge', 'line-opacity', k);
+      map.setPaintProperty('night-runway-centre', 'line-opacity', k * 0.85);
+    }
     // Buildings go dark too (they'd glow grey in the night otherwise)
     if (map.getLayer?.('buildings-3d')) {
       if (base.buildings === undefined) base.buildings = map.getPaintProperty('buildings-3d', 'fill-extrusion-color');
-      const c = typeof base.buildings === 'string' ? base.buildings : '#dfe3ea';
-      map.setPaintProperty('buildings-3d', 'fill-extrusion-color', k > 0.01 ? mixHexColor(c, '#0c1424', k * 0.85) : c);
+      const col = typeof base.buildings === 'string' ? base.buildings : '#dfe3ea';
+      map.setPaintProperty('buildings-3d', 'fill-extrusion-color', k > 0.01 ? mixHexColor(col, '#0c1424', k * 0.85) : col);
     }
   } catch {
     /* style changing */
   }
+  return k;
 }
 const mixHexColor = (a: string, b: string, f: number) => {
   const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
   const ch = (sh: number) => Math.round(((pa >> sh) & 255) + (((pb >> sh) & 255) - ((pa >> sh) & 255)) * f);
   return `#${((ch(16) << 16) | (ch(8) << 8) | ch(0)).toString(16).padStart(6, '0')}`;
 };
-/** How dark it is: 0 day … 1 night, from the sun's height (dusk between +3° and −6°). */
-const nightFromSun = (elevDeg: number) => Math.max(0, Math.min(1, (3 - elevDeg) / 9));
 
 /** 3D buildings from the basemap's own vector tiles (free), when zoomed into cities. */
 function addBuildings(map: any, styleId: MapStyleId) {
@@ -930,6 +937,28 @@ function addLayers(map: any) {
       'text-optional': true,
     },
     paint: { 'text-color': C.fleet, 'text-halo-color': MAP_C.bg, 'text-halo-width': 1.6, 'text-opacity': CALLSIGN_OPACITY() },
+  });
+  // The aircraft you follow on the flat map: its own copy, moved every screen frame
+  // (the others are redrawn a few times a second)
+  map.addSource('focus-plane', { type: 'geojson', data: EMPTY_FC });
+  map.addLayer({
+    id: 'focus-plane-symbol',
+    type: 'symbol',
+    source: 'focus-plane',
+    layout: {
+      'icon-image': ['get', 'icon_name'],
+      'icon-size': AIR_ICON_SIZE,
+      'icon-rotate': ['get', 'bearing'],
+      'icon-rotation-alignment': 'map',
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+      'text-field': CALLSIGN_FIELD('flightNumber'),
+      'text-size': 10,
+      'text-offset': [0, 1.15],
+      'text-anchor': 'top',
+      'text-optional': true,
+    },
+    paint: { 'text-color': ['case', ['==', ['get', 'kind'], 'player'], C.fleet, MAP_C.muted], 'text-halo-color': MAP_C.bg, 'text-halo-width': 1.6, 'text-opacity': CALLSIGN_OPACITY() },
   });
   // 3D view: aircraft floating at their height, and the selected aircraft's
   // route at altitude with a curtain beneath it
@@ -1767,7 +1796,7 @@ export function LiveMap(props: LiveMapProps) {
     // labels, dots, lines drawn on the map (borders, routes), the map's own aircraft
     // (the window has its own). Kept: the ground, water, buildings, the sky.
     const basemapLabels: string[] = (map.getStyle?.()?.layers ?? [])
-      .filter((l: any) => ['symbol', 'circle', 'heatmap', 'custom'].includes(l.type) || (l.type === 'line' && /boundar|admin|border|route|track|ils|navaid/i.test(l.id)))
+      .filter((l: any) => (['symbol', 'circle', 'heatmap', 'custom'].includes(l.type) && l.id !== NIGHT_LAYER) || (l.type === 'line' && /boundar|admin|border|route|track|ils|navaid/i.test(l.id)))
       .map((l: any) => l.id);
     for (const id of new Set([...WINDOW_HIDDEN_LAYERS, ...basemapLabels]))
       if (map.getLayer?.(id)) {
@@ -1859,7 +1888,7 @@ export function LiveMap(props: LiveMapProps) {
       map.setMaxPitch?.(on3d ? 85 : 0);
       // Back to the map as it was, over the aircraft
       const at = w.samples[w.samples.length - 1];
-      map.jumpTo({ ...s.cam, roll: 0, pitch: on3d ? Math.min(Number(s.cam.pitch) || 0, 85) : 0, bearing: on3d ? s.cam.bearing : 0, ...(at ? { center: [at.lng, at.lat] } : {}) });
+      map.jumpTo({ ...s.cam, roll: 0, padding: { top: 0, bottom: 0, left: 0, right: 0 }, pitch: on3d ? Math.min(Number(s.cam.pitch) || 0, 85) : 0, bearing: on3d ? s.cam.bearing : 0, ...(at ? { center: [at.lng, at.lat] } : {}) });
     } catch {
       /* older map engine */
     }
@@ -2760,6 +2789,15 @@ export function LiveMap(props: LiveMapProps) {
     let labels3dKey = '';
     let labels3dHasData = false;
     let lastFollow = 0;
+    // Following: the aircraft's last places (from the ~20-a-second update) and how it looks,
+    // so the camera and the aircraft move smoothly every screen frame in between
+    let followSamples: { t: number; lng: number; lat: number; agl: number; heading: number }[] = [];
+    let followLook: { key: string; sizePx: number; group: RadarIconGroup; rgb: [number, number, number]; props: Record<string, unknown> } | null = null;
+    let focus3d = false; // the followed aircraft is the frame-by-frame 3D one
+    let focus2d = false; // … or the frame-by-frame flat icon
+    let focusShown = false;
+    let lastRaf = 0;
+    const focusPitch = new PitchTracker();
     // You touching the map right now (Follow waits, so your drag or scroll isn't cancelled)
     let pointerDown = false;
     let wheelAt = -Infinity;
@@ -2780,7 +2818,8 @@ export function LiveMap(props: LiveMapProps) {
     let aerowayDirty = true;
     let groundHasData = false;
     let ground3dOn = false;
-    let nightShown = -1;
+    let nightShownOn: boolean | null = null;
+    let nightShownZoom = -1;
     let nightAt = 0;
     let nightBase: { buildings?: unknown } = {};
     let groundIconOpacity: unknown = undefined;
@@ -3131,7 +3170,7 @@ export function LiveMap(props: LiveMapProps) {
         groundLast = 0;
         route3dDrawn = '';
         ai3dZoom = -1;
-        nightShown = -1;
+        nightShownOn = null;
         nightBase = {};
       }
 
@@ -3176,6 +3215,69 @@ export function LiveMap(props: LiveMapProps) {
 
       // Window view: the camera moves every screen frame (about 30 a second), between the map's frames
       if (windowRef.current && st.visible) placeWindowCamera(map, windowRef.current, t, latest.current.mapRate);
+      const rafDt = lastRaf ? Math.min(100, t - lastRaf) : 16;
+      lastRaf = t;
+      // Following: the camera and the aircraft move every screen frame, between its updates
+      if (followRef.current && !windowRef.current && st.visible && followSamples.length >= 2 && followLook) {
+        const a = followSamples[followSamples.length - 2];
+        const b = followSamples[followSamples.length - 1];
+        const span = Math.max(1, b.t - a.t);
+        // One update behind, so there's always a place either side to blend between
+        const u = Math.max(0, Math.min(1.5, (t - span - a.t) / span));
+        const dLngS = ((b.lng - a.lng + 540) % 360) - 180;
+        const lng = a.lng + dLngS * u;
+        const lat = a.lat + (b.lat - a.lat) * u;
+        const agl = Math.max(0, a.agl + (b.agl - a.agl) * u);
+        const heading = a.heading + ((((b.heading - a.heading) % 360) + 540) % 360 - 180) * u;
+        const zoomF = map.getZoom?.() ?? 0;
+        const k3f: Scale3d | null = latest.current.threeD ? scaleFor(lat, zoomF, map.getProjection?.()?.type === 'globe') : null;
+        const lifted = k3f && agl > 0 ? labelHeightM(agl, followLook.sizePx, k3f, lat) : 0;
+        // The point on the ground the aircraft appears over: straight from the camera's tilt
+        // (not read back off the screen, which moved with the camera and made it chase itself)
+        const pitchR = ((map.getPitch?.() ?? 0) * Math.PI) / 180;
+        const bearR = ((map.getBearing?.() ?? 0) * Math.PI) / 180;
+        // (never higher than the camera itself: zoomed far in, the aircraft is above the view)
+        const camH = (() => {
+          const cv = map.getCanvas?.();
+          const fov = ((map.getVerticalFieldOfView?.() ?? 36.87) * Math.PI) / 180;
+          const mpp = (40_075_016.686 * Math.cos((lat * Math.PI) / 180)) / (512 * 2 ** zoomF);
+          return ((cv?.clientHeight ?? 800) / 2 / Math.tan(fov / 2)) * mpp * Math.cos(pitchR);
+        })();
+        const ahead = lifted ? Math.min(lifted, camH * 0.85) * Math.tan(Math.min(pitchR, 1.45)) : 0;
+        const toLat = lat + (ahead * Math.cos(bearR)) / 111_320;
+        const toLng = lng + (ahead * Math.sin(bearR)) / (111_320 * Math.max(0.05, Math.cos((lat * Math.PI) / 180)));
+        if (t - followStartAt.current > FOLLOW_START_MS && !map.isMoving?.() && !pointerDown && t - wheelAt > 250) {
+          const c = map.getCenter();
+          const k = 1 - Math.exp(-rafDt / FOLLOW_EASE_MS);
+          const dLng = ((toLng - c.lng + 540) % 360) - 180;
+          const dLat = toLat - c.lat;
+          if (Math.abs(dLng) + Math.abs(dLat) > 1e-9) map.jumpTo({ center: [c.lng + dLng * k, c.lat + dLat * k] });
+        }
+        popupRef.current?.setLngLat(lifted ? [toLng, toLat] : [lng, lat]);
+        const acL = aircraftLayerFor(map);
+        if (focus3d && k3f) {
+          const g = followLook.group;
+          let inst: Aircraft3d | null;
+          if (agl > 0) inst = plane3dInstance({ at: [lng, lat], bearing: heading, aglFt: agl, sizePx: followLook.sizePx, color: '', props: {} }, k3f, g, focusPitch.pitch('f', agl, t), followLook.rgb);
+          else {
+            const half = (GROUP_LENGTH_M[g] ?? 38) / 2;
+            inst = { lng, lat, elevM: -aircraftMeshBounds(g).gearZ * half, halfLenM: half, headingDeg: heading, pitchDeg: 0, rgb: followLook.rgb, vScale: 1, gear: true };
+          }
+          acL.set('focus', inst ? new Map([[g, [inst]]]) : new Map());
+          focusShown = true;
+        } else if (focus2d && agl > 0) {
+          map.getSource('focus-plane')?.setData({ type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: { ...followLook.props, bearing: heading } }] });
+          focusShown = true;
+        } else if (focusShown) {
+          acL.set('focus', new Map());
+          map.getSource('focus-plane')?.setData(EMPTY_FC);
+          focusShown = false;
+        }
+      } else if (focusShown) {
+        aircraftLayerFor(map).set('focus', new Map());
+        map.getSource('focus-plane')?.setData(EMPTY_FC);
+        focusShown = false;
+      }
 
       // Hidden tab: keep data fresh about once a second, skip the animation work
       if (!st.visible && t - lastHidden < 1000) return;
@@ -3185,6 +3287,11 @@ export function LiveMap(props: LiveMapProps) {
       lastHidden = t;
 
       const clock = latest.current.getClock();
+      if (!followRef.current || windowRef.current) {
+        focus3d = false;
+        focus2d = false;
+        followSamples = [];
+      }
       const features: any[] = [];
       let tracked: { coords: [number, number]; props: Record<string, any>; depDay: number; progress: number; flight: ScheduledFlight; cruiseKts: number; sizePx: number } | null = null;
 
@@ -3237,20 +3344,15 @@ export function LiveMap(props: LiveMapProps) {
           }
         }
       }
-      // Night: faded in and out with the sun where you're looking (or always day / night)
-      const mapTime = latest.current.mapTime ?? 'day';
-      if (t - nightAt > 1000 || (mapTime !== 'auto' && nightShown !== (mapTime === 'night' ? 1 : 0))) {
+      // Day and night (the satellite map's overlay): the sun where it is at the game's time
+      const nightOn = latest.current.mapStyle === 'satellite' && latest.current.dayNight === true;
+      const nightZoom = Math.round((map.getZoom?.() ?? 0) * 20) / 20;
+      if (nightOn !== nightShownOn || (nightOn && (t - nightAt > 1000 || nightZoom !== nightShownZoom))) {
         nightAt = t;
-        let n = mapTime === 'night' ? 1 : 0;
-        if (mapTime === 'auto') {
-          const at = windowRef.current?.last ?? map.getCenter?.() ?? { lng: 0, lat: 0 };
-          const d = new Date();
-          n = nightFromSun(sunElevationDeg(at.lat, at.lng, Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) + clock.min * 60_000));
-        }
-        if (Math.abs(n - nightShown) > 0.01) {
-          nightShown = n;
-          applyNight(map, n, latest.current.mapStyle, nightBase);
-        }
+        nightShownOn = nightOn;
+        nightShownZoom = nightZoom;
+        const d = new Date();
+        applyNight(map, nightOn, Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) + clock.min * 60_000, nightZoom, nightBase);
       }
       let groundFresh = false;
       if (t - groundLast >= (latest.current.mapRate >= TIMELAPSE_MIN_RATE ? 150 : GROUND_MS)) {
@@ -3268,9 +3370,10 @@ export function LiveMap(props: LiveMapProps) {
           const half = (GROUP_LENGTH_M[group] ?? 38) / 2;
           addInstance(out, group, { lng: at[0], lat: at[1], elevM: -aircraftMeshBounds(group).gearZ * half, halfLenM: half, headingDeg: heading, pitchDeg: 0, rgb, vScale: 1, gear: true });
         };
-        for (const e of groundRef.current.ai.values()) put(e.info.flight.group, e.pose.coordinates, e.pose.bearing, aiRgbG);
+        for (const [key, e] of groundRef.current.ai) if (!(focus3d && st.trackedFlightId === `aig:${key}`)) put(e.info.flight.group, e.pose.coordinates, e.pose.bearing, aiRgbG);
         const fr = hexToRgb(C.fleet);
-        for (const g of groundRef.current.player.values()) put(getRadarIconGroup(infoById.map.get(g.info.flight.id)?.model), g.pose.coordinates, g.pose.bearing, fr);
+        for (const g of groundRef.current.player.values())
+          if (!(focus3d && st.trackedFlightId === g.info.flight.id)) put(getRadarIconGroup(infoById.map.get(g.info.flight.id)?.model), g.pose.coordinates, g.pose.bearing, fr);
         acLayer.set('ground', out);
       }
       if (ground3d !== ground3dOn) {
@@ -3351,8 +3454,10 @@ export function LiveMap(props: LiveMapProps) {
           starCode: pos.starCode,
           navaidSummary: pos.navaidSummary,
         };
-        features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: pos.coordinates }, properties: props });
-        if (k3 && agl > 0) {
+        // The aircraft you follow is drawn on its own, every frame
+        const isFocus = (focus3d || focus2d) && info.flight.id === st.trackedFlightId;
+        if (!(focus2d && isFocus)) features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: pos.coordinates }, properties: props });
+        if (k3 && agl > 0 && !(focus3d && isFocus)) {
           const p3 = { ...props, kind: 'player', at_lng: pos.coordinates[0], at_lat: pos.coordinates[1] };
           const plane = { at: pos.coordinates, bearing, aglFt: agl, sizePx: PLANE_3D_PX * info.iconScale, color: C.fleet, props: p3 };
           if (detailed) {
@@ -3468,7 +3573,9 @@ export function LiveMap(props: LiveMapProps) {
             if (!pos || !inView(pos.coordinates[0], pos.coordinates[1], b)) continue;
             // The most of a friend's aircraft to show: the same ones each time, and only those in view count
             if (f.friend && ++friendsDrawn > friendCap && f.id !== trackedAiId) continue;
-            aiFeatures.push({
+            // The aircraft you follow is drawn on its own, every frame
+            const isFocus = (focus3d || focus2d) && f.id === trackedAiId;
+            if (!(focus2d && isFocus)) aiFeatures.push({
               type: 'Feature',
               geometry: { type: 'Point', coordinates: pos.coordinates },
               properties: {
@@ -3481,7 +3588,7 @@ export function LiveMap(props: LiveMapProps) {
                 ...(f.friend ? { friend: 1 } : {}),
               },
             });
-            if (k3 && pos.altitudeFt > 0) {
+            if (k3 && pos.altitudeFt > 0 && !(focus3d && isFocus)) {
               const sizePx = PLANE_3D_PX * aiIconScale(f) * st.planeIconScale;
               const plane = { at: pos.coordinates, bearing: pos.bearing, aglFt: pos.altitudeFt, sizePx, color: f.friend ? friendColor : aiColor, props: { kind: 'ai', aiId: f.id } };
               if (detailed) {
@@ -3873,9 +3980,7 @@ export function LiveMap(props: LiveMapProps) {
             ws.hudAt = t;
             const day = new Date();
             const ms = Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()) + clock.min * 60_000;
-            const mt = latest.current.mapTime ?? 'day';
-            const sunEl = sunElevationDeg(view.coords[1], view.coords[0], ms);
-            const light = windowLight(mt === 'day' ? Math.max(sunEl, 40) : mt === 'night' ? Math.min(sunEl, -18) : sunEl);
+            const light = windowLight(sunElevationDeg(view.coords[1], view.coords[0], ms));
             const key = light.sky + light.horizon;
             if (key !== ws.skyKey) {
               ws.skyKey = key;
@@ -3912,18 +4017,25 @@ export function LiveMap(props: LiveMapProps) {
           aheadSrc?.setData(k3 ? EMPTY_FC : line(view.remaining));
         }
         const lifted = k3 && viewAgl > 0 ? labelHeightM(viewAgl, viewSize, k3, view.coords[1]) : 0;
-        if (followRef.current) {
-          // Following: keep the aircraft in the middle of the screen. In 3D that is the point on
-          // the ground it appears over. Not during the opening move, or while you turn or zoom
-          // (moving the camera cancels a drag or scroll that has only just begun); it catches up after.
-          if (st.visible && t - followStartAt.current > FOLLOW_START_MS && !map.isMoving?.() && !pointerDown && t - wheelAt > 250) {
-            const to = (lifted && groundUnder(map, view.coords, lifted, vw, vh)) || view.coords;
-            const c = map.getCenter();
-            const k = 1 - Math.exp(-dt / FOLLOW_EASE_MS);
-            const dLng = ((to[0] - c.lng + 540) % 360) - 180; // the short way across the date line
-            const dLat = to[1] - c.lat;
-            if (Math.abs(dLng) + Math.abs(dLat) > 1e-7) map.jumpTo({ center: [c.lng + dLng * k, c.lat + dLat * k] });
-          }
+        if (followRef.current && !windowRef.current) {
+          // Following: keep the aircraft in the middle of the screen (in 3D, the point on the
+          // ground it appears over). The camera moves every screen frame, above, from these places;
+          // not during the opening move, or while you turn or zoom, and it catches up after.
+          const key = String(st.trackedFlightId);
+          if (followLook?.key !== key) followSamples = [];
+          const heading = trackedGround ? trackedGround.pose.bearing : tracked ? Number(tracked.props.bearing) : trackedAi?.heading ?? 0;
+          followSamples.push({ t, lng: view.coords[0], lat: view.coords[1], agl: viewAgl, heading: Number.isFinite(heading) ? heading : 0 });
+          if (followSamples.length > 3) followSamples.shift();
+          const trackedAiNow = st.trackedFlightId?.startsWith('ai:') ? Number(st.trackedFlightId.slice(3)) : -1;
+          const aiF = trackedAiNow >= 0 && traffic ? traffic.flights[trackedAiNow] : st.trackedFlightId?.startsWith('aig:') ? groundRef.current.ai.get(st.trackedFlightId.slice(4))?.info.flight : undefined;
+          const group: RadarIconGroup = aiF ? aiF.group : getRadarIconGroup(infoById.map.get(String(trackedGround?.info.flight.id ?? st.trackedFlightId))?.model);
+          const rgb: [number, number, number] = aiF ? hexToRgb(aiF.friend ? friendTintFor(latest.current.mapStyle) : aiTintFor(latest.current.mapStyle)) : hexToRgb(C.fleet);
+          const props: Record<string, unknown> = aiF
+            ? { kind: 'ai', flightNumber: aiF.flightNumber, icon_name: aiIconName(aiF), icon_scale: Number((aiIconScale(aiF) * st.planeIconScale).toFixed(3)) }
+            : { kind: 'player', flightNumber: tracked?.props.flightNumber, icon_name: tracked?.props.icon_name, icon_scale: tracked?.props.icon_scale };
+          followLook = { key, sizePx: viewSize, group, rgb, props };
+          focus3d = detailed;
+          focus2d = !k3 && viewAgl > 0;
         } else if (!windowRef.current && st.visible && t - userMoveAt.current > 2500 && t - lastFollow > 1500 && !map.isMoving?.()) {
           // Camera follows the selected aircraft when it goes off screen (not while you're moving the map)
           const sp = lifted ? screenAt(map, view.coords, lifted) : map.project?.(view.coords);
@@ -3934,7 +4046,8 @@ export function LiveMap(props: LiveMapProps) {
           }
         }
         if (popupRef.current && !windowRef.current) {
-          popupRef.current.setLngLat((lifted && groundUnder(map, view.coords, lifted, vw, vh)) || view.coords);
+          // (following: it moves with the aircraft every screen frame instead)
+          if (!followRef.current) popupRef.current.setLngLat((lifted && groundUnder(map, view.coords, lifted, vw, vh)) || view.coords);
           if (t - lastPopup >= POPUP_MS) {
             lastPopup = t;
             const body = popupRef.current.getElement?.()?.querySelector('.bp-live-popup-body');
@@ -3992,7 +4105,7 @@ export function LiveMap(props: LiveMapProps) {
     <>
       <div ref={containerRef} style={{ width: '100%', height: '100%', visibility: visible ? 'visible' : 'hidden' }} />
       {windowUi && visible && (
-        <WindowView
+        <WindowView mapNight={props.mapStyle === 'satellite' && props.dayNight === true}
           side={windowUi.side}
           light={windowUi.light}
           hud={windowUi.hud}

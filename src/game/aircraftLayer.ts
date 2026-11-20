@@ -14,9 +14,9 @@
 import { AIRCRAFT_GROUPS, MESH_STRIDE, aircraftMesh } from './aircraftMeshes';
 import type { RadarIconGroup } from './types';
 
-/** The layer's sets of aircraft: yours, other airlines' in the air, and everyone's on the ground. */
-export type AcSet = 'player' | 'ai' | 'ground';
-const AC_SETS: readonly AcSet[] = ['ground', 'ai', 'player'];
+/** The layer's sets of aircraft: yours, other airlines' in the air, everyone's on the ground, and the one you follow (redrawn every frame). */
+export type AcSet = 'player' | 'ai' | 'ground' | 'focus';
+const AC_SETS: readonly AcSet[] = ['ground', 'ai', 'player', 'focus'];
 
 export interface Aircraft3d {
   lng: number;
@@ -134,7 +134,7 @@ export function createAircraftLayer(id = 'aircraft-3d', opts: { near?: boolean }
   let ok = false;
   const programs = new Map<string, { prog: WebGLProgram; u: Record<string, WebGLUniformLocation | null> }>();
   const groups = new Map<RadarIconGroup, GroupGl>();
-  const sets: Record<AcSet, SetGl> = { player: { vao: new Map(), inst: new Map() }, ai: { vao: new Map(), inst: new Map() }, ground: { vao: new Map(), inst: new Map() } };
+  const sets: Record<AcSet, SetGl> = { player: { vao: new Map(), inst: new Map() }, ai: { vao: new Map(), inst: new Map() }, ground: { vao: new Map(), inst: new Map() }, focus: { vao: new Map(), inst: new Map() } };
   const pending: Partial<Record<AcSet, Map<RadarIconGroup, Aircraft3d[]>>> = {};
 
   const compile = (gl: WebGL2RenderingContext, type: number, src: string) => {
@@ -239,7 +239,7 @@ export function createAircraftLayer(id = 'aircraft-3d', opts: { near?: boolean }
 
   const counts = () => {
     const n = (w: AcSet) => [...sets[w].inst.values()].reduce((a, i) => a + i.n, 0);
-    return { player: n('player'), ai: n('ai'), ground: n('ground'), supported: ok };
+    return { player: n('player'), ai: n('ai'), ground: n('ground'), focus: n('focus'), supported: ok };
   };
   const layer = {
     id,
@@ -281,8 +281,7 @@ export function createAircraftLayer(id = 'aircraft-3d', opts: { near?: boolean }
       }
       programs.clear();
       groups.clear();
-      sets.player = { vao: new Map(), inst: new Map() };
-      sets.ai = { vao: new Map(), inst: new Map() };
+      for (const w of AC_SETS) sets[w] = { vao: new Map(), inst: new Map() };
       gl2 = null;
       map = null;
       ok = false;
