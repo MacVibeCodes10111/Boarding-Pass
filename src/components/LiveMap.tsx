@@ -1902,6 +1902,7 @@ export function LiveMap(props: LiveMapProps) {
       const cv = map.getCanvas?.();
       if (cv) cv.style.background = '';
       map.setSky?.(s.sky as any);
+      nightLayerFor(map).setHaze(null);
       // The window view turned 3D on: back to the flat map
       if (s.turned3dOn) latest.current.onThreeD?.(false);
       const on3d = Boolean(latest.current.threeD) && !s.turned3dOn;
@@ -3234,7 +3235,10 @@ export function LiveMap(props: LiveMapProps) {
       prevRaf = t;
 
       // Window view: the camera moves every screen frame (about 30 a second), between the map's frames
-      if (windowRef.current && st.visible) placeWindowCamera(map, windowRef.current, t, latest.current.mapRate);
+      if (windowRef.current && st.visible && placeWindowCamera(map, windowRef.current, t, latest.current.mapRate)) {
+        const e = windowRef.current.last;
+        if (e) nightLayerFor(map).setEye(e.lng, e.lat, e.altM);
+      }
       const rafDt = lastRaf ? Math.min(100, t - lastRaf) : 16;
       lastRaf = t;
       // Following: the camera and the aircraft move every screen frame, between its updates
@@ -4007,6 +4011,7 @@ export function LiveMap(props: LiveMapProps) {
               ws.skyKey = key;
               try {
                 map.setSky?.(skyFor(light));
+                nightLayerFor(map).setHaze(light.haze, 0.9);
                 for (const [id] of ws.background) if (map.getLayer?.(id)) map.setPaintProperty?.(id, 'background-color', light.fog);
                 // (and beyond the farthest tiles the page behind the map shows)
                 const cv = map.getCanvas?.();

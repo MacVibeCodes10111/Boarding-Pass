@@ -11,6 +11,10 @@
 // light each point by its own sun. Projection to the flat map or the globe is
 // MapLibre's own (projectTileFor3D); the globe's far side is cut away for each
 // pixel (cutting whole grid cells left a lit strip at the horizon).
+//
+// From the window it also draws the haze of distance: the light that's lost
+// along the line from your eye to the ground, through air that thins with height
+// (so there's little straight down and a lot towards the horizon).
 // ============================================================================
 
 const DEG = Math.PI / 180;
@@ -59,6 +63,8 @@ uniform float u_glow;     // the city lights' strength (they fade as you zoom in
 uniform float u_ready;    // the lights' picture has loaded
 uniform float u_globe;    // drawn on the globe (1): hide its far side
 uniform vec4 u_projection_clipping_plane;
+uniform vec4 u_cam;       // haze: the eye (mercator x, y), its height (m), metres per mercator unit
+uniform vec4 u_haze;      // haze colour and strength (0: none)
 in vec2 v_merc;
 out vec4 fragColor;
 const float PI = 3.141592653589793;
@@ -81,14 +87,28 @@ void main() {
   vec3 lights = texture(u_lights, v_merc).rgb;
   // Warm sodium glow, a little stronger than the picture so it reads on screen
   vec3 glow = pow(lights, vec3(1.15)) * vec3(1.15, 1.0, 0.78) * 1.25 * on;
-  // Premultiplied: the map underneath darkens by 'dark', the lights add on top
-  fragColor = vec4(glow, dark);
+  // Haze: aerosols thin out with height (scale height ~1.3 km), so the air you look
+  // through is the slant distance times how much of it is low down
+  float h = 0.0;
+  if (u_haze.a > 0.0) {
+    float d = length(v_merc - u_cam.xy) * u_cam.w;
+    float H = max(u_cam.z, 30.0);
+    float thin = 1300.0 / H * (1.0 - exp(-H / 1300.0));
+    float tau = sqrt(d * d + H * H) * thin / 22000.0; // ~22 km visibility at the ground
+    h = (1.0 - exp(-tau)) * u_haze.a;
+  }
+  // Premultiplied: the map underneath darkens by 'dark', the lights add on top, then the haze
+  fragColor = vec4(glow * (1.0 - h) + u_haze.rgb * h, 1.0 - (1.0 - dark) * (1.0 - h));
 }`;
 
 export interface NightLayerHandle {
   layer: any;
   /** The sun's place (UTC ms of the game's time), how dark, and the lights' strength. */
   set: (ms: number, shade: number, glow: number) => void;
+  /** The haze of distance (from the window): its colour (#rrggbb) and strength, or null for none. */
+  setHaze: (color: string | null, strength?: number) => void;
+  /** Where the eye is for the haze (the window's camera), each frame. */
+  setEye: (lng: number, lat: number, altM: number) => void;
   /** Night here (0 day … 1 night), from the sun's height at a point. */
   nightAt: (lat: number, lng: number) => number;
 }
@@ -100,12 +120,18 @@ export function createNightLayer(id: string): NightLayerHandle {
   let vao: WebGLVertexArrayObject | null = null;
   let buf: WebGLBuffer | null = null;
   let count = 0;
+  // From the window: a fine grid round the eye (the world grid's 400 km cells are flat
+  // on the globe and sag under the horizon, leaving a strip of ground uncovered there)
+  let near: { vao: WebGLVertexArrayObject; buf: WebGLBuffer; count: number; key: string } | null = null;
   let tex: WebGLTexture | null = null;
   let loaded = 0;
   let loading = false;
   let sun: [number, number, number] = [1, 0, 0];
   let shade = 0;
   let glow = 0;
+  let haze: [number, number, number, number] = [0, 0, 0, 0];
+  let eye: [number, number, number, number] | null = null; // mercator x, y, height (m), metres per unit
+  let eyeLngLat: [number, number] | null = null;
 
   const compile = (gl: WebGL2RenderingContext, type: number, src: string) => {
     const sh = gl.createShader(type)!;
@@ -128,7 +154,7 @@ export function createNightLayer(id: string): NightLayerHandle {
     gl.deleteShader(fs);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error('night program: ' + gl.getProgramInfoLog(prog));
     const u: Record<string, WebGLUniformLocation | null> = {};
-    for (const name of ['u_projection_fallback_matrix', 'u_projection_matrix', 'u_projection_tile_mercator_coords', 'u_projection_clipping_plane', 'u_projection_transition', 'u_lights', 'u_sun', 'u_shade', 'u_glow', 'u_ready', 'u_globe'])
+    for (const name of ['u_projection_fallback_matrix', 'u_projection_matrix', 'u_projection_tile_mercator_coords', 'u_projection_clipping_plane', 'u_projection_transition', 'u_lights', 'u_sun', 'u_shade', 'u_glow', 'u_ready', 'u_globe', 'u_cam', 'u_haze'])
       u[name] = gl.getUniformLocation(prog, name);
     p = { prog, u };
     programs.set(key, p);
@@ -156,6 +182,37 @@ export function createNightLayer(id: string): NightLayerHandle {
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     gl.bindVertexArray(null);
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
+  };
+
+  const NEAR_DEG = 9, NEAR_N = 96;
+  const nearGrid = (gl: WebGL2RenderingContext, lng: number, lat: number) => {
+    const cl = Math.round(lng * 2) / 2, ca = Math.max(-75, Math.min(75, Math.round(lat * 2) / 2));
+    const key = `${cl},${ca}`;
+    if (near?.key === key) return near;
+    const mx = (x: number) => (x + 180) / 360;
+    const my = (y: number) => {
+      const la = Math.max(-85, Math.min(85, y)) * DEG;
+      return (1 - Math.log(Math.tan(Math.PI / 4 + la / 2)) / Math.PI) / 2;
+    };
+    const span = NEAR_DEG / Math.max(0.2, Math.cos(ca * DEG)); // as wide in km as it is tall
+    const pts: number[] = [];
+    const at = (i: number, j: number) => [mx(cl - span + (2 * span * i) / NEAR_N), my(ca - NEAR_DEG + (2 * NEAR_DEG * j) / NEAR_N)];
+    for (let j = 0; j < NEAR_N; j++)
+      for (let i = 0; i < NEAR_N; i++) {
+        const a = at(i, j), b = at(i + 1, j), c = at(i + 1, j + 1), d = at(i, j + 1);
+        pts.push(...a, ...b, ...c, ...a, ...c, ...d);
+      }
+    const b = near?.buf ?? gl.createBuffer()!;
+    const v = near?.vao ?? gl.createVertexArray()!;
+    gl.bindBuffer(gl.ARRAY_BUFFER, b);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pts), gl.DYNAMIC_DRAW);
+    gl.bindVertexArray(v);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.bindVertexArray(null);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    near = { vao: v, buf: b, count: pts.length / 2, key };
+    return near;
   };
 
   // The lights: each tile goes straight into its place in the texture (no canvas copies: Safari)
@@ -213,7 +270,12 @@ export function createNightLayer(id: string): NightLayerHandle {
         if (vao) gl.deleteVertexArray(vao);
         if (buf) gl.deleteBuffer(buf);
         if (tex) gl.deleteTexture(tex);
+        if (near) {
+          gl.deleteVertexArray(near.vao);
+          gl.deleteBuffer(near.buf);
+        }
       }
+      near = null;
       programs.clear();
       vao = buf = tex = null;
       gl2 = null;
@@ -222,7 +284,7 @@ export function createNightLayer(id: string): NightLayerHandle {
       loaded = 0;
     },
     render(gl: WebGL2RenderingContext, args: any) {
-      if (!gl2 || !vao || shade <= 0.001) return;
+      if (!gl2 || !vao || (shade <= 0.001 && haze[3] <= 0)) return;
       const shaderData = args?.shaderData;
       const pd = args?.defaultProjectionData;
       if (!shaderData || !pd) return;
@@ -246,6 +308,10 @@ export function createNightLayer(id: string): NightLayerHandle {
       gl.uniform1f(u.u_glow, glow);
       gl.uniform1f(u.u_ready, tex && loaded > 0 ? 1 : 0);
       gl.uniform1f(u.u_globe, shaderData.variantName === 'globe' && pd.projectionTransition > 0.001 ? 1 : 0);
+      const hz = eye ? haze : [0, 0, 0, 0];
+      const cam = eye ?? [0, 0, 0, 1];
+      gl.uniform4f(u.u_cam, cam[0], cam[1], cam[2], cam[3]);
+      gl.uniform4f(u.u_haze, hz[0], hz[1], hz[2], hz[3]);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.uniform1i(u.u_lights, 0);
@@ -254,8 +320,9 @@ export function createNightLayer(id: string): NightLayerHandle {
       gl.disable(gl.CULL_FACE);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-      gl.bindVertexArray(vao);
-      gl.drawArrays(gl.TRIANGLES, 0, count);
+      const grid = eye && eyeLngLat ? nearGrid(gl, eyeLngLat[0], eyeLngLat[1]) : { vao, count };
+      gl.bindVertexArray(grid.vao);
+      gl.drawArrays(gl.TRIANGLES, 0, grid.count);
       gl.bindVertexArray(null);
       gl.bindTexture(gl.TEXTURE_2D, null);
     },
@@ -271,6 +338,16 @@ export function createNightLayer(id: string): NightLayerHandle {
       glow = g;
       if (g > 0 && !loading) loadLights();
       map?.triggerRepaint?.();
+    },
+    setHaze(color, strength = 1) {
+      haze = color ? [parseInt(color.slice(1, 3), 16) / 255, parseInt(color.slice(3, 5), 16) / 255, parseInt(color.slice(5, 7), 16) / 255, strength] : [0, 0, 0, 0];
+      if (!color) eye = eyeLngLat = null;
+      map?.triggerRepaint?.();
+    },
+    setEye(lng, lat, altM) {
+      const la = Math.max(-85, Math.min(85, lat)) * DEG;
+      eyeLngLat = [lng, lat];
+      eye = [(lng + 180) / 360, (1 - Math.log(Math.tan(Math.PI / 4 + la / 2)) / Math.PI) / 2, altM, 40_075_016.686 * Math.cos(la)];
     },
     nightAt(lat, lng) {
       const la = lat * DEG, lo = lng * DEG;

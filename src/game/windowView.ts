@@ -553,6 +553,8 @@ export interface WindowLight {
   sky: string;
   horizon: string;
   fog: string;
+  /** The haze of distance over the ground. */
+  haze: string;
   /** Wing top and its darker leading edge. */
   wing: string;
   wingDark: string;
@@ -565,9 +567,9 @@ export interface WindowLight {
 
 /** Colours for a sun height: day, sunset, night. */
 export function windowLight(sunEl: number): WindowLight {
-  const day = { sky: '#4f86d4', horizon: '#cfe2f4', fog: '#dbe7f2', wing: '#d5dae1', wingDark: '#9aa3ae', wall: '#e8e5de', wallShade: '#bdb8ae' };
-  const dusk = { sky: '#4c5f99', horizon: '#f0a66e', fog: '#d9a684', wing: '#b9a99c', wingDark: '#7d7069', wall: '#d9d2c6', wallShade: '#a59c8f' };
-  const night = { sky: '#070c18', horizon: '#18233b', fog: '#121a2c', wing: '#2b313b', wingDark: '#1a1e25', wall: '#3b3a37', wallShade: '#252422' };
+  const day = { sky: '#4f86d4', horizon: '#cfe2f4', fog: '#dbe7f2', haze: '#a9c0df', wing: '#d5dae1', wingDark: '#9aa3ae', wall: '#e8e5de', wallShade: '#bdb8ae' };
+  const dusk = { sky: '#4c5f99', horizon: '#f0a66e', fog: '#d9a684', haze: '#9c93b4', wing: '#b9a99c', wingDark: '#7d7069', wall: '#d9d2c6', wallShade: '#a59c8f' };
+  const night = { sky: '#070c18', horizon: '#18233b', fog: '#121a2c', haze: '#0e1526', wing: '#2b313b', wingDark: '#1a1e25', wall: '#3b3a37', wallShade: '#252422' };
   // day above 8°, sunset round 0°, night below -8°
   const pick = (k: keyof typeof day) =>
     sunEl >= 8 ? day[k] : sunEl >= 0 ? mix(dusk[k], day[k], sunEl / 8) : sunEl >= -8 ? mix(night[k], dusk[k], (sunEl + 8) / 8) : night[k];
@@ -575,6 +577,7 @@ export function windowLight(sunEl: number): WindowLight {
     sky: pick('sky'),
     horizon: pick('horizon'),
     fog: pick('fog'),
+    haze: pick('haze'),
     wing: pick('wing'),
     wingDark: pick('wingDark'),
     wall: pick('wall'),
