@@ -45,6 +45,10 @@ import {
   econMapClock,
   liveTickGameMinutes,
   utcClockAt,
+  advanceClock,
+  type UtcClock,
+  TIMELAPSE_RATE,
+  type Timelapse,
   type MapSpeed,
   type CashFlowKind,
   type CatchUpReport,
@@ -320,9 +324,14 @@ export default function App() {
   // frame through getMapClock; React state refreshes once a second for the UI.
   const [mapSpeed, setMapSpeedState] = useState<MapSpeed>(() => (readPrefs().mapSpeed === 'x7' ? 'x7' : 'live'));
   const setMapSpeed = (m: MapSpeed) => {
+    lapseRef.current = null; // a new map clock: the timelapse stops
+    setLapseState('off');
     setMapSpeedState(m);
     writePrefs({ mapSpeed: m });
   };
+  // Timelapse (just for watching): the map's clock runs fast from where it was; the game clock doesn't change
+  const [lapse, setLapseState] = useState<Timelapse>('off');
+  const lapseRef = useRef<{ rate: number; real: number; from: UtcClock } | null>(null);
   const mapSpeedRef = useRef(mapSpeed);
   mapSpeedRef.current = mapSpeed;
   const econSpeedRef = useRef<EconomySpeed>(econSpeed);
@@ -330,8 +339,10 @@ export default function App() {
     econSpeedRef.current = econSpeed;
     econStampRef.current = Date.now(); // restart extrapolation from the last tick
   }
-  const getMapClock = useCallback(() => {
+  const getMapClock = useCallback((): UtcClock => {
     const now = Date.now();
+    const l = lapseRef.current;
+    if (l) return advanceClock(l.from, ((now - l.real) / 1000) * l.rate, now);
     if (mapSpeedRef.current === 'live') return utcClockAt(now);
     // Between economy ticks, extrapolate so planes glide instead of stepping
     const rate = ECONOMY_RATE[econSpeedRef.current];
@@ -340,7 +351,14 @@ export default function App() {
   }, []);
   const [mapNowMs, setMapNowMs] = useState(() => Date.now());
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const mapClock = useMemo(() => getMapClock(), [mapNowMs, mapSpeed, getMapClock]);
+  const setLapse = (v: Timelapse) => {
+    const now = Date.now();
+    // Starts (or changes speed) from the map time shown now, so nothing jumps; off goes back to it
+    lapseRef.current = v === 'off' ? null : { rate: TIMELAPSE_RATE[v], real: now, from: getMapClock() };
+    setLapseState(v);
+    setMapNowMs(now);
+  };
+  const mapClock = useMemo(() => getMapClock(), [mapNowMs, mapSpeed, lapse, getMapClock]);
 
   const [airports, setAirports] = useState<Airport[]>(BUILTIN_AIRPORTS);
   const [, setNavaidsCount] = useState(31);
@@ -2387,7 +2405,7 @@ export default function App() {
         hiddenAiAirlines={replacedAi ? [replacedAi] : []}
         onAiStats={setAiStats}
         getClock={getMapClock}
-        mapRate={mapSpeed === 'live' ? 1 : ECONOMY_RATE[econSpeed] * 60}
+        mapRate={lapse !== 'off' ? TIMELAPSE_RATE[lapse] * 60 : mapSpeed === 'live' ? 1 : ECONOMY_RATE[econSpeed] * 60}
         planeInfoEnabled={!inspectedAirport && !routeFrom}
         onBlockedPlaneClick={onBlockedPlaneClick}
         onOpenSchedule={openSchedule}
@@ -2408,6 +2426,8 @@ export default function App() {
         mapClock={mapClock}
         mapSpeed={mapSpeed}
         onMapSpeed={setMapSpeed}
+        lapse={lapse}
+        onLapse={setLapse}
         econMin={econ.min}
         econSpeed={econSpeed}
         onEconSpeed={setEconSpeed}

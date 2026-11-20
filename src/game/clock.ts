@@ -37,6 +37,22 @@ export function utcClockAt(nowMs: number): UtcClock {
   return { nowMs, day, min, dayOfMonth: new Date(nowMs).getUTCDate() };
 }
 
+/**
+ * Timelapse: just for watching. The map's clock runs fast from where it was, so
+ * traffic streams across the map; the game clock, money and flights don't change.
+ * Map minutes per real second.
+ */
+export type Timelapse = 'off' | 'x60' | 'x300' | 'x1200';
+export const TIMELAPSE_RATE: Record<Timelapse, number> = { off: 0, x60: 1, x300: 5, x1200: 20 };
+
+/** A map clock moved on by some minutes (for the timelapse). */
+export function advanceClock(c: UtcClock, addMin: number, nowMs: number): UtcClock {
+  const abs = (c.day - 1) * MIN_PER_DAY + c.min + addMin;
+  const day = Math.floor(abs / MIN_PER_DAY) + 1;
+  const dayOfMonth = new Date(Date.UTC(2000, 0, c.dayOfMonth) + (day - c.day) * MS_PER_DAY).getUTCDate();
+  return { nowMs, day, min: abs - (day - 1) * MIN_PER_DAY, dayOfMonth };
+}
+
 /** Map speed: real UTC, or 7× following the economy clock. */
 export type MapSpeed = 'live' | 'x7';
 

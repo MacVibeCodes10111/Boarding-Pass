@@ -169,6 +169,11 @@ const friendPlane = (t: AiTraffic, f: AiFlight) =>
 //   Auto starts at Medium and moves the budget with the measured frame rate.
 // ---------------------------------------------------------------------------
 export type AiDetail = 'auto' | 'low' | 'medium' | 'high' | 'max' | 'extreme';
+/** Map speed (× real time) from which the map is in timelapse, and how many other airlines' aircraft it draws then. */
+const TIMELAPSE_MIN_RATE = 60;
+const LAPSE_BUDGET = 2500;
+const LAPSE_BUDGET_PHONE = 700;
+
 export const AI_DETAIL_LEVELS: Record<AiDetail, { budget: number; dotsBelow: number; drawMs: number }> = {
   auto: { budget: 1500, dotsBelow: 3, drawMs: 300 },
   low: { budget: 600, dotsBelow: 4.5, drawMs: 600 },
@@ -2829,7 +2834,7 @@ export function LiveMap(props: LiveMapProps) {
         return target;
       }
       const diff = ((target - prev + 540) % 360) - 180;
-      const maxStep = (dtMs / 1000) * 90; // turn at most 90°/s
+      const maxStep = (dtMs / 1000) * 90 * Math.max(1, latest.current.mapRate); // turn at most 90°/s (of map time)
       const next = (prev + Math.max(-maxStep, Math.min(maxStep, diff)) + 360) % 360;
       shownBearing.set(id, next);
       return next;
@@ -2949,7 +2954,7 @@ export function LiveMap(props: LiveMapProps) {
           }
         }
       }
-      if (t - groundLast >= GROUND_MS) {
+      if (t - groundLast >= (latest.current.mapRate >= TIMELAPSE_MIN_RATE ? 150 : GROUND_MS)) {
         groundLast = t;
         updateGround(clock, st, groundZoom);
       }
@@ -3063,8 +3068,9 @@ export function LiveMap(props: LiveMapProps) {
       const aiOn = traffic && (st.aiDensity !== 'off' || traffic.friendsFrom !== undefined);
       if (aiOn) {
         const rate = latest.current.mapRate;
-        // Refresh sooner when map time runs fast, and always cover the time until the next refresh
-        const refreshMs = rate > 1 ? AI_REFRESH_MS / 2 : AI_REFRESH_MS;
+        // Refresh sooner when map time runs fast (the timelapse: about every 15 map minutes,
+        // at most every 1.5 s), and always cover the time until the next refresh
+        const refreshMs = rate > 1 ? Math.max(1500, Math.min(AI_REFRESH_MS / 2, (15 * 60_000) / rate)) : AI_REFRESH_MS;
         const hiddenKey = latest.current.hiddenAiAirlines.join(',');
         if (aiKey.traffic !== traffic || aiKey.density !== st.aiDensity || aiKey.rate !== rate || aiKey.hidden !== hiddenKey || t - aiLastRefresh > refreshMs) {
           const hiddenIdx = new Set(
@@ -3089,8 +3095,10 @@ export function LiveMap(props: LiveMapProps) {
           reportedDrawn = -1; // airborne count changed: report after the next draw
           lastStatsReport = -Infinity;
         }
-        // Busy skies redraw a little less often
-        const drawMs = aiDrawn > 3000 ? Math.max(lod.drawMs, 450) : lod.drawMs;
+        // Busy skies redraw a little less often. The timelapse redraws more often
+        // (each redraw is a bigger step of map time) and draws fewer at once to stay light
+        const lapse = rate >= TIMELAPSE_MIN_RATE;
+        const drawMs = lapse ? (aiDrawn > 2000 ? 200 : 120) : aiDrawn > 3000 ? Math.max(lod.drawMs, 450) : lod.drawMs;
         if (t - aiLastDraw >= drawMs) {
           aiLastDraw = t;
           const raw = map.getBounds?.();
@@ -3114,7 +3122,8 @@ export function LiveMap(props: LiveMapProps) {
           let friendsDrawn = 0;
           // Each 3D aircraft is a few hundred vertices: fewer of them in 3D
           // Your aircraft come first: other airlines get the budget that is left
-          const aiBudget = Math.max(AI_MIN_WITH_FLEET, (k3 ? Math.min(budget, AI_3D_MAX) : budget) - playerShown);
+          const lapseCap = lapse ? (currentLayout() === 'phone' ? LAPSE_BUDGET_PHONE : LAPSE_BUDGET) : Infinity;
+          const aiBudget = Math.max(AI_MIN_WITH_FLEET, Math.min(lapseCap, k3 ? Math.min(budget, AI_3D_MAX) : budget) - playerShown);
           const trackedAiId = st.trackedFlightId?.startsWith('ai:') ? Number(st.trackedFlightId.slice(3)) : -1;
           // New takeoff/arrival procedures: at most ~6 ms of building per redraw; the rest follow next time
           const model = aiModel(traffic);

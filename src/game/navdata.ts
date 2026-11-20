@@ -1,7 +1,7 @@
 // ============================================================================
 // NAVAIDS, RUNWAYS, COSMETIC WEATHER, SID/STAR/ILS GEOMETRY & LIVE POSITIONS
 // ============================================================================
-import { CLIMB_NM_PER_KFT, DESCENT_NM_PER_KFT, cruiseAltitudeFt } from './altitude';
+import { CLIMB_NM_PER_KFT, DESCENT_NM_PER_KFT, cruiseAltitudeFt, playerStepDown } from './altitude';
 import { BUILTIN_NAVAIDS } from './builtinData';
 import {
   calcBearingDeg,
@@ -1129,7 +1129,7 @@ export function getLiveFlightPosition(
   const destElev = flight.destination.elevation_ft || 20;
   const airborneNm = Math.max(1, proc.touchdownNm - proc.liftoffNm);
   const trackDeg = calcBearingDeg([flight.origin.longitude_deg, flight.origin.latitude_deg], [flight.destination.longitude_deg, flight.destination.latitude_deg]);
-  const cruiseAlt = cruiseAltitudeFt({ airborneNm, maxTypeFt: maxCruiseFt, trackDeg, fieldElevFt: Math.max(originElev, destElev) });
+  const cruiseAlt = cruiseAltitudeFt({ airborneNm, maxTypeFt: maxCruiseFt, trackDeg, stepDown: playerStepDown(String(flight.id)), fieldElevFt: Math.max(originElev, destElev) });
   let climbNm = (cruiseAlt / 1000) * CLIMB_NM_PER_KFT;
   let descentNm = (cruiseAlt / 1000) * DESCENT_NM_PER_KFT;
   if (climbNm + descentNm > airborneNm * 0.95) {

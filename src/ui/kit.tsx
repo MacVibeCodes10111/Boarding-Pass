@@ -175,6 +175,9 @@ export const globalCss = () => `
   html[data-layout=phone] .bp-fleet-tools > :not(:first-child) { flex: 1 1 auto; min-width: 0; }
   /* Phones: the "From …, now tap the airport" bar sits where the map buttons are, so they move down under it */
   html[data-layout=phone]:has(.bp-routefrom) { --bp-ctl-top: calc(var(--bp-top-h) + 84px); }
+  /* The timelapse pill gives way to the route bar, and on phones pushes the map buttons down a little */
+  html:has(.bp-routefrom) .bp-lapse-chip { display: none !important; }
+  html[data-layout=phone]:has(.bp-lapse-chip):not(:has(.bp-routefrom)) { --bp-ctl-top: calc(var(--bp-top-h) + 56px); }
   html[data-layout=phone] .bp-panel-actions { order: 3; flex: 1 0 100% !important; justify-content: flex-end; flex-wrap: wrap; row-gap: 6px; min-width: 0; }
   html[data-layout=phone] .bp-panel-actions:empty { display: none; }
   button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid ${C.brand}; outline-offset: 1px; }

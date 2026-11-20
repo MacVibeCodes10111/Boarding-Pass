@@ -10,6 +10,7 @@ import {
   ledgerNet,
   type EconomySpeed,
   type MapSpeed,
+  type Timelapse,
   type UtcClock,
   type WeekLedger,
 } from '../game/clock';
@@ -158,6 +159,8 @@ function ClockButton(props: {
   mapClock: UtcClock;
   mapSpeed: MapSpeed;
   onMapSpeed: (s: MapSpeed) => void;
+  lapse: Timelapse;
+  onLapse: (v: Timelapse) => void;
   /** Desktop: the map time on the button too, and the panel under the floating bar. */
   wide?: boolean;
   /** Sits in its own bubble: no outline of its own unless it's open or paused. */
@@ -182,7 +185,8 @@ function ClockButton(props: {
   const week = econWeekOf(props.econMin);
   const day = econDayOfWeek(props.econMin);
   const econTime = formatClockShort(econMinOfDay(props.econMin));
-  const live = props.mapSpeed === 'live';
+  const lapsing = props.lapse !== 'off';
+  const live = props.mapSpeed === 'live' && !lapsing;
   return (
     <div ref={ref} style={{ display: 'flex', alignItems: 'center', flex: 'none' }}>
       <button
@@ -213,6 +217,7 @@ function ClockButton(props: {
             {props.wide ? (
               <>
                 {live && <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', padding: '0 4px', borderRadius: 4, background: C.brand, color: C.brandInk, marginRight: 5 }}>LIVE</span>}
+                {lapsing && <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.04em', padding: '0 4px', borderRadius: 4, background: C.amber, color: '#1a1206', marginRight: 5 }}>{LAPSE_LABEL[props.lapse]}</span>}
                 {formatClockShort(props.mapClock.min)} <span style={{ color: C.muted, fontWeight: 500 }}>UTC</span>
               </>
             ) : (
@@ -255,6 +260,7 @@ function ClockButton(props: {
             <div style={{ fontSize: 12, color: C.muted, marginBottom: 3 }}>Map time</div>
             <div className="num" style={{ fontFamily: DISPLAY, fontSize: 22, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
               {live && <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '0.06em', lineHeight: '16px', padding: '0 5px', borderRadius: 4, background: C.brand, color: C.brandInk }}>LIVE</span>}
+              {lapsing && <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '0.04em', lineHeight: '16px', padding: '0 5px', borderRadius: 4, background: C.amber, color: '#1a1206' }}>{LAPSE_LABEL[props.lapse]}</span>}
               {DAY_NAMES_SHORT[dayIndexOf(props.mapClock.day)]} {formatClockShort(props.mapClock.min)}
               <span style={{ color: C.muted, fontWeight: 500 }}>UTC</span>
             </div>
@@ -272,8 +278,61 @@ function ClockButton(props: {
               ]}
             />
           </div>
+          <div>
+            <div style={{ fontSize: 12, color: C.muted, marginBottom: 6 }}>Timelapse</div>
+            <Segmented<Timelapse>
+              size="sm"
+              block
+              value={props.lapse}
+              onChange={props.onLapse}
+              options={[
+                { value: 'off', label: 'Off' },
+                { value: 'x60', label: '60×', title: 'A minute a second' },
+                { value: 'x300', label: '300×', title: 'Five minutes a second' },
+                { value: 'x1200', label: '1200×', title: 'Twenty minutes a second: a day in 72 seconds' },
+              ]}
+            />
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>Just for watching the traffic. Your game time, money and flights carry on as normal.</div>
+          </div>
         </div>
       )}
+    </div>
+  );
+}
+
+const LAPSE_LABEL: Record<Timelapse, string> = { off: '', x60: '60×', x300: '300×', x1200: '1200×' };
+
+/** While the timelapse runs: what it is, the map time, and a quick way back to normal. */
+function TimelapseChip(props: { lapse: Timelapse; mapClock: UtcClock; onStop: () => void; top: string }) {
+  return (
+    <div
+      role="status"
+      className="bp-lapse-chip"
+      style={{
+        ...glass('f0'),
+        position: 'absolute',
+        top: props.top,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 45,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 9,
+        padding: '5px 5px 5px 12px',
+        borderRadius: 999,
+        boxShadow: floatShadow(),
+        whiteSpace: 'nowrap',
+        pointerEvents: 'auto',
+      }}
+    >
+      <Icon name="play" size={13} color={C.amber} />
+      <span style={{ fontSize: 13, fontWeight: 650 }}>Timelapse {LAPSE_LABEL[props.lapse]}</span>
+      <span className="num" style={{ fontFamily: DISPLAY, fontSize: 15, fontWeight: 600 }}>
+        {DAY_NAMES_SHORT[dayIndexOf(props.mapClock.day)]} {formatClockShort(props.mapClock.min)} <span style={{ color: C.muted, fontWeight: 500, fontSize: 12 }}>UTC</span>
+      </span>
+      <Button size="sm" variant="subtle" onClick={props.onStop}>
+        Stop
+      </Button>
     </div>
   );
 }
@@ -289,6 +348,8 @@ export function TopBar(props: {
   mapClock: UtcClock;
   mapSpeed: MapSpeed;
   onMapSpeed: (s: MapSpeed) => void;
+  lapse: Timelapse;
+  onLapse: (v: Timelapse) => void;
   econMin: number;
   econSpeed: EconomySpeed;
   onEconSpeed: (s: EconomySpeed) => void;
@@ -334,6 +395,8 @@ export function TopBar(props: {
       mapClock={props.mapClock}
       mapSpeed={props.mapSpeed}
       onMapSpeed={props.onMapSpeed}
+      lapse={props.lapse}
+      onLapse={props.onLapse}
       wide={wideClock}
     />
   );
@@ -482,6 +545,7 @@ export function TopBar(props: {
       </>, { padding: '0 10px 0 4px' })}
       {phone && clock}
     </header>
+    {props.lapse !== 'off' && <TimelapseChip lapse={props.lapse} mapClock={props.mapClock} onStop={() => props.onLapse('off')} top={phone ? 'calc(var(--bp-top-h) + 8px)' : 'calc(18px + var(--bp-safe-t))'} />}
     {!phone && (
       <div
         className="bp-clockbubble"

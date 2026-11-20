@@ -11,6 +11,10 @@
 // The level then follows the semicircular rule: eastbound odd thousands
 // (FL350, 370), westbound even (FL340, 360). Used by your flights and by
 // other airlines' traffic alike, so the two agree.
+//
+// v3.5.2: like real traffic, nothing goes above FL390 unless it's a long
+// haul (an ocean crossing), even types certified higher; flights on the same
+// route spread over the top few levels, yours as well as other airlines'.
 // ============================================================================
 import type { AircraftCategory, AircraftModel, RadarIconGroup } from './types';
 
@@ -19,6 +23,9 @@ export const CLIMB_NM_PER_KFT = 3;
 export const DESCENT_NM_PER_KFT = 3.2;
 /** Share of the airborne distance kept for cruise on short routes. */
 const MIN_CRUISE_SHARE = 0.3;
+/** Highest level used short of a long haul, and the airborne distance from which a long haul may go higher. */
+const USUAL_TOP_FT = 39000;
+const LONG_HAUL_NM = 2500;
 /** Lowest cruising altitude on the shortest hops. */
 const FLOOR_FT = 3000;
 
@@ -115,7 +122,10 @@ export function routeMaxCruiseFt(airborneNm: number): number {
 export function cruiseAltitudeFt(opts: { airborneNm: number; maxTypeFt: number; trackDeg: number; stepDown?: number; fieldElevFt?: number }): number {
   // Never lower than 2,000 ft above the higher of the two airports (La Paz is at 13,300 ft)
   const minFt = (opts.fieldElevFt ?? 0) + 2000;
-  const cap = Math.max(minFt, Math.min(opts.maxTypeFt, routeMaxCruiseFt(opts.airborneNm)));
+  const typeFt = opts.airborneNm >= LONG_HAUL_NM ? opts.maxTypeFt : Math.min(opts.maxTypeFt, USUAL_TOP_FT);
+  // Shorter routes level off lower than they could climb, as airlines file them (about FL240 at 200 nm, FL330 at 400 nm)
+  const usualFt = 15000 + Math.max(0, opts.airborneNm) * 45;
+  const cap = Math.max(minFt, Math.min(typeFt, usualFt, routeMaxCruiseFt(opts.airborneNm)));
   const east = ((opts.trackDeg % 360) + 360) % 360 < 180;
   let k = Math.floor(cap / 1000);
   if (k % 2 !== (east ? 1 : 0)) k -= 1;
@@ -133,6 +143,13 @@ export function cruiseAltitudeFt(opts: { airborneNm: number; maxTypeFt: number; 
  * procedures) use this, so a flight keeps the same level whichever draws it.
  * Flights on the same route spread over the top three levels.
  */
+/** How many levels under the top one a flight of yours cruises at (0, 0, 1 or 2), the same every time it flies. */
+export function playerStepDown(flightId: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < flightId.length; i++) h = Math.imul(h ^ flightId.charCodeAt(i), 16777619);
+  return [0, 0, 1, 2][(h >>> 0) & 3];
+}
+
 export function aiCruiseAltitudeFt(f: { id: number; typeCode: string; group: RadarIconGroup; distanceNm: number }, trackDeg: number, fieldElevFt = 0): number {
   const h = Math.imul(f.id + 17, 0x9e3779b1) >>> 0;
   return cruiseAltitudeFt({ airborneNm: f.distanceNm, maxTypeFt: aiTypeMaxCruiseFt(f.typeCode, f.group), trackDeg, stepDown: [0, 0, 1, 2][h & 3], fieldElevFt });
