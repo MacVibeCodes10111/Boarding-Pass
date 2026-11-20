@@ -16,7 +16,7 @@ import type { RadarIconGroup } from './types';
 type V3 = [number, number, number];
 
 /** Which part a triangle belongs to: the layer paints each differently. */
-export const PART = { body: 0, wing: 1, fin: 2, engine: 3, prop: 4 } as const;
+export const PART = { body: 0, wing: 1, fin: 2, engine: 3, prop: 4, gear: 5 } as const;
 /** Floats per vertex. */
 export const MESH_STRIDE = 7;
 
@@ -155,12 +155,52 @@ function nacelle(m: MeshBuilder, at: V3, len: number, r: number, sides = 8) {
   );
 }
 
+/** A box (landing gear legs and wheels). */
+function box(m: MeshBuilder, c: V3, h: V3) {
+  const [x, y, z] = c, [a, b, d] = h;
+  const P = (i: number, j: number, k: number): V3 => [x + i * a, y + j * b, z + k * d];
+  m.center = c;
+  m.quad(P(-1, -1, 1), P(1, -1, 1), P(1, 1, 1), P(-1, 1, 1));
+  m.quad(P(-1, -1, -1), P(-1, 1, -1), P(1, 1, -1), P(1, -1, -1));
+  m.quad(P(-1, -1, -1), P(1, -1, -1), P(1, -1, 1), P(-1, -1, 1));
+  m.quad(P(-1, 1, -1), P(-1, 1, 1), P(1, 1, 1), P(1, 1, -1));
+  m.quad(P(-1, -1, -1), P(-1, -1, 1), P(-1, 1, 1), P(-1, 1, -1));
+  m.quad(P(1, -1, -1), P(1, 1, -1), P(1, 1, 1), P(1, -1, 1));
+  m.center = null;
+}
+
+/**
+ * Wheels down: a nose leg and two main legs (bogies on the big ones), just
+ * reaching below the lowest engine. Only drawn when an aircraft says so (on
+ * the ground or low on the approach): the layer folds them away otherwise.
+ */
+function gear(m: MeshBuilder, spec: Spec, lowestZ: number) {
+  const r = spec.r, rz = spec.rz ?? r;
+  const high = spec.wingZ > 0;
+  const big = ['b747', 'a380', 'heavy_twin', 'a340', 'large_jet', 'trijet', 'high_quad'].includes(spec.key ?? '');
+  const wheel = big ? 0.024 : 0.03;
+  const bottom = Math.min(lowestZ - 0.012, -rz * 1.25);
+  m.part = PART.gear;
+  const leg = (x: number, y: number, top: number, wr: number, bogie: number) => {
+    box(m, [x, y, (top + bottom + wr * 2) / 2], [0.006, 0.006, Math.max(0.004, (top - bottom - wr * 2) / 2)]);
+    box(m, [x, y, bottom + wr], [0.012, wr * bogie, wr]);
+  };
+  const mainY = spec.wingY - spec.rootChord * (high ? 0.5 : 0.62);
+  const mainX = high ? r * 0.92 : r + Math.min(0.08, spec.span * 0.07);
+  const mainTop = high ? -rz * 0.6 : spec.wingZ * (rz / r);
+  for (const s of [1, -1]) leg(s * mainX, mainY, mainTop, wheel, big ? 2.2 : 1);
+  if (spec.key === 'b747' || spec.key === 'a380') for (const s of [1, -1]) leg(s * r * 0.45, mainY + 0.02, -rz * 0.8, wheel, 2.2); // body gear
+  leg(0, 0.8, -rz * 0.75, wheel * 0.7, 1);
+}
+
 /** Propeller disc in front of a nacelle (a thin round plate). */
 function propDisc(m: MeshBuilder, at: V3, r: number) {
   loft(m, [[0.004, r, r, 0], [-0.004, r, r, 0]], 10, at);
 }
 
 interface Spec {
+  /** The icon group (set when built). */
+  key?: string;
   /** Fuselage half-width and half-height (half-length = 1). */
   r: number;
   rz?: number;
@@ -271,6 +311,9 @@ function build(spec: Spec): Float32Array {
   if (spec.rearEngines)
     for (const s of [1, -1]) nacelle(m, [s * (r + spec.engineR * 1.3), -0.38, rz * 0.35], spec.engineLen, spec.engineR);
   if (spec.tailEngine) nacelle(m, [0, -0.5, finZ0 + spec.engineR * 0.9], spec.engineLen * 1.2, spec.engineR);
+  let lowest = 0;
+  for (let i = 2; i < m.data.length; i += MESH_STRIDE) lowest = Math.min(lowest, m.data[i]);
+  gear(m, spec, lowest);
   return new Float32Array(m.data);
 }
 
@@ -280,7 +323,7 @@ const cache = new Map<RadarIconGroup, Float32Array>();
 export function aircraftMesh(group: RadarIconGroup): Float32Array {
   let mesh = cache.get(group);
   if (!mesh) {
-    mesh = build(SPECS[group] ?? SPECS.medium_jet);
+    mesh = build({ ...(SPECS[group] ?? SPECS.medium_jet), key: SPECS[group] ? group : 'medium_jet' });
     cache.set(group, mesh);
   }
   return mesh;
@@ -288,21 +331,32 @@ export function aircraftMesh(group: RadarIconGroup): Float32Array {
 
 export const AIRCRAFT_GROUPS = Object.keys(SPECS) as RadarIconGroup[];
 
-const bounds = new Map<RadarIconGroup, { minZ: number; maxZ: number }>();
+const bounds = new Map<RadarIconGroup, { minZ: number; maxZ: number; gearZ: number }>();
 
-/** Lowest and highest point of a group's shape (half-length units, centreline at 0). */
-export function aircraftMeshBounds(group: RadarIconGroup): { minZ: number; maxZ: number } {
+/** Lowest and highest point of a group's shape (half-length units, centreline at 0), wheels up; `gearZ`: the bottom of the wheels. */
+export function aircraftMeshBounds(group: RadarIconGroup): { minZ: number; maxZ: number; gearZ: number } {
   let b = bounds.get(group);
   if (!b) {
     const d = aircraftMesh(group);
     let minZ = 0;
     let maxZ = 0;
+    let gearZ = 0;
     for (let i = 2; i < d.length; i += MESH_STRIDE) {
+      if (d[i + 4] === PART.gear) {
+        gearZ = Math.min(gearZ, d[i]);
+        continue;
+      }
       minZ = Math.min(minZ, d[i]);
       maxZ = Math.max(maxZ, d[i]);
     }
-    b = { minZ, maxZ };
+    b = { minZ, maxZ, gearZ };
     bounds.set(group, b);
   }
   return b;
 }
+
+/** A group's proportions (half-length units), for the window view's wing. */
+export function aircraftSpec(group: RadarIconGroup): Readonly<Spec> {
+  return SPECS[group] ?? SPECS.medium_jet;
+}
+export type { Spec as AircraftSpec };

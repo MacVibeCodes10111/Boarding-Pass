@@ -65,7 +65,9 @@ import { paintedPhoto } from '../game/liveryPaint';
 import { specialLabel } from '../game/livery';
 import { LiveryContext, paintOf } from './AircraftPhoto';
 import { WindowView, type WindowHud } from './WindowView';
-import { addWindowSample, newWindowState, placeWindowCamera, skyFor, sunElevationDeg, windowLight, type WindowLight, type WindowSide, type WindowState } from '../game/windowView';
+import { addWindowSample, newWindowState, placeWindowCamera, skyFor, sunElevationDeg, windowEyeM, windowLight, wingTipFor, type WindowLight, type WindowSide, type WindowState, type WingParts, type WingTip } from '../game/windowView';
+import { aircraftMeshBounds } from '../game/aircraftMeshes';
+import { AI_TYPES } from '../game/aiFleets';
 
 const EMPTY_FC = { type: 'FeatureCollection', features: [] as any[] };
 
@@ -933,6 +935,16 @@ const WINDOW_HIDDEN_LAYERS = [
   ...PLANE_LAYERS, 'route-3d', 'route-3d-curtain', 'track-flown', 'track-remaining', 'airports-circle', 'airports-labels', 'airports-hit', 'airports-wx', 'airports-linked',
   'navaids-points', 'navaids-labels', 'ils-cones-fill', 'ils-cones-line', 'routes-arc', 'preview-route-arc',
 ];
+/** The map's own gestures and keys, off in the window view. */
+const WINDOW_LOCKED_HANDLERS = ['scrollZoom', 'boxZoom', 'dragRotate', 'dragPan', 'keyboard', 'doubleClickZoom', 'touchZoomRotate', 'touchPitch'];
+const lockWindowMap = (map: any) => {
+  for (const h of WINDOW_LOCKED_HANDLERS)
+    try {
+      if (map[h]?.isEnabled?.()) map[h].disable();
+    } catch {
+      /* older map engine */
+    }
+};
 /** Other airlines' aircraft with a label / click target in 3D (nearest the view centre). */
 const AI_LABELS_3D_MAX = 700;
 
@@ -1616,17 +1628,20 @@ export function LiveMap(props: LiveMapProps) {
 
   // Window view: the 3D map from a passenger window of the selected aircraft (game/windowView.ts)
   const windowRef = useRef<WindowState | null>(null);
-  const windowSaved = useRef<{ cam: Record<string, unknown>; turned3dOn: boolean; background: [string, unknown][]; maxZoom: number; fov: number; sky: unknown; hidden: [string, unknown][]; saw3d: boolean; missing: number; hudAt: number; skyKey: string; lastAgl: number; lastAglT: number } | null>(null);
-  const [windowUi, setWindowUi] = useState<{ side: WindowSide; light: WindowLight; hud: WindowHud } | null>(null);
+  const windowSaved = useRef<{ cam: Record<string, unknown>; turned3dOn: boolean; background: [string, unknown][]; maxZoom: number; fov: number; sky: unknown; hidden: [string, unknown][]; handlers: [string, boolean][]; saw3d: boolean; missing: number; hudAt: number; skyKey: string; night: number; nearAi: AiFlight[]; nearAt: number } | null>(null);
+  const [windowUi, setWindowUi] = useState<{ side: WindowSide; light: WindowLight; hud: WindowHud; wing: WingParts; group: RadarIconGroup; tip: WingTip; basePitch: number } | null>(null);
+  /** Other aircraft out of the window: true size, true height, wheels down on the ground. */
+  const windowAc = useRef<AircraftLayerHandle | null>(null);
   const enterWindow = (map: any, flightId: string, label: string) => {
     if (windowRef.current || !map?.calculateCameraOptionsFromCameraLngLatAltRotation) return;
     const turned3dOn = !latest.current.threeD;
     if (turned3dOn) latest.current.onThreeD?.(true);
     stopFollow();
-    // Out of the window there's only the world: no badges, routes, labels or 3D aircraft
+    // Out of the window there's only the world: no badges, routes, labels or aircraft
     const hidden: [string, unknown][] = [];
-    // (the map's own place names too: they'd float in the sky)
-    const basemapLabels: string[] = (map.getStyle?.()?.layers ?? []).filter((l: any) => l.type === 'symbol' && !l.id.startsWith('ground-')).map((l: any) => l.id);
+    // (the map's own place names too: they'd float in the sky; and the flat aircraft
+    // pictures on the ground: right under the window they'd be huge outlines)
+    const basemapLabels: string[] = (map.getStyle?.()?.layers ?? []).filter((l: any) => l.type === 'symbol').map((l: any) => l.id);
     for (const id of new Set([...WINDOW_HIDDEN_LAYERS, ...basemapLabels]))
       if (map.getLayer?.(id)) {
         hidden.push([id, map.getLayoutProperty?.(id, 'visibility') ?? 'visible']);
@@ -1642,13 +1657,17 @@ export function LiveMap(props: LiveMapProps) {
       fov: map.getVerticalFieldOfView?.() ?? 36.87,
       sky: map.getSky?.(),
       hidden,
+      // A real window: no zooming, turning or tilting the map while you look out
+      handlers: WINDOW_LOCKED_HANDLERS.map((h) => [h, Boolean(map[h]?.isEnabled?.())] as [string, boolean]),
       saw3d: Boolean(latest.current.threeD),
       missing: 0,
       hudAt: 0,
       skyKey: '',
-      lastAgl: 0,
-      lastAglT: 0,
+      night: 0,
+      nearAi: [],
+      nearAt: 0,
     };
+    lockWindowMap(map);
     try {
       map.setMaxZoom?.(24);
       map.setMaxPitch?.(100);
@@ -1657,7 +1676,14 @@ export function LiveMap(props: LiveMapProps) {
       /* older map engine */
     }
     windowRef.current = newWindowState(flightId, 'left');
-    setWindowUi({ side: 'left', light: windowLight(20), hud: { label, altText: '', gsKts: 0, bump: 0.15 } });
+    setWindowUi({ side: 'left', light: windowLight(20), hud: { label, altText: '', gsKts: 0, bump: 0.15 }, wing: { flaps: 0, spoilers: 0, aileron: 0 }, group: 'medium_jet', tip: 'sharklet', basePitch: 88 });
+    try {
+      const ac = createAircraftLayer('window-3d', { near: true });
+      map.addLayer(ac.layer);
+      windowAc.current = ac;
+    } catch {
+      windowAc.current = null;
+    }
   };
   const exitWindow = () => {
     const w = windowRef.current;
@@ -1666,11 +1692,18 @@ export function LiveMap(props: LiveMapProps) {
     windowSaved.current = null;
     setWindowUi(null);
     const map = mapRef.current;
+    windowAc.current = null;
+    try {
+      if (map?.getLayer?.('window-3d')) map.removeLayer('window-3d');
+    } catch {
+      /* the map is going */
+    }
     if (!w || !s || !map) return;
     try {
       map.setVerticalFieldOfView?.(s.fov);
       map.setMaxZoom?.(s.maxZoom);
       for (const [id, v] of s.hidden) if (map.getLayer?.(id)) map.setLayoutProperty?.(id, 'visibility', v);
+      for (const [h, on] of s.handlers) if (on) map[h]?.enable?.();
       for (const [id, v] of s.background) if (map.getLayer?.(id)) map.setPaintProperty?.(id, 'background-color', v);
       const cv = map.getCanvas?.();
       if (cv) cv.style.background = '';
@@ -3061,6 +3094,8 @@ export function LiveMap(props: LiveMapProps) {
       const trackedGround = st.trackedFlightId ? [...groundPlayer.values()].find((g) => g.info.flight.id === st.trackedFlightId) : undefined;
 
       const drawnTails = new Set<string>();
+      /** Your aircraft in the air, for the window view. */
+      const winPlayer: { at: [number, number]; agl: number; bearing: number; group: RadarIconGroup; id: string }[] = [];
       // Level of detail for your own fleet: only aircraft in (or near) the view,
       // and at most PLAYER_BUDGET of them (the selected one always). They come
       // before other airlines, which get what's left of the budget.
@@ -3105,6 +3140,7 @@ export function LiveMap(props: LiveMapProps) {
         // rises or falls from one airport's elevation to the other's)
         const oElev = info.flight.origin.elevation_ft || 0;
         const agl = pos.altitudeText === 'Ground' ? 0 : Math.max(0, Math.round(pos.altitudeFt - (oElev + ((info.flight.destination.elevation_ft || 0) - oElev) * pos.progress)));
+        if (windowAc.current && agl > 0 && info.flight.id !== st.trackedFlightId) winPlayer.push({ at: pos.coordinates, agl, bearing: pos.bearing, group: getRadarIconGroup(info.model), id: info.flight.id });
         const props = {
           ...info.props,
           agl,
@@ -3531,18 +3567,79 @@ export function LiveMap(props: LiveMapProps) {
       const ws = windowSaved.current;
       if (win && ws) {
         if (latest.current.threeD) ws.saw3d = true;
+        lockWindowMap(map);
         ws.missing = view ? 0 : ws.missing + dt;
         if (!st.trackedFlightId || ws.missing > 3000 || (ws.saw3d && !latest.current.threeD)) exitWindow();
         else if (view) {
           const heading = trackedGround ? trackedGround.pose.bearing : tracked ? Number(tracked.props.bearing) : trackedAi?.heading ?? null;
           const gsKts = trackedGround ? trackedGround.pose.speedKts : tracked ? Number(tracked.props.groundSpeedKts) || 0 : trackedAi?.gsKts ?? 0;
           addWindowSample(win, { t, lng: view.coords[0], lat: view.coords[1], aglFt: viewAgl, heading: Number.isFinite(heading) ? heading : null, gsKts });
+          // Other aircraft out of the window, true to size
+          const wac = windowAc.current;
+          if (wac) {
+            const DEGR = Math.PI / 180;
+            const kx = Math.cos(view.coords[1] * DEGR) * 111_320;
+            const distM = (c: [number, number]) => Math.hypot((c[0] - view.coords[0]) * kx, (c[1] - view.coords[1]) * 111_320);
+            // White paint (brighter than 1: the layer's shading is made for looking down from above, not across)
+            const dim = 1.5 * (1 - ws.night * 0.75);
+            const white: [number, number, number] = [0.95 * dim, 0.96 * dim, 0.98 * dim];
+            const fr = hexToRgb(C.fleet);
+            const own: [number, number, number] = [(0.95 + (fr[0] - 0.95) * 0.5) * dim, (0.96 + (fr[1] - 0.96) * 0.5) * dim, (0.98 + (fr[2] - 0.98) * 0.5) * dim];
+            const out = new Map<RadarIconGroup, Aircraft3d[]>();
+            const put = (group: RadarIconGroup, at: [number, number], aglFt: number, heading: number, pitchDeg: number, rgb: [number, number, number]) => {
+              const half = (GROUP_LENGTH_M[group] ?? 38) / 2;
+              const bb = aircraftMeshBounds(group);
+              const gear = aglFt < 1500;
+              addInstance(out, group, { lng: at[0], lat: at[1], elevM: Math.max(0, aglFt) * 0.3048 - (gear ? bb.gearZ : bb.minZ) * half, halfLenM: half, headingDeg: heading, pitchDeg, rgb, vScale: 1, gear });
+            };
+            for (const q of winPlayer) if (distM(q.at) < 60_000) put(q.group, q.at, q.agl, q.bearing, 2, own);
+            if (viewAgl < 4000) {
+              for (const g of groundPlayer.values())
+                if (g.info.flight.id !== st.trackedFlightId && distM(g.pose.coordinates) < 6000) put(getRadarIconGroup(infoById.map.get(g.info.flight.id)?.model), g.pose.coordinates, 0, g.pose.bearing, 0, own);
+              for (const [key, e] of groundRef.current.ai) if (st.trackedFlightId !== `aig:${key}` && distM(e.pose.coordinates) < 6000) put(e.info.flight.group, e.pose.coordinates, 0, e.pose.bearing, 0, white);
+            }
+            if (traffic) {
+              const model = aiModel(traffic);
+              // Which other airlines' aircraft are near: looked up every 2 s, moved every frame
+              if (t - ws.nearAt > 2000) {
+                ws.nearAt = t;
+                ws.nearAi = [];
+                for (const f of aiCandidates) {
+                  const pos = model.position(f, clock.day, clock.min, { left: 0 });
+                  if (pos && distM(pos.coordinates) < 70_000) ws.nearAi.push(f);
+                  if (ws.nearAi.length >= 60) break;
+                }
+              }
+              for (const f of ws.nearAi) {
+                if (st.trackedFlightId === `ai:${f.id}`) continue;
+                const pos = model.position(f, clock.day, clock.min, { left: 1 });
+                if (pos && pos.altitudeFt > 0 && distM(pos.coordinates) < 60_000) put(f.group, pos.coordinates, pos.altitudeFt, pos.bearing, aiPitch.pitch(f.id, pos.altitudeFt, t), white);
+              }
+            }
+            wac.set('ai', out);
+          }
           if (t - ws.hudAt > 1000) {
-            const mapMin = ((t - (ws.lastAglT || t)) / 60_000) * Math.max(1, latest.current.mapRate);
-            const fpm = mapMin > 0 ? (viewAgl - ws.lastAgl) / mapMin : 0;
+            // What it is: the wing, the wingtip and the seat height
+            const tid = st.trackedFlightId ?? '';
+            let group: RadarIconGroup = 'medium_jet';
+            let typeCode: string | undefined;
+            if (tid.startsWith('ai:') || tid.startsWith('aig:')) {
+              const f = tid.startsWith('ai:') ? traffic?.flights[Number(tid.slice(3))] : groundRef.current.ai.get(tid.slice(4))?.info.flight;
+              if (f) {
+                group = f.group;
+                typeCode = AI_TYPES[f.typeCode]?.name ?? f.typeCode;
+              }
+            } else {
+              const m = infoById.map.get(tid)?.model;
+              group = getRadarIconGroup(m);
+              typeCode = m?.name;
+            }
+            win.eyeM = windowEyeM(group);
+            const tip = wingTipFor(typeCode, group);
+            const cam = win.last;
+            const fpm = cam?.fpm ?? 0;
+            const shownAgl = cam ? cam.aglFt : viewAgl;
             ws.hudAt = t;
-            ws.lastAgl = viewAgl;
-            ws.lastAglT = t;
             const day = new Date();
             const ms = Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()) + clock.min * 60_000;
             const light = windowLight(sunElevationDeg(view.coords[1], view.coords[0], ms));
@@ -3559,8 +3656,11 @@ export function LiveMap(props: LiveMapProps) {
                 /* older map engine */
               }
             }
-            const bump = viewAgl <= 0 ? (gsKts > 3 ? 0.55 : 0) : Math.abs(fpm) > 600 ? 0.6 : 0.12;
-            setWindowUi((u) => (u ? { ...u, light, hud: { label: u.hud.label, altText: altLabel(Math.round(viewAgl)), gsKts, bump } } : u));
+            const bump = shownAgl < 8 ? (gsKts > 60 ? 0.5 : gsKts > 3 ? 0.2 : 0) : Math.abs(fpm) > 600 ? 0.6 : 0.12;
+            const wing = cam?.wing ?? { flaps: 0, spoilers: 0, aileron: 0 };
+            ws.night = light.night;
+            const basePitch = Math.round((cam?.base ?? 88) * 4) / 4;
+            setWindowUi((u) => (u ? { ...u, light, wing, group, tip, basePitch, hud: { label: u.hud.label, altText: altLabel(Math.round(shownAgl)), gsKts, bump } } : u));
           }
         }
       }
@@ -3656,20 +3756,14 @@ export function LiveMap(props: LiveMapProps) {
           side={windowUi.side}
           light={windowUi.light}
           hud={windowUi.hud}
+          wing={windowUi.wing}
+          group={windowUi.group}
+          tip={windowUi.tip}
+          basePitch={windowUi.basePitch}
           onSide={(side) => {
             const w = windowRef.current;
-            if (w) {
-              w.side = side;
-              w.yaw = 0;
-              w.look = 0;
-            }
+            if (w) w.side = side;
             setWindowUi((u) => (u ? { ...u, side } : u));
-          }}
-          onLook={(dx, dy) => {
-            const w = windowRef.current;
-            if (!w) return;
-            w.yaw = Math.max(-40, Math.min(40, w.yaw + dx));
-            w.look = Math.max(-14, Math.min(10, w.look + dy));
           }}
           onExit={exitWindow}
         />

@@ -194,7 +194,9 @@ export const globalCss = () => `
   @keyframes bpStrobe { 0%, 5% { opacity: .95; } 6%, 100% { opacity: 0; } }
   .bp-win-wing { animation: bpWingFlex 3.4s ease-in-out infinite; }
   .bp-win-strobe { opacity: 0; animation: bpStrobe 1.4s linear infinite; }
-  @media (prefers-reduced-motion: reduce) { .bp-win-wing, .bp-win-strobe { animation: none; } }
+  @keyframes bpProp { 0%, 100% { opacity: .1; } 50% { opacity: .17; } }
+  .bp-win-prop { animation: bpProp .18s linear infinite; }
+  @media (prefers-reduced-motion: reduce) { .bp-win-wing, .bp-win-strobe, .bp-win-prop { animation: none; } }
   html:has(.bp-window-view) :is(.bp-layers-fab, .bp-zoom, .bp-camera-alt, .maplibregl-popup) { visibility: hidden !important; }
   html[data-layout=phone] .bp-window-stats { display: none; }
   .bp-sheet-phone .bp-pop-window span { display: none; }

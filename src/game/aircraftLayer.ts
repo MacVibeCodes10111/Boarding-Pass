@@ -28,6 +28,8 @@ export interface Aircraft3d {
   rgb: [number, number, number];
   /** Vertical squash (1 = true proportions). */
   vScale: number;
+  /** Wheels down (on the ground, low on the approach). */
+  gear?: boolean;
 }
 
 /** Floats per aircraft in the instance buffer. */
@@ -43,11 +45,14 @@ layout(location = 1) in vec3 a_normal;
 layout(location = 5) in float a_part;   // body, wing, fin, engine, propeller
 layout(location = 2) in vec4 a_place;   // mercator x, y, centre height (m), half length (m)
 layout(location = 3) in vec4 a_turn;    // heading, pitch (rad), mercator units per metre, vertical scale
-layout(location = 4) in vec4 a_color;   // rgb, unused
+layout(location = 4) in vec4 a_color;   // rgb, wheels down (1) or up (0)
+uniform vec2 u_origin;  // added back to the positions (they're kept near the view for precision)
 out vec3 v_normal;
 out vec3 v_color;
 void main() {
   vec3 p = a_pos;
+  // Wheels up: the gear folds away to nothing
+  if (int(a_part + 0.5) == 5 && a_color.w < 0.5) p = vec3(0.0);
   // Squashed flatter when zoomed far out: the normals follow
   vec3 n = normalize(vec3(a_normal.xy, a_normal.z / max(a_turn.w, 0.05)));
   p.z *= a_turn.w;
@@ -66,8 +71,8 @@ void main() {
   vec3 engine = mix(vec3(0.3), c, 0.2);
   vec3 prop = vec3(0.12);
   int part = int(a_part + 0.5);
-  v_color = part == 1 ? wing : part == 3 ? engine : part == 4 ? prop : part == 2 ? c * (lum > 0.6 ? 0.82 : 1.0) : c;
-  vec2 merc = a_place.xy + vec2(enu.x, -enu.y) * a_turn.z;
+  v_color = part == 1 ? wing : part == 3 ? engine : part == 4 ? prop : part == 5 ? vec3(0.16) : part == 2 ? c * (lum > 0.6 ? 0.82 : 1.0) : c;
+  vec2 merc = a_place.xy + vec2(enu.x, -enu.y) * a_turn.z + u_origin;
   gl_Position = projectTileFor3D(merc, a_place.z + enu.z);
 }`;
 
@@ -112,7 +117,14 @@ export interface AircraftLayerHandle {
   clear: () => void;
 }
 
-export function createAircraftLayer(id = 'aircraft-3d'): AircraftLayerHandle {
+/**
+ * `near`: the aircraft are close to the camera (the window view): positions are
+ * kept relative to a point near them, so they don't shake from the GPU's
+ * rounding (about 2 m at the scale of the whole world).
+ */
+export function createAircraftLayer(id = 'aircraft-3d', opts: { near?: boolean } = {}): AircraftLayerHandle {
+  /** Mercator point the positions are measured from (near layers). */
+  let origin: [number, number] = [0, 0];
   let gl2: WebGL2RenderingContext | null = null;
   let map: any = null;
   let ok = false;
@@ -142,7 +154,7 @@ export function createAircraftLayer(id = 'aircraft-3d'): AircraftLayerHandle {
     gl.deleteShader(fs);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error('aircraft program: ' + gl.getProgramInfoLog(prog));
     const u: Record<string, WebGLUniformLocation | null> = {};
-    for (const name of ['u_projection_fallback_matrix', 'u_projection_matrix', 'u_projection_tile_mercator_coords', 'u_projection_clipping_plane', 'u_projection_transition', 'u_eye'])
+    for (const name of ['u_projection_fallback_matrix', 'u_projection_matrix', 'u_projection_tile_mercator_coords', 'u_projection_clipping_plane', 'u_projection_transition', 'u_eye', 'u_origin'])
       u[name] = gl.getUniformLocation(prog, name);
     p = { prog, u };
     programs.set(key, p);
@@ -179,6 +191,13 @@ export function createAircraftLayer(id = 'aircraft-3d'): AircraftLayerHandle {
   const upload = (which: 'player' | 'ai', aircraft: Map<RadarIconGroup, Aircraft3d[]>) => {
     const gl = gl2!;
     const s = sets[which];
+    if (opts.near) {
+      const first = [...aircraft.values()].find((l) => l.length)?.[0];
+      if (first) {
+        const lat = Math.max(-85, Math.min(85, first.lat));
+        origin = [(first.lng + 180) / 360, (1 - Math.log(Math.tan(Math.PI / 4 + (lat * DEG) / 2)) / Math.PI) / 2];
+      }
+    }
     for (const g of AIRCRAFT_GROUPS) {
       const list = aircraft.get(g) ?? [];
       let inst = s.inst.get(g);
@@ -190,8 +209,8 @@ export function createAircraftLayer(id = 'aircraft-3d'): AircraftLayerHandle {
       list.forEach((a, i) => {
         const o = i * STRIDE;
         const lat = Math.max(-85, Math.min(85, a.lat));
-        arr[o] = (a.lng + 180) / 360;
-        arr[o + 1] = (1 - Math.log(Math.tan(Math.PI / 4 + (lat * DEG) / 2)) / Math.PI) / 2;
+        arr[o] = (a.lng + 180) / 360 - origin[0];
+        arr[o + 1] = (1 - Math.log(Math.tan(Math.PI / 4 + (lat * DEG) / 2)) / Math.PI) / 2 - origin[1];
         arr[o + 2] = a.elevM;
         arr[o + 3] = a.halfLenM;
         arr[o + 4] = a.headingDeg * DEG;
@@ -201,7 +220,7 @@ export function createAircraftLayer(id = 'aircraft-3d'): AircraftLayerHandle {
         arr[o + 8] = a.rgb[0];
         arr[o + 9] = a.rgb[1];
         arr[o + 10] = a.rgb[2];
-        arr[o + 11] = 1;
+        arr[o + 11] = a.gear ? 1 : 0;
       });
       if (!inst) {
         inst = { buf: gl.createBuffer()!, n: 0 };
@@ -289,9 +308,14 @@ export function createAircraftLayer(id = 'aircraft-3d'): AircraftLayerHandle {
       // extrusions (metres at the centre of the view).
       const lat = Math.max(-85, Math.min(85, map?.getCenter?.().lat ?? 0));
       const k = 1 / (EARTH_CIRCUMFERENCE_M * Math.cos(lat * DEG));
-      const flat = scaleZ(pd.fallbackMatrix, k);
+      // Near aircraft on the flat map: the matrix is moved to the origin (in full
+      // precision here) instead of adding the origin back on the GPU
+      const globe = shaderData.variantName === 'globe';
+      const shift: [number, number] = opts.near && !globe ? origin : [0, 0];
+      gl.uniform2f(u.u_origin, opts.near && globe ? origin[0] : 0, opts.near && globe ? origin[1] : 0);
+      const flat = scaleZ(pd.fallbackMatrix, k, shift);
       gl.uniformMatrix4fv(u.u_projection_fallback_matrix, false, flat);
-      gl.uniformMatrix4fv(u.u_projection_matrix, false, shaderData.variantName === 'globe' ? pd.mainMatrix : scaleZ(pd.mainMatrix, k));
+      gl.uniformMatrix4fv(u.u_projection_matrix, false, globe ? pd.mainMatrix : scaleZ(pd.mainMatrix, k, shift));
       gl.uniform4f(u.u_projection_tile_mercator_coords, pd.tileMercatorCoords[0], pd.tileMercatorCoords[1], pd.tileMercatorCoords[2], pd.tileMercatorCoords[3]);
       gl.uniform4f(u.u_projection_clipping_plane, pd.clippingPlane[0], pd.clippingPlane[1], pd.clippingPlane[2], pd.clippingPlane[3]);
       gl.uniform1f(u.u_projection_transition, pd.projectionTransition);
@@ -338,11 +362,12 @@ export function createAircraftLayer(id = 'aircraft-3d'): AircraftLayerHandle {
   };
 }
 
-/** A copy of a 4×4 column-major matrix with its height (z) input scaled by k. */
-function scaleZ(m: ArrayLike<number>, k: number): Float32Array {
-  const out = Float32Array.from(m as ArrayLike<number>);
-  for (let i = 8; i < 12; i++) out[i] *= k;
-  return out;
+/** A copy of a 4×4 column-major matrix with its height (z) input scaled by k (and its x, y input moved by `shift`). */
+function scaleZ(m: ArrayLike<number>, k: number, shift: [number, number] = [0, 0]): Float32Array {
+  const d = Array.from(m as ArrayLike<number>);
+  for (let i = 0; i < 4; i++) d[12 + i] += d[i] * shift[0] + d[4 + i] * shift[1];
+  for (let i = 8; i < 12; i++) d[i] *= k;
+  return Float32Array.from(d);
 }
 
 /** '#rrggbb' to 0..1 colour. */
