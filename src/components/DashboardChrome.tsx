@@ -755,6 +755,8 @@ export function LayersMenu(props: {
   onMapStyle: (v: MapStyleChoice) => void;
   dayNight: boolean;
   onDayNight: (v: boolean) => void;
+  streetLights: boolean;
+  onStreetLights: (v: boolean) => void;
   globe: boolean;
   onGlobe: (v: boolean) => void;
   threeD: boolean;
@@ -898,6 +900,7 @@ export function LayersMenu(props: {
             {props.globeAvailable && <Switch on={props.globe} onChange={props.onGlobe} label="Globe" />}
             {/* Satellite: night falls where the sun has set (city lights, street and airport lights) */}
             {props.mapStyle === 'satellite' && <Switch on={props.dayNight} onChange={props.onDayNight} label="Day and night" />}
+            <Switch on={props.streetLights} onChange={props.onStreetLights} label="Street lights" />
             <Switch on={props.threeD} onChange={props.onThreeD} label="3D" />
             {props.threeD && <Switch on={props.detailed3d} onChange={props.onDetailed3d} label="Detailed aircraft" />}
             {props.threeD && <div style={{ ...note, margin: '2px 0 4px' }}>{TILT_HINT}.</div>}

@@ -442,6 +442,8 @@ export interface LiveMapProps {
   mapStyle: MapStyleId;
   /** Day and night over the satellite map, by the sun at the game's time. */
   dayNight?: boolean;
+  /** Street and airport lights (the satellite map: on its night side). */
+  streetLights?: boolean;
   /** 3D globe instead of the flat map (MapLibre 5). */
   globe: boolean;
   /** Tilted view with aircraft drawn in 3D at their altitude. */
@@ -633,11 +635,13 @@ function addNightLayers(map: any) {
 const NIGHT_COLOURS = {
   sun: { road: '#ffc57a', glow: '#ff9a3c', taxi: '#4dff9e', edge: '#fff1c4', centre: '#ffffff', apron: '#ffd59a' },
   dark: { road: '#e8b878', glow: '#c98a46', taxi: '#5fd99a', edge: '#f3e6c2', centre: '#e9edf2', apron: '#d9b583' },
+  // on the light map: warm amber lines and a pale halo, the airfield's lights in deeper tones
+  light: { road: '#d07a22', glow: '#f4c38a', taxi: '#2aa56a', edge: '#d39a2a', centre: '#7d8794', apron: '#f0c98e' },
 };
 const nightColoursShown = new WeakMap<object, string>();
 
 /** The night: 'sun' (the satellite map's day and night), 'dark' (the dark map: lights always on) or 'off'. */
-function applyNight(map: any, mode: 'off' | 'sun' | 'dark', ms: number, zoom: number, base: { buildings?: unknown }, win?: { lng: number; lat: number; aglFt: number }): number {
+function applyNight(map: any, mode: 'off' | 'sun' | 'dark' | 'light', ms: number, zoom: number, base: { buildings?: unknown }, win?: { lng: number; lat: number; aglFt: number }, lights = true): number {
   const on = mode === 'sun';
   const h = nightLayerFor(map);
   // Map: NASA's picture is sharp to about zoom 6; closer in, the street and airport lights take over.
@@ -647,9 +651,10 @@ function applyNight(map: any, mode: 'off' | 'sun' | 'dark', ms: number, zoom: nu
   h.set(ms, on ? 0.82 : 0, glow);
   const c = win ?? map.getCenter?.() ?? { lat: 0, lng: 0 };
   // (the dark map is lit all the time: it's night there by its look)
-  const k = on ? h.nightAt(c.lat, c.lng) : mode === 'dark' ? 1 : 0;
+  const dark = on ? h.nightAt(c.lat, c.lng) : 0;
+  const k = !lights ? 0 : on ? dark : mode === 'dark' || mode === 'light' ? 1 : 0;
   try {
-    const pal = mode === 'dark' ? 'dark' : 'sun';
+    const pal = mode === 'dark' || mode === 'light' ? mode : 'sun';
     if (k > 0.005 && nightColoursShown.get(map) !== pal) {
       nightColoursShown.set(map, pal);
       const cl = NIGHT_COLOURS[pal];
@@ -660,8 +665,8 @@ function applyNight(map: any, mode: 'off' | 'sun' | 'dark', ms: number, zoom: nu
       map.setPaintProperty('night-runway-centre', 'line-color', cl.centre);
       map.setPaintProperty('night-apron', 'fill-color', cl.apron);
     }
-    const soft = mode === 'dark' ? 0.7 : 1;
-    const near = k * high;
+    const soft = mode === 'dark' ? 0.7 : mode === 'light' ? 0.95 : 1;
+    const near = dark * high;
     if (map.getLayer?.(NIGHT_NEAR)) {
       map.setLayoutProperty(NIGHT_NEAR, 'visibility', near > 0.01 ? 'visible' : 'none');
       if (near > 0.01) map.setPaintProperty(NIGHT_NEAR, 'raster-opacity', near * 0.9);
@@ -682,9 +687,10 @@ function applyNight(map: any, mode: 'off' | 'sun' | 'dark', ms: number, zoom: nu
       // lights (fine dots far off, separate glows close in), not solid bands
       {
         const thin = win ? 1 : 0;
-        if (thin !== nightRoadThin.get(map)) {
-          nightRoadThin.set(map, thin);
-          const size = (k: number) => (thin ? k * 0.25 : ['interpolate', ['linear'], ['zoom'], 9, 0.3 * k, 13, 0.55 * k, 16, 0.9 * k, 18, 1.4 * k]);
+        const wide = pal === 'light' ? 1.7 : 1; // (thin lines barely show on white)
+        if (thin + wide * 10 !== nightRoadThin.get(map)) {
+          nightRoadThin.set(map, thin + wide * 10);
+          const size = (k: number) => (thin ? k * 0.25 : ['interpolate', ['linear'], ['zoom'], 9, 0.3 * k * wide, 13, 0.55 * k * wide, 16, 0.9 * k * wide, 18, 1.4 * k * wide]);
           map.setPaintProperty('night-roads', 'line-width', size(1));
           map.setPaintProperty('night-roads', 'line-blur', size(thin ? 1 : 0.5));
           map.setPaintProperty('night-roads', 'line-dasharray', thin ? [0.8, 5] : undefined);
@@ -700,7 +706,7 @@ function applyNight(map: any, mode: 'off' | 'sun' | 'dark', ms: number, zoom: nu
     if (map.getLayer?.('buildings-3d')) {
       if (base.buildings === undefined) base.buildings = map.getPaintProperty('buildings-3d', 'fill-extrusion-color');
       const col = typeof base.buildings === 'string' ? base.buildings : '#dfe3ea';
-      map.setPaintProperty('buildings-3d', 'fill-extrusion-color', on && k > 0.01 ? mixHexColor(col, '#0c1424', k * 0.85) : col);
+      map.setPaintProperty('buildings-3d', 'fill-extrusion-color', on && dark > 0.01 ? mixHexColor(col, '#0c1424', dark * 0.85) : col);
     }
   } catch {
     /* style changing */
@@ -2885,7 +2891,7 @@ export function LiveMap(props: LiveMapProps) {
     let aerowayDirty = true;
     let groundHasData = false;
     let ground3dOn = false;
-    let nightShownOn: 'off' | 'sun' | 'dark' | null = null;
+    let nightShownOn: string | null = null;
     let nightShownZoom = -1;
     let nightAt = 0;
     let nightBase: { buildings?: unknown } = {};
@@ -3415,15 +3421,18 @@ export function LiveMap(props: LiveMapProps) {
         }
       }
       // Day and night (the satellite map's overlay): the sun where it is at the game's time
-      const nightOn = latest.current.mapStyle === 'satellite' && latest.current.dayNight === true ? 'sun' : latest.current.mapStyle === 'dark' ? 'dark' : 'off';
+      const lightsOn = latest.current.streetLights !== false;
+      const ms0 = latest.current.mapStyle;
+      const nightMode = ms0 === 'satellite' ? (latest.current.dayNight === true ? 'sun' : 'off') : lightsOn ? ms0 : 'off';
+      const nightOn = `${nightMode}:${lightsOn}`;
       const nightZoom = Math.round((map.getZoom?.() ?? 0) * 20) / 20;
-      if (nightOn !== nightShownOn || (nightOn !== 'off' && (t - nightAt > 1000 || nightZoom !== nightShownZoom))) {
+      if (nightOn !== nightShownOn || (nightMode !== 'off' && (t - nightAt > 1000 || nightZoom !== nightShownZoom))) {
         nightAt = t;
         nightShownOn = nightOn;
         nightShownZoom = nightZoom;
         const d = new Date();
         const wl = windowRef.current?.last;
-        applyNight(map, nightOn, Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) + clock.min * 60_000, nightZoom, nightBase, wl ? { lng: wl.lng, lat: wl.lat, aglFt: Math.round(wl.aglFt / 250) * 250 } : undefined);
+        applyNight(map, nightMode, Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) + clock.min * 60_000, nightZoom, nightBase, wl ? { lng: wl.lng, lat: wl.lat, aglFt: Math.round(wl.aglFt / 250) * 250 } : undefined, lightsOn);
       }
       let groundFresh = false;
       if (t - groundLast >= (latest.current.mapRate >= TIMELAPSE_MIN_RATE ? 150 : GROUND_MS)) {

@@ -174,6 +174,8 @@ function readPrefs(): {
   mapStyle?: MapStyleChoice;
   /** Satellite map: day and night by the sun (v3.6, off unless turned on). */
   dayNight?: boolean;
+  /** Street and airport lights on the map (any style; on the satellite map, at night). */
+  streetLights?: boolean;
   globe?: boolean;
   threeD?: boolean;
   /** 3D: detailed aircraft shapes (on unless turned off). */
@@ -383,6 +385,11 @@ export default function App() {
     writePrefs({ mapStyle: m });
   };
   const [dayNight, setDayNightState] = useState(() => readPrefs().dayNight === true);
+  const [streetLights, setStreetLightsState] = useState(() => readPrefs().streetLights !== false);
+  const setStreetLights = (v: boolean) => {
+    setStreetLightsState(v);
+    writePrefs({ streetLights: v });
+  };
   const setDayNight = (v: boolean) => {
     setDayNightState(v);
     writePrefs({ dayNight: v });
@@ -2401,6 +2408,7 @@ export default function App() {
         showNavaids={showNavaids}
         mapStyle={mapStyle}
         dayNight={dayNight}
+        streetLights={streetLights}
         globe={globe}
         threeD={threeD}
         onThreeD={setThreeD}
@@ -2456,6 +2464,8 @@ export default function App() {
         onMapStyle={setMapStyle}
         dayNight={dayNight}
         onDayNight={setDayNight}
+        streetLights={streetLights}
+        onStreetLights={setStreetLights}
         globe={globe}
         onGlobe={setGlobe}
         threeD={threeD}
