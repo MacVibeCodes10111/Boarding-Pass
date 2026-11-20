@@ -1628,7 +1628,7 @@ export function LiveMap(props: LiveMapProps) {
 
   // Window view: the 3D map from a passenger window of the selected aircraft (game/windowView.ts)
   const windowRef = useRef<WindowState | null>(null);
-  const windowSaved = useRef<{ cam: Record<string, unknown>; turned3dOn: boolean; background: [string, unknown][]; maxZoom: number; fov: number; sky: unknown; hidden: [string, unknown][]; handlers: [string, boolean][]; saw3d: boolean; missing: number; hudAt: number; skyKey: string; wingAt: number; wingShown: WingParts; pixelRatio: number; night: number; nearAi: AiFlight[]; nearAt: number } | null>(null);
+  const windowSaved = useRef<{ cam: Record<string, unknown>; turned3dOn: boolean; background: [string, unknown][]; maxZoom: number; fov: number; sky: unknown; hidden: [string, unknown][]; handlers: [string, boolean][]; saw3d: boolean; missing: number; hudAt: number; skyKey: string; wingAt: number; wingShown: WingParts; pixelRatio: number; repaint: boolean; night: number; nearAi: AiFlight[]; nearAt: number } | null>(null);
   const [windowUi, setWindowUi] = useState<{ side: WindowSide; light: WindowLight; hud: WindowHud; wing: WingParts; group: RadarIconGroup; tip: WingTip; basePitch: number } | null>(null);
   /** Other aircraft out of the window: true size, true height, wheels down on the ground. */
   const windowAc = useRef<AircraftLayerHandle | null>(null);
@@ -1666,6 +1666,7 @@ export function LiveMap(props: LiveMapProps) {
       wingAt: 0,
       wingShown: { flaps: 0, spoilers: 0, aileron: 0 },
       pixelRatio: 0,
+      repaint: false,
       night: 0,
       nearAi: [],
       nearAt: 0,
@@ -1675,6 +1676,10 @@ export function LiveMap(props: LiveMapProps) {
       // Fewer pixels for the world outside: most of the screen is the cabin wall, and the
       // low, fast view of the ground needs every frame on time more than full sharpness
       windowSaved.current.pixelRatio = map.getPixelRatio?.() ?? 0;
+      // Draw every frame: the camera moves every frame, but each move only asks the map
+      // for the *next* frame, so on its own it drew every other one (the judder)
+      windowSaved.current.repaint = Boolean(map.repaint);
+      map.repaint = true;
       if (windowSaved.current.pixelRatio > 1.25) map.setPixelRatio?.(1.25);
       map.setMaxZoom?.(24);
       map.setMaxPitch?.(100);
@@ -1708,6 +1713,7 @@ export function LiveMap(props: LiveMapProps) {
     if (!w || !s || !map) return;
     try {
       if (s.pixelRatio > 1.25) map.setPixelRatio?.(s.pixelRatio);
+      map.repaint = s.repaint;
       map.setVerticalFieldOfView?.(s.fov);
       map.setMaxZoom?.(s.maxZoom);
       for (const [id, v] of s.hidden) if (map.getLayer?.(id)) map.setLayoutProperty?.(id, 'visibility', v);
