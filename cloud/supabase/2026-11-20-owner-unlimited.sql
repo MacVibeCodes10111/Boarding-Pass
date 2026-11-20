@@ -1,6 +1,8 @@
 -- 2026-11-20: the owner's account has no per-account limits (Mac asked: "unlimit my account").
 -- Everyone else keeps theirs, and the whole-project daily caps (which keep us in the free
 -- tier) still count the owner too. Usage is still counted, so it shows up as before.
+-- Also for everyone (Mac's OK the same day): calls 1200 an hour / 12000 a day (were 600 / 4000:
+-- a long day's play could reach 4000), uploads 240 / 2000 (were 120 / 1000). Downloads unchanged.
 create or replace function private.cloud_meter(uid uuid, kind text, bytes bigint)
  returns boolean
  language plpgsql
@@ -24,10 +26,10 @@ begin
   select * into u_d from private.cloud_usage where user_id = uid and period = 'd' for update;
   select * into g_d from private.cloud_usage where user_id = whole and period = 'd' for update;
   if kind = 'call' then
-    if (not free and (u_h.calls >= 600 or u_d.calls >= 4000)) or g_d.calls >= 300000 then return false; end if;
+    if (not free and (u_h.calls >= 1200 or u_d.calls >= 12000)) or g_d.calls >= 300000 then return false; end if;
     update private.cloud_usage set calls = calls + 1 where user_id in (uid, whole) and period in ('h', 'd');
   elsif kind = 'push' then
-    if not free and (u_h.pushes >= 120 or u_d.pushes >= 1000) then return false; end if;
+    if not free and (u_h.pushes >= 240 or u_d.pushes >= 2000) then return false; end if;
     update private.cloud_usage set pushes = pushes + 1 where user_id = uid and period in ('h', 'd');
   else
     if (not free and (u_h.pulls >= 120 or u_d.pulls >= 1500
