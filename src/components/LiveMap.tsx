@@ -1628,7 +1628,7 @@ export function LiveMap(props: LiveMapProps) {
 
   // Window view: the 3D map from a passenger window of the selected aircraft (game/windowView.ts)
   const windowRef = useRef<WindowState | null>(null);
-  const windowSaved = useRef<{ cam: Record<string, unknown>; turned3dOn: boolean; background: [string, unknown][]; maxZoom: number; fov: number; sky: unknown; hidden: [string, unknown][]; handlers: [string, boolean][]; saw3d: boolean; missing: number; hudAt: number; skyKey: string; night: number; nearAi: AiFlight[]; nearAt: number } | null>(null);
+  const windowSaved = useRef<{ cam: Record<string, unknown>; turned3dOn: boolean; background: [string, unknown][]; maxZoom: number; fov: number; sky: unknown; hidden: [string, unknown][]; handlers: [string, boolean][]; saw3d: boolean; missing: number; hudAt: number; skyKey: string; wingAt: number; wingShown: WingParts; pixelRatio: number; night: number; nearAi: AiFlight[]; nearAt: number } | null>(null);
   const [windowUi, setWindowUi] = useState<{ side: WindowSide; light: WindowLight; hud: WindowHud; wing: WingParts; group: RadarIconGroup; tip: WingTip; basePitch: number } | null>(null);
   /** Other aircraft out of the window: true size, true height, wheels down on the ground. */
   const windowAc = useRef<AircraftLayerHandle | null>(null);
@@ -1663,12 +1663,19 @@ export function LiveMap(props: LiveMapProps) {
       missing: 0,
       hudAt: 0,
       skyKey: '',
+      wingAt: 0,
+      wingShown: { flaps: 0, spoilers: 0, aileron: 0 },
+      pixelRatio: 0,
       night: 0,
       nearAi: [],
       nearAt: 0,
     };
     lockWindowMap(map);
     try {
+      // Fewer pixels for the world outside: most of the screen is the cabin wall, and the
+      // low, fast view of the ground needs every frame on time more than full sharpness
+      windowSaved.current.pixelRatio = map.getPixelRatio?.() ?? 0;
+      if (windowSaved.current.pixelRatio > 1.25) map.setPixelRatio?.(1.25);
       map.setMaxZoom?.(24);
       map.setMaxPitch?.(100);
       map.setVerticalFieldOfView?.(50);
@@ -1700,6 +1707,7 @@ export function LiveMap(props: LiveMapProps) {
     }
     if (!w || !s || !map) return;
     try {
+      if (s.pixelRatio > 1.25) map.setPixelRatio?.(s.pixelRatio);
       map.setVerticalFieldOfView?.(s.fov);
       map.setMaxZoom?.(s.maxZoom);
       for (const [id, v] of s.hidden) if (map.getLayer?.(id)) map.setLayoutProperty?.(id, 'visibility', v);
@@ -2941,7 +2949,7 @@ export function LiveMap(props: LiveMapProps) {
       }
       groundRef.current = { ai, player };
       if (features.length || groundHasData) {
-        map.getSource('ground-planes')?.setData({ type: 'FeatureCollection', features });
+        if (!windowRef.current) map.getSource('ground-planes')?.setData({ type: 'FeatureCollection', features });
         groundHasData = features.length > 0;
       }
     };
@@ -3039,7 +3047,8 @@ export function LiveMap(props: LiveMapProps) {
       // --- Ground traffic at the airports in view -----------------------------
       const zoom = map.getZoom?.() ?? 0;
       // 3D: metres per pixel and height scale for this view
-      const k3: Scale3d | null = latest.current.threeD ? scaleFor(map.getCenter?.()?.lat ?? 40, zoom, map.getProjection?.()?.type === 'globe') : null;
+      // (not in the window view: it draws its own aircraft, and the map's are hidden)
+      const k3: Scale3d | null = latest.current.threeD && !windowRef.current ? scaleFor(map.getCenter?.()?.lat ?? 40, zoom, map.getProjection?.()?.type === 'globe') : null;
       const playerLabels3d: { at: LonLat; aglFt: number; sizePx: number; props: Record<string, unknown> }[] = [];
       const bodies3d: any[] = [];
       // Detailed aircraft instead of the simple shapes (needs WebGL2; off in Map layers)
@@ -3183,7 +3192,7 @@ export function LiveMap(props: LiveMapProps) {
         }
       }
       playerShown = features.length;
-      map.getSource('live-planes')?.setData({ type: 'FeatureCollection', features });
+      if (!windowRef.current) map.getSource('live-planes')?.setData({ type: 'FeatureCollection', features });
       if (k3 || p3dHasData) {
         map.getSource('planes-3d')?.setData({ type: 'FeatureCollection', features: bodies3d });
         p3dHasData = bodies3d.length > 0;
@@ -3232,7 +3241,8 @@ export function LiveMap(props: LiveMapProps) {
         // (each redraw is a bigger step of map time) and draws fewer at once to stay light
         const lapse = rate >= TIMELAPSE_MIN_RATE;
         const drawMs = lapse ? (aiDrawn > 2000 ? 200 : 120) : aiDrawn > 3000 ? Math.max(lod.drawMs, 450) : lod.drawMs;
-        if (t - aiLastDraw >= drawMs) {
+        // The window view hides these layers: skip the work (it keeps the frames even)
+        if (t - aiLastDraw >= drawMs && !windowRef.current) {
           aiLastDraw = t;
           const raw = map.getBounds?.();
           const b = raw
@@ -3618,6 +3628,13 @@ export function LiveMap(props: LiveMapProps) {
             }
             wac.set('ai', out);
           }
+          // The wing's moving parts redraw five times a second while they move
+          const wp = win.last?.wing;
+          if (wp && t - ws.wingAt > 200 && (Math.abs(wp.flaps - ws.wingShown.flaps) > 0.01 || Math.abs(wp.spoilers - ws.wingShown.spoilers) > 0.01 || Math.abs(wp.aileron - ws.wingShown.aileron) > 0.02)) {
+            ws.wingAt = t;
+            ws.wingShown = wp;
+            setWindowUi((u) => (u ? { ...u, wing: wp } : u));
+          }
           if (t - ws.hudAt > 1000) {
             // What it is: the wing, the wingtip and the seat height
             const tid = st.trackedFlightId ?? '';
@@ -3657,10 +3674,9 @@ export function LiveMap(props: LiveMapProps) {
               }
             }
             const bump = shownAgl < 8 ? (gsKts > 60 ? 0.5 : gsKts > 3 ? 0.2 : 0) : Math.abs(fpm) > 600 ? 0.6 : 0.12;
-            const wing = cam?.wing ?? { flaps: 0, spoilers: 0, aileron: 0 };
             ws.night = light.night;
             const basePitch = Math.round((cam?.base ?? 88) * 4) / 4;
-            setWindowUi((u) => (u ? { ...u, light, wing, group, tip, basePitch, hud: { label: u.hud.label, altText: altLabel(Math.round(shownAgl)), gsKts, bump } } : u));
+            setWindowUi((u) => (u ? { ...u, light, group, tip, basePitch, hud: { label: u.hud.label, altText: altLabel(Math.round(shownAgl)), gsKts, bump } } : u));
           }
         }
       }

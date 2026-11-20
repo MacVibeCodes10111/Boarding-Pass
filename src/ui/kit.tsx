@@ -199,6 +199,7 @@ export const globalCss = () => `
   @media (prefers-reduced-motion: reduce) { .bp-win-wing, .bp-win-strobe, .bp-win-prop { animation: none; } }
   html:has(.bp-window-view) :is(.bp-layers-fab, .bp-zoom, .bp-camera-alt, .maplibregl-popup) { visibility: hidden !important; }
   html[data-layout=phone] .bp-window-stats { display: none; }
+  @media (max-width: 430px) { .bp-window-label { display: none; } .bp-window-hud button { padding-left: 8px !important; padding-right: 8px !important; } }
   .bp-sheet-phone .bp-pop-window span { display: none; }
   .bp-row:hover { background: ${C.panelAlt}; }
   .bp-saved-item:hover { background: ${C.panelAlt}; }

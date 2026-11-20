@@ -74,6 +74,8 @@ export interface WindowState {
   /** Climb rate (map ft/min) and speed change (kt per map second), eased. */
   fpm: number;
   accel: number;
+  /** The wing's moving parts, eased (they move at their own speed). */
+  parts: WingParts;
   /** Height, eased. */
   agl: number | null;
   /** Added to the position to hide a jump in it (air to ground and back); fades out. */
@@ -88,7 +90,7 @@ export interface WindowState {
 }
 
 export function newWindowState(flightId: string, side: WindowSide, heading = 0): WindowState {
-  return { flightId, side, eyeM: 3.4, samples: [], heading, bank: 0, attitude: 0, fpm: 0, accel: 0, agl: null, wasAir: false, shakeAt: -1e9, off: { lng: 0, lat: 0, agl: 0 }, lastPlace: 0, lastT: 0 };
+  return { flightId, side, eyeM: 3.4, samples: [], heading, bank: 0, attitude: 0, fpm: 0, accel: 0, agl: null, parts: { flaps: 0, spoilers: 0, aileron: 0 }, wasAir: false, shakeAt: -1e9, off: { lng: 0, lat: 0, agl: 0 }, lastPlace: 0, lastT: 0 };
 }
 
 /** The wing's moving parts: 0 … 1 (aileron −1 down … 1 up). */
@@ -245,11 +247,19 @@ export function windowCamera(w: WindowState, t: number, mapRate: number) {
 
   // The wing: flaps out low and slow, spoilers up on the landing roll, ailerons in roll
   const slow = b.gsKts < 230;
-  const wing: WingParts = {
+  const want: WingParts = {
     flaps: airborne ? (agl < 6000 && slow ? Math.min(1, 0.35 + (1 - agl / 6000) * 0.8) : 0) : b.gsKts > 30 ? 0.45 : 0,
     spoilers: !airborne && b.gsKts > 30 && w.accel < -0.3 ? 1 : 0,
     aileron: Math.max(-1, Math.min(1, (s * (bankTarget - w.bank)) / 8)),
   };
+  // Flaps run out slowly, spoilers pop up quickly
+  const ease = (k: keyof WingParts, tau: number) => {
+    w.parts[k] += (want[k] - w.parts[k]) * (dt ? 1 - Math.exp(-dt / tau) : 1);
+  };
+  ease('flaps', 4000);
+  ease('spoilers', 350);
+  ease('aileron', 700);
+  const wing: WingParts = { ...w.parts };
   return { lng, lat, altM: Math.max(0.5, agl * 0.3048 + w.eyeM + shakeZ), bearing, pitch, roll, base, aglFt: agl, gsKts: b.gsKts, wing, fpm: w.fpm };
 }
 

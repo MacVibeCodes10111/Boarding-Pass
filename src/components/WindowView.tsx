@@ -21,6 +21,8 @@ export interface WindowHud {
   bump: number;
 }
 
+const SHOW_KEY = 'bp_window_show_v1';
+
 /** The map camera's vertical field of view in the window view (LiveMap sets the same). */
 export const WINDOW_FOV_DEG = 50;
 
@@ -33,7 +35,6 @@ const mixHex = (a: string, b: string, f: number) => {
 type V3 = [number, number, number];
 type V2 = [number, number];
 const DEG = Math.PI / 180;
-const add = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 
 /** Convex hull of screen points (monotone chain). */
 function hull(pts: V2[]): V2[] {
@@ -66,6 +67,25 @@ export function WindowView(props: {
   onExit: () => void;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
+  // What's drawn over the world: the window frame and the wing, each can be switched off (remembered on this device)
+  const [show, setShow] = useState<{ wing: boolean; frame: boolean }>(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(SHOW_KEY) || '{}');
+      return { wing: v.wing !== false, frame: v.frame !== false };
+    } catch {
+      return { wing: true, frame: true };
+    }
+  });
+  const toggle = (k: 'wing' | 'frame') =>
+    setShow((v) => {
+      const n = { ...v, [k]: !v[k] };
+      try {
+        localStorage.setItem(SHOW_KEY, JSON.stringify(n));
+      } catch {
+        /* private window */
+      }
+      return n;
+    });
   const topProbe = useRef<HTMLDivElement | null>(null);
   const botProbe = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ w: 0, h: 0, top: 0, bottom: 0 });
@@ -183,6 +203,22 @@ export function WindowView(props: {
     return c[2] > NEAR ? scr(c) : null;
   };
   const panel = (s0: number, s1: number, c0: number, c1: number) => path([at(s0, c0), at(s1, c0), at(s1, c1), at(s0, c1)]);
+  /** Local chord length at a spanwise fraction. */
+  const chordAt = (sf: number) => at(sf, 0)[1] - at(sf, 1)[1];
+  /**
+   * A moving surface hinged at chord `c0`: its back edge (chord `c1`) swings
+   * down (+) or up (−) by `deg`, and (flaps) slides back by `slide` of the chord.
+   */
+  const hinged = (s0: number, s1: number, c0: number, c1: number, deg: number, slide = 0) => {
+    const move = (sf: number, c: number, edge: boolean): V3 => {
+      const p = at(sf, c);
+      const ch = chordAt(sf);
+      const back = slide * ch;
+      const drop = edge ? Math.sin(deg * DEG) * (c1 - c0) * ch : 0;
+      return [p[0], p[1] - back - (edge ? (1 - Math.cos(deg * DEG)) * (c1 - c0) * ch : 0), p[2] - drop - slide * ch * 0.25];
+    };
+    return path([move(s0, c0, false), move(s1, c0, false), move(s1, c1, true), move(s0, c1, true)]);
+  };
 
   const tipLE = at(1, 0), tipTE = at(1, 1);
   const tipChordV = tipTE[1] - tipLE[1];
@@ -219,15 +255,17 @@ export function WindowView(props: {
   }
   // Moving parts: flaps, spoilers, aileron, slats (jets)
   const flapSpan = prop ? 0.7 : 0.64;
-  const flapPanels = prop ? [panel(0, flapSpan, 0.72, 1)] : [panel(0, 0.33, 0.73, 1), panel(0.34, flapSpan, 0.73, 1)];
-  const flapGap = prop ? panel(0, flapSpan, 0.7, 0.74) : `${panel(0, 0.33, 0.71, 0.75)} ${panel(0.34, flapSpan, 0.71, 0.75)}`;
-  const flapOut = (() => {
-    // Where a flap's trailing edge goes when fully out: back and down
-    const a = pt(at(0.4, 1)), b = pt(add(at(0.4, 1), [0, -0.035, -0.02]));
-    return a && b ? [b[0] - a[0], b[1] - a[1]] : [0, 0];
-  })();
-  const aileron = panel(flapSpan + 0.02, 0.92, 0.76, 1);
-  const spoilerPanels = prop ? '' : [0.1, 0.22, 0.34, 0.46].map((s0) => panel(s0, s0 + 0.11, 0.58, 0.71)).join(' ');
+  const fl = props.wing.flaps;
+  const flapSpans: [number, number][] = prop ? [[0, flapSpan]] : [[0, 0.33], [0.34, flapSpan]];
+  // Out: back by up to a seventh of the chord and down by up to 25°
+  const flapPanels = flapSpans.map(([a0, a1]) => hinged(a0, a1, 0.73, 1, fl * 25, fl * 0.14));
+  const flapLines = flapSpans.map(([a0, a1]) => panel(a0, a1, 0.73, 1)).join(' ');
+  const aileron = hinged(flapSpan + 0.02, 0.92, 0.76, 1, props.wing.aileron * -12);
+  const aileronLines = panel(flapSpan + 0.02, 0.92, 0.76, 1);
+  const spoilerSpans = prop ? [] : [0.1, 0.22, 0.34, 0.46];
+  const spoilerLines = spoilerSpans.map((s0) => panel(s0, s0 + 0.11, 0.58, 0.71)).join(' ');
+  // Up: hinged at the front, the back edge rising up to 45°
+  const spoilersUp = props.wing.spoilers > 0.02 ? spoilerSpans.map((s0) => hinged(s0, s0 + 0.11, 0.58, 0.71, -45 * props.wing.spoilers)).join(' ') : '';
   const slats = prop ? '' : [0.02, 0.2, 0.39, 0.58, 0.77].map((s0) => panel(s0, Math.min(0.99, s0 + 0.18), 0, 0.07)).join(' ');
   // Engines: nacelles (and turboprops' propeller discs)
   const engines = (sp.wingEngines ?? []).map((f) => {
@@ -250,7 +288,6 @@ export function WindowView(props: {
   const flex = (0.0025 + props.hud.bump * 0.008) * H; // px the wing flexes up and down
   const surface = high ? mixHex(l.wingDark, l.wing, 0.35) : l.wing; // the underside of a high wing is in shadow
   const g1 = pt(at(0.5, 0)) ?? [0, 0], g2 = pt(at(0.5, 1)) ?? [0, 1];
-  const ui = { trans: (s: number) => `transform ${s}s ease-in-out, opacity ${s}s ease-in-out` };
 
   const engineEls = engines.map((e, i) => (
     <g key={i}>
@@ -328,61 +365,49 @@ export function WindowView(props: {
           </defs>
 
           {/* outside: the wing */}
-          <g clipPath="url(#bp-win-hole)">
+          <g clipPath={show.frame ? 'url(#bp-win-hole)' : undefined}>
             {/* the world gets darker with the sky (the map itself is drawn the same day and night) */}
-            {l.night > 0.02 && <rect x={x} y={y} width={W} height={H} fill="#0a1330" opacity={l.night * 0.74} style={{ mixBlendMode: 'multiply' }} />}
-            <g className="bp-win-wing">
+            {l.night > 0.02 && <rect x={0} y={0} width={vw} height={vh} fill="#0a1330" opacity={l.night * 0.74} style={{ mixBlendMode: 'multiply' }} />}
+            {show.wing && <g className="bp-win-wing">
               {/* under a low wing: the engines show ahead of it; under a high wing they hang in front of it */}
               {!high && engineEls}
-              <path d={flapGap} fill="#101318" style={{ opacity: props.wing.flaps * 0.85, transition: ui.trans(2.5) }} />
-              <g style={{ transform: `translate(${(flapOut[0] * props.wing.flaps).toFixed(1)}px, ${(flapOut[1] * props.wing.flaps).toFixed(1)}px)`, transition: ui.trans(2.5) }}>
-                {flapPanels.map((d, i) => (
-                  <path key={i} d={d} fill={mixHex(surface, l.wingDark, 0.45)} stroke={l.wingDark} strokeOpacity="0.55" strokeWidth="1" />
-                ))}
-              </g>
+              {/* the wing without its flaps and aileron; they hang off its back edge, moving in 3D */}
               <path d={wingTop} fill="url(#bp-win-wing)" />
-              {/* the fixed part of the wing over the flaps' roots */}
-              <path d={panel(0, flapSpan, 0.55, 0.73)} fill={mixHex(surface, l.wingDark, 0.25)} opacity="0.5" />
-              <path d={flapPanels.join(' ')} fill={l.wingDark} opacity="0.1" stroke={l.wingDark} strokeOpacity="0.5" strokeWidth="1" />
-              <path
-                d={aileron}
-                fill={l.wingDark}
-                opacity="0.14"
-                stroke={l.wingDark}
-                strokeOpacity="0.55"
-                strokeWidth="1"
-                style={{ transform: `translateY(${(-props.wing.aileron * H * 0.006).toFixed(1)}px)`, transition: ui.trans(0.9) }}
-              />
-              {spoilerPanels && <path d={spoilerPanels} fill="none" stroke={l.wingDark} strokeOpacity="0.45" strokeWidth="1" />}
-              {spoilerPanels && (
-                <path
-                  d={spoilerPanels}
-                  fill={mixHex(surface, '#ffffff', 0.25)}
-                  stroke="#0b0e12"
-                  strokeOpacity="0.6"
-                  strokeWidth="2.5"
-                  style={{ opacity: props.wing.spoilers, transform: `translateY(${(-H * 0.012 * props.wing.spoilers).toFixed(1)}px)`, transition: ui.trans(0.7) }}
-                />
-              )}
+              {flapPanels.map((d, i) => (
+                <path key={i} d={d} fill={mixHex(surface, l.wingDark, 0.2 + fl * 0.25)} stroke={l.wingDark} strokeOpacity="0.55" strokeWidth="1" strokeLinejoin="round" />
+              ))}
+              {fl < 0.03 && <path d={flapLines} fill="none" stroke={l.wingDark} strokeOpacity="0.5" strokeWidth="1" />}
+              <path d={aileron} fill={mixHex(surface, l.wingDark, 0.2)} stroke={l.wingDark} strokeOpacity="0.55" strokeWidth="1" strokeLinejoin="round" />
+              {Math.abs(props.wing.aileron) < 0.05 && <path d={aileronLines} fill="none" stroke={l.wingDark} strokeOpacity="0.4" strokeWidth="1" />}
+              {spoilerLines && <path d={spoilerLines} fill="none" stroke={l.wingDark} strokeOpacity="0.45" strokeWidth="1" />}
+              {spoilersUp && <path d={spoilersUp} fill={mixHex(surface, '#ffffff', 0.2)} stroke="#0b0e12" strokeOpacity="0.55" strokeWidth="1.5" strokeLinejoin="round" />}
               {slats && <path d={slats} fill={l.wingDark} fillOpacity="0.25" stroke={l.wingDark} strokeOpacity="0.4" strokeWidth="0.8" />}
               {tipDown && <path d={tipDown} fill="url(#bp-win-winglet)" />}
               {tipUp && <path d={tipUp} fill="url(#bp-win-winglet)" />}
               {high && engineEls}
               <circle cx={navAt[0]} cy={navAt[1]} r={W * (0.035 + l.night * 0.04)} fill="url(#bp-win-nav)" opacity={0.55 + l.night * 0.45} />
               <circle className="bp-win-strobe" cx={navAt[0]} cy={navAt[1]} r={W * 0.12} fill="url(#bp-win-nav)" style={{ mixBlendMode: 'screen' }} />
-            </g>
+            </g>}
             {/* a little light on the glass, and the blind pulled down a bit */}
-            <rect x={x} y={y} width={W} height={H} fill="url(#bp-win-glass)" />
-            <rect x={x} y={y - 1} width={W} height={H * 0.13} fill="url(#bp-win-shade)" />
-            <rect x={x + W * 0.38} y={y + H * 0.105} width={W * 0.24} height={H * 0.018} rx={H * 0.009} fill={l.wallShade} />
+            {show.frame && (
+              <>
+                <rect x={x} y={y} width={W} height={H} fill="url(#bp-win-glass)" />
+                <rect x={x} y={y - 1} width={W} height={H * 0.13} fill="url(#bp-win-shade)" />
+                <rect x={x + W * 0.38} y={y + H * 0.105} width={W * 0.24} height={H * 0.018} rx={H * 0.009} fill={l.wallShade} />
+              </>
+            )}
           </g>
 
           {/* the wall, its rounded recess, and the shadow inside the frame */}
-          <path d={`${page} ${outer}`} fillRule="evenodd" fill="url(#bp-win-wall)" />
-          <path d={`${outer} ${hole}`} fillRule="evenodd" fill="url(#bp-win-bevel)" />
-          <path d={hole} fill="none" stroke="#000" strokeOpacity={0.35} strokeWidth={W * 0.03} filter="url(#bp-win-soft)" clipPath="url(#bp-win-hole)" />
-          <path d={hole} fill="none" stroke={l.wallShade} strokeWidth="2" />
-          <path d={`${page} ${outer}`} fillRule="evenodd" fill="url(#bp-win-glow)" />
+          {show.frame && (
+            <>
+              <path d={`${page} ${outer}`} fillRule="evenodd" fill="url(#bp-win-wall)" />
+              <path d={`${outer} ${hole}`} fillRule="evenodd" fill="url(#bp-win-bevel)" />
+              <path d={hole} fill="none" stroke="#000" strokeOpacity={0.35} strokeWidth={W * 0.03} filter="url(#bp-win-soft)" clipPath="url(#bp-win-hole)" />
+              <path d={hole} fill="none" stroke={l.wallShade} strokeWidth="2" />
+              <path d={`${page} ${outer}`} fillRule="evenodd" fill="url(#bp-win-glow)" />
+            </>
+          )}
         </svg>
       )}
 
@@ -406,9 +431,23 @@ export function WindowView(props: {
           boxShadow: '0 8px 24px rgba(0,0,0,.25)',
         }}
       >
-        <b style={{ fontFamily: DISPLAY, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis' }}>{props.hud.label}</b>
+        <b className="bp-window-label" style={{ fontFamily: DISPLAY, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis' }}>{props.hud.label}</b>
         <span className="num bp-window-stats" style={{ fontSize: 13, color: C.textDim }}>
           {props.hud.altText} · {Math.round(props.hud.gsKts)} kt
+        </span>
+        <span style={{ display: 'inline-flex', gap: 2, background: C.raised, borderRadius: 999, padding: 2 }}>
+          {(['wing', 'frame'] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              aria-pressed={show[k]}
+              title={k === 'wing' ? 'Show the wing' : 'Show the window frame'}
+              onClick={() => toggle(k)}
+              style={{ padding: '5px 10px', border: 0, borderRadius: 999, background: show[k] ? C.panel : 'transparent', color: show[k] ? C.text : C.muted, font: 'inherit', fontSize: 13, fontWeight: 650, cursor: 'pointer', textDecoration: show[k] ? 'none' : 'line-through' }}
+            >
+              {k === 'wing' ? 'Wing' : 'Frame'}
+            </button>
+          ))}
         </span>
         <span style={{ display: 'inline-flex', background: C.raised, borderRadius: 999, padding: 2 }}>
           {(['left', 'right'] as const).map((s) => (
