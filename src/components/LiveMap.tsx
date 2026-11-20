@@ -34,7 +34,7 @@ import {
 } from '../game/groundTraffic';
 import { fetchAerowayAround } from '../game/mvt';
 import { AI_3D_MAX, labelHeightM, PitchTracker, plane3dInstance, pushPlane3d, pushRoute3d, scaleFor, thinRoute, type RoutePoint, type Scale3d } from '../game/planes3d';
-import { createNightLayer, type NightLayerHandle } from '../game/nightLayer';
+import { NIGHT_LIGHTS_TILE, createNightLayer, type NightLayerHandle } from '../game/nightLayer';
 import { createAircraftLayer, hexToRgb, type Aircraft3d, type AircraftLayerHandle } from '../game/aircraftLayer';
 import { contrast, mix } from '../ui/theme';
 import type { LonLat } from '../game/geo';
@@ -571,6 +571,9 @@ const AIRPORT_LOD_FILTER = airportLodFilter();
 // taxiway lights, lit aprons). The sun is where it is at the game's time.
 // ---------------------------------------------------------------------------
 const NIGHT_LAYER = 'night-sky';
+// From the window: NASA's picture in its own tiles (sharp to ~600 m), by your height
+const NIGHT_NEAR_SRC = 'bp-night-near';
+const NIGHT_NEAR = 'night-lights-near';
 const NIGHT_LINE_LAYERS = ['night-apron', 'night-roads', 'night-taxiway', 'night-runway-edge', 'night-runway-centre'];
 const nightLayers = new WeakMap<object, NightLayerHandle>();
 const nightLayerFor = (map: any): NightLayerHandle => {
@@ -591,6 +594,9 @@ function addNightLayers(map: any) {
     const add = (layer: any) => map.addLayer(layer, firstLabel);
     add(nightLayerFor(map).layer);
     const off = { visibility: 'none' };
+    if (!map.getSource?.(NIGHT_NEAR_SRC))
+      map.addSource(NIGHT_NEAR_SRC, { type: 'raster', tiles: [NIGHT_LIGHTS_TILE(0, 0, 0).replace('/0/0/0.png', '/{z}/{y}/{x}.png')], tileSize: 256, maxzoom: 8 });
+    add({ id: NIGHT_NEAR, type: 'raster', source: NIGHT_NEAR_SRC, layout: off, paint: { 'raster-opacity': 0, 'raster-fade-duration': 0 } });
     add({ id: 'night-apron', type: 'fill', source: AERO_SOURCE, 'source-layer': 'aeroway', minzoom: 12, layout: off, filter: ['all', ['==', ['geometry-type'], 'Polygon'], ['==', ['get', 'class'], 'apron']], paint: { 'fill-color': '#ffd59a', 'fill-opacity': 0 } });
     add({
       id: 'night-roads', type: 'line', source: AERO_SOURCE, 'source-layer': 'transportation', minzoom: 8.5, layout: off,
@@ -613,19 +619,33 @@ function addNightLayers(map: any) {
  * time); `local` is how dark it is where you're looking (0 day … 1 night),
  * for the lights that are only drawn up close.
  */
-function applyNight(map: any, on: boolean, ms: number, zoom: number, base: { buildings?: unknown }): number {
+function applyNight(map: any, on: boolean, ms: number, zoom: number, base: { buildings?: unknown }, win?: { lng: number; lat: number; aglFt: number }): number {
   const h = nightLayerFor(map);
-  // NASA's picture is sharp to about zoom 6; closer in, the street and airport lights take over
-  const glow = on ? Math.max(0, Math.min(1, (9 - zoom) / 3)) : 0;
+  // Map: NASA's picture is sharp to about zoom 6; closer in, the street and airport lights take over.
+  // Window: by your height, the picture at cruise (streets faint), only street lights coming in to land
+  const high = win ? Math.max(0, Math.min(1, (win.aglFt - 2500) / 12_000)) : 0;
+  const glow = on && !win ? Math.max(0, Math.min(1, (9 - zoom) / 3)) : 0;
   h.set(ms, on ? 0.82 : 0, glow);
-  const c = map.getCenter?.() ?? { lat: 0, lng: 0 };
+  const c = win ?? map.getCenter?.() ?? { lat: 0, lng: 0 };
   const k = on ? h.nightAt(c.lat, c.lng) : 0;
   try {
+    const near = k * high;
+    if (map.getLayer?.(NIGHT_NEAR)) {
+      map.setLayoutProperty(NIGHT_NEAR, 'visibility', near > 0.01 ? 'visible' : 'none');
+      if (near > 0.01) map.setPaintProperty(NIGHT_NEAR, 'raster-opacity', near * 0.9);
+    }
     // Off in the day (not just see-through: hidden layers fetch no tiles)
     for (const id of NIGHT_LINE_LAYERS) if (map.getLayer?.(id)) map.setLayoutProperty(id, 'visibility', k > 0.005 ? 'visible' : 'none');
     if (k > 0.005) {
       map.setPaintProperty('night-apron', 'fill-opacity', k * 0.16);
-      map.setPaintProperty('night-roads', 'line-opacity', k * 0.75);
+      // Fewer streets high up (motorways and main roads), more as you come down or zoom in
+      const detail = win ? 1 - high : Math.max(0, Math.min(1, (zoom - 9) / 4));
+      const r = (v: number) => Math.round(Math.max(0, Math.min(1, v)) * 100) / 100;
+      map.setPaintProperty('night-roads', 'line-opacity', [
+        '*',
+        r(k * 0.75 * (1 - high * 0.6)),
+        ['match', ['get', 'class'], ['motorway', 'trunk'], 1, 'primary', r(0.6 + 0.4 * detail), ['secondary', 'tertiary'], r(detail), r(detail * 1.5 - 0.5)],
+      ]);
       map.setPaintProperty('night-taxiway', 'line-opacity', k * 0.9);
       map.setPaintProperty('night-runway-edge', 'line-opacity', k);
       map.setPaintProperty('night-runway-centre', 'line-opacity', k * 0.85);
@@ -3352,7 +3372,8 @@ export function LiveMap(props: LiveMapProps) {
         nightShownOn = nightOn;
         nightShownZoom = nightZoom;
         const d = new Date();
-        applyNight(map, nightOn, Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) + clock.min * 60_000, nightZoom, nightBase);
+        const wl = windowRef.current?.last;
+        applyNight(map, nightOn, Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) + clock.min * 60_000, nightZoom, nightBase, wl ? { lng: wl.lng, lat: wl.lat, aglFt: Math.round(wl.aglFt / 250) * 250 } : undefined);
       }
       let groundFresh = false;
       if (t - groundLast >= (latest.current.mapRate >= TIMELAPSE_MIN_RATE ? 150 : GROUND_MS)) {

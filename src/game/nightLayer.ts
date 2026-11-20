@@ -41,7 +41,11 @@ layout(location = 0) in vec2 a_merc;
 out vec2 v_merc;
 void main() {
   v_merc = a_merc;
-  gl_Position = projectTileFor3D(a_merc, 0.0); // (the globe's far side is cut away pixel by pixel, below)
+  vec4 p = projectTileFor3D(a_merc, 0.0); // (the globe's far side is cut away pixel by pixel, below)
+  // Never cut at the map's far distance: the grid's big cells were cut short of the
+  // horizon there, leaving a strip of daylight ground (only what's behind the eye is cut)
+  if (p.w > 0.0) p.z = clamp(p.z, -p.w * 0.999, p.w * 0.999);
+  gl_Position = p;
 }`;
 
 const FRAGMENT = `#version 300 es
