@@ -421,7 +421,8 @@ export class AiPathModel {
     const climbAlt = (climbNm / CLIMB_NM_PER_KFT) * 1000;
     // On final the real distance to touchdown sets a 3° glide
     const descentAlt = Math.min((descendNm / DESCENT_NM_PER_KFT) * 1000, inArr && proc ? Math.max(0, toTouchdown) * 318 : Infinity);
-    const altitudeFt = onGround ? 0 : Math.max(0, Math.round(Math.min(p.cruiseAlt, climbAlt, descentAlt) / 100) * 100);
+    // To the foot (labels round it): in 100 ft steps the aircraft climbed and sank in a staircase
+    const altitudeFt = onGround ? 0 : Math.max(0, Math.round(Math.min(p.cruiseAlt, climbAlt, descentAlt)));
     if (!phaseLabel) {
       phaseLabel = altitudeFt >= p.cruiseAlt ? 'Cruising' : climbAlt < descentAlt ? 'Climbing' : 'Descending';
       const lowKts = Math.min(250, f.cruiseKts * 0.8);
