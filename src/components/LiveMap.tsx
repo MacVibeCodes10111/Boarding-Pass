@@ -3784,7 +3784,7 @@ export function LiveMap(props: LiveMapProps) {
           basePitch={windowUi.basePitch}
           onSide={(side) => {
             const w = windowRef.current;
-            if (w) w.side = side;
+            if (w) (w.side = side), (w.smooth = undefined);
             setWindowUi((u) => (u ? { ...u, side } : u));
           }}
           onExit={exitWindow}

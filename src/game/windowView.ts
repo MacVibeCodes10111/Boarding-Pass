@@ -70,6 +70,8 @@ export interface WindowState {
   samples: WindowSample[];
   heading: number;
   bank: number;
+  /** The camera after the last smoothing pass: [value, speed] each */
+  smooth?: { lng: [number, number]; lat: [number, number]; alt: [number, number]; pitch: [number, number]; bearing: [number, number]; roll: [number, number] };
   attitude: number;
   /** Climb rate (map ft/min) and speed change (kt per map second), eased. */
   fpm: number;
@@ -110,6 +112,23 @@ const PLACE_MS = 7;
  * gliding between them instead of guessing ahead keeps the motion even.
  */
 const BEHIND_MS = 130;
+/** How long the camera's last smoothing pass takes to catch up (seconds): position, and angles. */
+const SMOOTH_POS_S = 0.35;
+const SMOOTH_ANGLE_S = 0.3;
+
+/**
+ * One step of a critically damped spring (the usual "smooth damp"): `v` is
+ * [value, speed], eased toward `target` over about `time` seconds, steady for any step.
+ */
+function damp(v: [number, number], target: number, time: number, dt: number) {
+  const omega = 2 / time;
+  const x = omega * dt;
+  const ex = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+  const change = v[0] - target;
+  const temp = (v[1] + omega * change) * dt;
+  v[1] = (v[1] - omega * temp) * ex;
+  v[0] = target + (change + temp) * ex;
+}
 
 /** Adds a map frame's position (kept: the last few). */
 export function addWindowSample(w: WindowState, s: WindowSample) {
@@ -241,9 +260,35 @@ export function windowCamera(w: WindowState, t: number, mapRate: number) {
   const s = w.side === 'right' ? 1 : -1;
   // Straight out, a touch down: the horizon a little above the middle of the window
   const base = 88 - 4 * Math.min(1, agl / 10_000);
-  const pitch = Math.max(50, Math.min(100, base - s * w.bank + shakeP));
-  const bearing = (w.heading + s * 90 + 360) % 360;
-  const roll = s * w.attitude + shakeR;
+
+  // A last smoothing pass over everything the camera does: it glides after where
+  // it should be (like a spring with no bounce), so small kinks in the path, late
+  // positions and wobbles in the readings don't reach the screen. The touchdown
+  // jolt is added after it, so it stays sharp.
+  const sm = w.smooth;
+  const wantPitch = base - s * w.bank;
+  const wantBearing = w.heading + s * 90;
+  const wantRoll = s * w.attitude;
+  const wantAlt = agl * 0.3048 + w.eyeM;
+  if (!sm || !dt) {
+    w.smooth = { lng: [lng, 0], lat: [lat, 0], alt: [wantAlt, 0], pitch: [wantPitch, 0], bearing: [wantBearing, 0], roll: [wantRoll, 0] };
+  } else {
+    damp(sm.lng, lng, SMOOTH_POS_S, dtS);
+    damp(sm.lat, lat, SMOOTH_POS_S, dtS);
+    // Never let it lag far on a long frame or a jump it wasn't told about
+    if (Math.abs(sm.lng[0] - lng) > 0.02 || Math.abs(sm.lat[0] - lat) > 0.02) (sm.lng = [lng, 0]), (sm.lat = [lat, 0]);
+    damp(sm.alt, wantAlt, agl < 30 ? SMOOTH_POS_S * 0.6 : SMOOTH_POS_S, dtS);
+    damp(sm.pitch, wantPitch, SMOOTH_ANGLE_S, dtS);
+    // (the heading unwrapped, so turning through north doesn't spin round)
+    damp(sm.bearing, sm.bearing[0] + angDiff(wantBearing, sm.bearing[0]), SMOOTH_ANGLE_S, dtS);
+    damp(sm.roll, wantRoll, SMOOTH_ANGLE_S, dtS);
+  }
+  const f2 = w.smooth!;
+  lng = f2.lng[0];
+  lat = f2.lat[0];
+  const pitch = Math.max(50, Math.min(100, f2.pitch[0] + shakeP));
+  const bearing = ((f2.bearing[0] % 360) + 360) % 360;
+  const roll = f2.roll[0] + shakeR;
 
   // The wing: flaps out low and slow, spoilers up on the landing roll, ailerons in roll
   const slow = b.gsKts < 230;
@@ -260,7 +305,7 @@ export function windowCamera(w: WindowState, t: number, mapRate: number) {
   ease('spoilers', 350);
   ease('aileron', 700);
   const wing: WingParts = { ...w.parts };
-  return { lng, lat, altM: Math.max(0.5, agl * 0.3048 + w.eyeM + shakeZ), bearing, pitch, roll, base, aglFt: agl, gsKts: b.gsKts, wing, fpm: w.fpm };
+  return { lng, lat, altM: Math.max(0.5, Math.max(f2.alt[0], w.eyeM * 0.8) + shakeZ), bearing, pitch, roll, base, aglFt: agl, gsKts: b.gsKts, wing, fpm: w.fpm };
 }
 
 /** Moves the map's camera to the window (at most ~30 times a second). */
@@ -347,7 +392,8 @@ export function skyFor(l: WindowLight) {
     'fog-color': l.fog,
     'sky-horizon-blend': 0.55,
     'horizon-fog-blend': 0.7,
-    'fog-ground-blend': 0.35,
+    // fog from close in, so the far edge of the ground (where the map stops drawing) melts into haze
+    'fog-ground-blend': 0.12,
     'atmosphere-blend': 0,
   };
 }
