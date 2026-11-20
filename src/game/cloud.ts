@@ -292,12 +292,12 @@ function friendlyAuthError(msg?: string): string {
   const m = (msg ?? '').toLowerCase();
   if (m.includes('invalid login')) return 'That username and password don’t match.';
   if (m.includes('already registered') || m.includes('already exists')) return 'That username is taken. Pick another.';
+  if (m.includes('too many syncs')) return 'You’ve synced a lot today, so syncing is paused for a while. Your careers are safe on this device.';
   if (m.includes('rate limit') || m.includes('too many')) return 'Too many tries. Wait a few minutes and try again.';
   if (m.includes('weak') || m.includes('password')) return 'Pick a longer or less common password.';
   if (m.includes('provider is not enabled') || m.includes('unsupported provider')) return 'That sign-in option isn’t switched on yet.';
   if (m.includes('fetch') || m.includes('network')) return 'Can’t reach the cloud. Check your connection.';
   if (m.includes('another device')) return 'You signed in on another device, so you were signed out here. Your careers stay on this device.';
-  if (m.includes('too many syncs')) return 'You’ve synced a lot today, so syncing is paused for a while. Your careers are safe on this device.';
   if (m.includes('database error') || m.includes('not allowed') || m.includes('not available')) return 'That isn’t possible with Boarding Pass accounts.';
   return msg || 'Something went wrong. Try again.';
 }
