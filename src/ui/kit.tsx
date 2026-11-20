@@ -169,7 +169,13 @@ export const globalCss = () => `
   .bp-btn-ghost:not(:disabled):hover, .bp-icon-btn:not(:disabled):hover, .bp-tab:not([aria-current]):hover { background: ${C.text}12 !important; filter: none; color: ${C.text} !important; }
   .bp-list > * + * { border-top: 1px solid ${C.line}; }
   /* A panel's own buttons drop under its tabs on a phone */
-  html[data-layout=phone] .bp-panel-actions { order: 3; flex-basis: 100%; justify-content: flex-end; }
+  /* Fleet on a phone: the search box gets its own row, the sort and select controls the row under it */
+  html[data-layout=phone] .bp-fleet-tools { flex-wrap: wrap; }
+  html[data-layout=phone] .bp-fleet-tools > :first-child { flex: 1 0 100% !important; }
+  html[data-layout=phone] .bp-fleet-tools > :not(:first-child) { flex: 1 1 auto; min-width: 0; }
+  /* Phones: the "From …, now tap the airport" bar sits where the map buttons are, so they move down under it */
+  html[data-layout=phone]:has(.bp-routefrom) { --bp-ctl-top: calc(var(--bp-top-h) + 84px); }
+  html[data-layout=phone] .bp-panel-actions { order: 3; flex: 1 0 100% !important; justify-content: flex-end; flex-wrap: wrap; row-gap: 6px; min-width: 0; }
   html[data-layout=phone] .bp-panel-actions:empty { display: none; }
   button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid ${C.brand}; outline-offset: 1px; }
   input::placeholder { color: ${C.faint}; }
@@ -179,6 +185,7 @@ export const globalCss = () => `
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-thumb { background: ${C.border}; border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }
   ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-corner { background: transparent; }
   .bp-row:hover { background: ${C.panelAlt}; }
   .bp-saved-item:hover { background: ${C.panelAlt}; }
   .bp-manual p { margin: 0; }
@@ -200,7 +207,7 @@ export const globalCss = () => `
   .bp-pop-head { padding-right: 26px; }
   html[data-input=touch] .bp-pop-head { padding-right: 40px; }
   /* Phones: a flight's info sheet can reach up to the map buttons, so they step aside until it closes */
-  html[data-layout=phone]:has(.bp-sheet-popup) :is(.bp-layers-fab, .bp-zoom, .bp-camera-alt) { visibility: hidden; }
+  html[data-layout=phone]:has(.bp-sheet-popup) :is(.bp-layers-fab, .bp-zoom, .bp-camera-alt, .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-bottom-left) { visibility: hidden; }
   .bp-camera-alt { color: ${C.textDim}; background: ${C.panel}b8; }
   /* The map buttons (layers, zoom, then the 3D camera box) stack down from the top right: level with the airline bubble on
      bigger screens, under the top bar on phones. The camera box is a narrow column on phones. */
@@ -267,6 +274,33 @@ export const globalCss = () => `
   .bp-sheet-popup.bp-sheet-side { left: auto !important; right: 12px !important; width: min(380px, calc(100vw - 24px)); bottom: calc(var(--bp-bottom-h) + 10px) !important; }
   .bp-sheet-popup .maplibregl-popup-tip { display: none !important; }
   .bp-sheet-popup .maplibregl-popup-content { width: 100%; max-height: 46dvh; overflow-y: auto; overscroll-behavior: contain; }
+  /* Phones, like FR24: a short, solid card on the tab bar; swipe up (or More) for the rest */
+  .bp-pop-more-btn { display: none; }
+  .bp-sheet-phone .bp-pop-more-btn { display: flex; }
+  html[data-layout=phone] .bp-sheet-popup.bp-sheet-phone { left: 0 !important; right: 0 !important; bottom: var(--bp-bottom-h) !important; max-width: none !important; }
+  html .bp-sheet-popup.bp-sheet-phone .maplibregl-popup-content { background: ${C.panel} !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+    border-radius: 18px 18px 0 0 !important; border: none !important; border-top: 1px solid ${C.border} !important; box-shadow: 0 -10px 30px ${shade(0.3)} !important;
+    padding: 0 14px !important; max-height: none; overflow: hidden; touch-action: none; transition: transform .18s ease-out; cursor: default; }
+  .bp-sheet-phone.bp-sheet-open .maplibregl-popup-content { max-height: calc(100dvh - var(--bp-top-h) - var(--bp-bottom-h) - 8px); overflow-y: auto; touch-action: pan-y; }
+  .bp-sheet-phone .bp-sheet-grab { display: flex; justify-content: center; padding: 8px 0 8px; margin: 0 -14px; cursor: grab; touch-action: none; position: sticky; top: 0; z-index: 2; background: ${C.panel}; }
+  .bp-sheet-phone .bp-sheet-grab span { width: 40px; height: 5px; border-radius: 3px; background: ${C.border}; }
+  html[data-input] .bp-sheet-phone .maplibregl-popup-close-button { z-index: 3; top: 8px; right: 10px; width: 34px; height: 34px; min-width: 0; min-height: 0; padding: 0; border-radius: 50%;
+    display: grid; place-items: center; line-height: 1; font-size: 22px; background: ${C.raised}; color: ${C.text}; box-shadow: 0 1px 4px ${shade(0.25)}; }
+  .bp-sheet-phone .bp-pop-head { padding-right: 44px; }
+  .bp-sheet-phone:not(.bp-sheet-open) .bp-pop-more { display: none !important; }
+  .bp-sheet-phone .bp-pop-route { align-items: flex-end; margin-top: 4px; }
+  .bp-sheet-phone .bp-pop-end { display: flex; flex-direction: column; line-height: 1.1; min-width: 0; }
+  .bp-sheet-phone .bp-pop-end + .bp-pop-end { align-items: flex-end; text-align: right; }
+  .bp-sheet-phone .bp-pop-code { font-size: 27px; font-weight: 800; letter-spacing: .01em; color: ${C.text}; }
+  .bp-sheet-phone .bp-pop-city { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 42vw; }
+  .bp-sheet-phone .bp-pop-stats { margin: 10px 0 0 !important; }
+  .bp-sheet-phone .bp-pop-actions { position: sticky; bottom: 0; z-index: 2; background: ${C.panel}; margin: 12px -14px 0 !important; padding: 8px 14px 10px; border-top: 1px solid ${C.line}; }
+  .bp-sheet-phone.bp-sheet-open .bp-pop-hero { margin-top: 0 !important; }
+  /* the short card: the picture is a thumbnail beside the name */
+  .bp-sheet-phone:not(.bp-sheet-open) .bp-pop-hero { position: absolute !important; top: 24px; right: 48px; width: 108px; aspect-ratio: 2.3 !important; margin: 0 !important; }
+  .bp-sheet-phone:not(.bp-sheet-open) .bp-pop-hero :is(.bp-pop-badge, .bp-pop-special) { display: none !important; }
+  .bp-sheet-phone:not(.bp-sheet-open) .maplibregl-popup-content:has(.bp-pop-hero) :is(.bp-pop-head, .bp-pop-sub) { padding-right: 150px; }
+  .bp-sheet-phone:not(.bp-sheet-open) .bp-pop-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   html[data-layout=phone] .bp-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   html[data-layout=phone] .bp-tiles > :first-child { grid-column: 1 / -1; }
   html[data-layout=phone] .bp-debt-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }

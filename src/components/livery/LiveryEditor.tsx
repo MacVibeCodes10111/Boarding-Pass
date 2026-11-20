@@ -1534,51 +1534,34 @@ export function LiveryEditor(props: {
   const menuBox: React.CSSProperties = { ...(phone ? { position: 'fixed', top: 'calc(56px + var(--bp-safe-t))', left: 12, right: 12 } : { position: 'absolute', top: 'calc(100% + 6px)', left: 0 }), zIndex: 30, minWidth: 220, display: 'grid', gap: 2, padding: 6, borderRadius: 11, background: C.panel, border: `1px solid ${C.border}`, boxShadow: '0 16px 36px rgba(0,0,0,.5)' };
   const menuItem = (on: boolean): React.CSSProperties => ({ textAlign: 'left', padding: '8px 10px', borderRadius: 8, border: 'none', background: on ? `${C.brand}22` : 'transparent', color: on ? C.text : C.textSoft, fontWeight: on ? 650 : 500, fontSize: 13, cursor: 'pointer' });
 
-  const topBar = (
-    <div style={{ display: 'flex', alignItems: 'center', gap: phone ? 6 : 8, flexWrap: phone ? 'nowrap' : 'wrap', padding: phone ? '8px 10px' : '10px 16px', borderBottom: `1px solid ${C.line}`, background: C.panel, position: 'relative', zIndex: 5 }}>
-      {phone ? (
-        <button type="button" aria-label="Cancel" title="Close without saving" onClick={props.onClose} style={{ ...pillBtn, width: 34, height: 34, fontSize: 18, border: `1px solid ${C.border}`, background: C.raised }}>
-          ×
-        </button>
-      ) : (
-        <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: 22, marginRight: 6 }}>{props.single ?? 'Livery'}</h2>
-      )}
-      {/* the livery: switch, add a second, rename, delete */}
-      <span style={{ position: 'relative' }} data-menu>
-        <Button size="sm" variant="primary" aria-haspopup="menu" aria-expanded={menu === 'livery'} onClick={() => setMenu((m) => (m === 'livery' ? null : 'livery'))} style={{ maxWidth: phone ? 110 : 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {liveryName(active)} ▾
-        </Button>
-        {menu === 'livery' && (
-          <div role="menu" style={menuBox}>
-            {docs.map((_, i) => (
-              <button key={i} type="button" role="menuitemradio" aria-checked={i === active} onClick={() => { setActive(i); setMenu(null); }} style={menuItem(i === active)}>
-                {i === active ? '● ' : '○ '}
-                {liveryName(i)}
-                {i > 0 && <span style={{ color: C.muted, fontSize: 11.5 }}> · Special Livery</span>}
-              </button>
-            ))}
-            <div style={{ height: 1, background: C.line, margin: '4px 0' }} />
-            {docs.length < MAX_LIVERIES && !props.single && (
-              <button type="button" role="menuitem" style={menuItem(false)} onClick={() => { setMenu(null); addSecond(); }} title="A copy of this livery to start from; pick which aircraft wear it in each aircraft's window">
-                + Second livery
-              </button>
-            )}
-            <button type="button" role="menuitem" style={menuItem(false)} onClick={() => { setMenu(null); renameLivery(active); }}>
-              Rename “{liveryName(active)}”
+  /** The wingtips on screen, for types built with more than one kind (on a phone, a row of its own under the top bar). */
+  const tipSwitch =
+    tipChoices.length > 1 && tipShown ? (
+        <span role="group" aria-label="Wingtips on screen" style={{ display: 'inline-flex', gap: 2, padding: 2, borderRadius: 999, background: C.raised, border: `1px solid ${scope === 'wingtip' ? C.brand : C.border}`, maxWidth: '100%', overflowX: 'auto', flex: 'none', scrollbarWidth: 'none' }}>
+          {tipChoices.map((w) => (
+            <button
+              key={w}
+              type="button"
+              aria-pressed={w === tipShown}
+              onClick={() => setTipView(w)}
+              title={`See it with ${WINGTIP_LABEL[w].toLowerCase()}`}
+              style={{ border: 0, borderRadius: 999, padding: '5px 10px', fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', cursor: 'pointer', font: 'inherit', background: w === tipShown ? C.brand : 'transparent', color: w === tipShown ? C.brandInk : C.textSoft }}
+            >
+              {WINGTIP_SHORT[w]}
             </button>
-            {active > 0 && (
-              <button type="button" role="menuitem" style={{ ...menuItem(false), color: C.red }} onClick={() => { setMenu(null); deleteLivery(active); }}>
-                Delete “{liveryName(active)}”
-              </button>
-            )}
-          </div>
-        )}
-      </span>
-      {/* the aircraft on screen, and whether changes are for every type or only this one */}
-      <span style={{ position: 'relative', minWidth: 0 }} data-menu>
-        <Button size="sm" aria-haspopup="menu" aria-expanded={menu === 'aircraft'} onClick={() => setMenu((m) => (m === 'aircraft' ? null : 'aircraft'))} style={{ maxWidth: phone ? 120 : 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderColor: scope !== 'all' ? C.brand : undefined }}>
-          {model.toUpperCase()}
-          {scope === 'model' ? <span style={{ color: C.brand }}> · only</span> : scope === 'wingtip' && tipKey ? <span style={{ color: C.brand }}> · these wingtips</span> : null} ▾
+          ))}
+        </span>
+    ) : null;
+
+  /** The aircraft on screen, and whether changes are for every type or only this one (on a phone, in the row under the top bar). */
+  const aircraftMenu = (
+      <span style={{ position: 'relative', minWidth: 0, flex: '0 1 auto', display: 'inline-flex', maxWidth: phone ? 200 : 280 }} data-menu>
+        <Button size="sm" aria-haspopup="menu" aria-expanded={menu === 'aircraft'} onClick={() => setMenu((m) => (m === 'aircraft' ? null : 'aircraft'))} style={{ maxWidth: '100%', minWidth: 0, gap: 4, borderColor: scope !== 'all' ? C.brand : undefined }}>
+          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {model.toUpperCase()}
+            {scope === 'model' ? <span style={{ color: C.brand }}> · only</span> : scope === 'wingtip' && tipKey ? <span style={{ color: C.brand }}> · these wingtips</span> : null}
+          </span>
+          <span aria-hidden style={{ flex: 'none' }}>▾</span>
         </Button>
         {menu === 'aircraft' && (
           <div role="menu" style={{ ...menuBox, width: phone ? undefined : 300 }}>
@@ -1633,28 +1616,56 @@ export function LiveryEditor(props: {
           </div>
         )}
       </span>
-      {/* the wingtips on screen, for types built with more than one kind */}
-      {tipChoices.length > 1 && tipShown && (
-        <span role="group" aria-label="Wingtips on screen" style={{ display: 'inline-flex', gap: 2, padding: 2, borderRadius: 999, background: C.raised, border: `1px solid ${scope === 'wingtip' ? C.brand : C.border}`, maxWidth: '100%', overflowX: 'auto' }}>
-          {tipChoices.map((w) => (
-            <button
-              key={w}
-              type="button"
-              aria-pressed={w === tipShown}
-              onClick={() => setTipView(w)}
-              title={`See it with ${WINGTIP_LABEL[w].toLowerCase()}`}
-              style={{ border: 0, borderRadius: 999, padding: '5px 10px', fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', cursor: 'pointer', font: 'inherit', background: w === tipShown ? C.brand : 'transparent', color: w === tipShown ? C.brandInk : C.textSoft }}
-            >
-              {WINGTIP_SHORT[w]}
-            </button>
-          ))}
-        </span>
+  );
+
+  const topBar = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: phone ? 6 : 8, flexWrap: phone ? 'nowrap' : 'wrap', padding: phone ? '8px 10px' : '10px 16px', borderBottom: phone ? undefined : `1px solid ${C.line}`, background: C.panel, position: 'relative', zIndex: 5 }}>
+      {phone ? (
+        <button type="button" aria-label="Cancel" title="Close without saving" onClick={props.onClose} style={{ ...pillBtn, width: 34, height: 34, fontSize: 18, border: `1px solid ${C.border}`, background: C.raised, flex: 'none' }}>
+          ×
+        </button>
+      ) : (
+        <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: 22, marginRight: 6 }}>{props.single ?? 'Livery'}</h2>
       )}
+      {/* the livery: switch, add a second, rename, delete */}
+      <span style={{ position: 'relative', minWidth: 0, flex: '0 1 auto', display: 'inline-flex', maxWidth: phone ? 170 : 200 }} data-menu>
+        <Button size="sm" variant="primary" aria-haspopup="menu" aria-expanded={menu === 'livery'} onClick={() => setMenu((m) => (m === 'livery' ? null : 'livery'))} style={{ maxWidth: '100%', minWidth: 0, gap: 4 }}>
+          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{liveryName(active)}</span>
+          <span aria-hidden style={{ flex: 'none' }}>▾</span>
+        </Button>
+        {menu === 'livery' && (
+          <div role="menu" style={menuBox}>
+            {docs.map((_, i) => (
+              <button key={i} type="button" role="menuitemradio" aria-checked={i === active} onClick={() => { setActive(i); setMenu(null); }} style={menuItem(i === active)}>
+                {i === active ? '● ' : '○ '}
+                {liveryName(i)}
+                {i > 0 && <span style={{ color: C.muted, fontSize: 11.5 }}> · Special Livery</span>}
+              </button>
+            ))}
+            <div style={{ height: 1, background: C.line, margin: '4px 0' }} />
+            {docs.length < MAX_LIVERIES && !props.single && (
+              <button type="button" role="menuitem" style={menuItem(false)} onClick={() => { setMenu(null); addSecond(); }} title="A copy of this livery to start from; pick which aircraft wear it in each aircraft's window">
+                + Second livery
+              </button>
+            )}
+            <button type="button" role="menuitem" style={menuItem(false)} onClick={() => { setMenu(null); renameLivery(active); }}>
+              Rename “{liveryName(active)}”
+            </button>
+            {active > 0 && (
+              <button type="button" role="menuitem" style={{ ...menuItem(false), color: C.red }} onClick={() => { setMenu(null); deleteLivery(active); }}>
+                Delete “{liveryName(active)}”
+              </button>
+            )}
+          </div>
+        )}
+      </span>
+      {!phone && aircraftMenu}
+      {!phone && tipSwitch}
       {phone && <span style={{ flex: 1 }} />}
-      <Button size="sm" onClick={undo} disabled={!past.current.length} title="Undo (Ctrl/Cmd+Z)" aria-label="Undo">
+      <Button size="sm" onClick={undo} disabled={!past.current.length} title="Undo (Ctrl/Cmd+Z)" aria-label="Undo" style={{ flex: 'none' }}>
         {phone ? '↶' : 'Undo'}
       </Button>
-      <Button size="sm" onClick={redo} disabled={!future.current.length} title="Redo (Ctrl/Cmd+Shift+Z)" aria-label="Redo">
+      <Button size="sm" onClick={redo} disabled={!future.current.length} title="Redo (Ctrl/Cmd+Shift+Z)" aria-label="Redo" style={{ flex: 'none' }}>
         {phone ? '↷' : 'Redo'}
       </Button>
       {!phone && (
@@ -1663,7 +1674,7 @@ export function LiveryEditor(props: {
         </Button>
       )}
       {!phone && <span style={{ flex: 1 }} />}
-      <span style={{ position: 'relative', display: 'inline-flex' }}>
+      <span style={{ position: 'relative', display: 'inline-flex', flex: 'none' }}>
         <Button size="sm" onClick={openHelp} title="How the livery editor works (?)" aria-label="Help: the livery manual">
           {phone ? '?' : 'Help'}
         </Button>
@@ -1677,6 +1688,7 @@ export function LiveryEditor(props: {
       <Button
         size="sm"
         variant="primary"
+        style={{ flex: 'none' }}
         onClick={() => {
           props.onSave(docsRef.current);
           props.onClose();
@@ -1699,6 +1711,12 @@ export function LiveryEditor(props: {
   return (
     <div role="dialog" aria-modal="true" aria-label="Livery editor" style={{ position: 'fixed', inset: 0, zIndex: 260, background: C.bg, display: 'flex', flexDirection: 'column', color: C.text, padding: 'var(--bp-safe-t) var(--bp-safe-r) var(--bp-safe-b) var(--bp-safe-l)' }}>
       {topBar}
+      {phone && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 10px 8px', borderBottom: `1px solid ${C.line}`, background: C.panel, position: 'relative', zIndex: 4 }}>
+          {aircraftMenu}
+          {tipSwitch}
+        </div>
+      )}
       {help && <LiveryManual phone={phone} onClose={() => setHelp(false)} />}
       {phone ? (
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>

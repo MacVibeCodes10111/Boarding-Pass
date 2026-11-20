@@ -213,7 +213,7 @@ export function FleetPanel(props: FleetPanelProps) {
         />
       ) : (
         <>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+          <div className="bp-fleet-tools" style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
             <SearchInput value={search} onChange={setSearch} placeholder="Search" style={{ flex: 1 }} />
             <select aria-label="Sort" value={view.sortBy} onChange={(e) => setView({ sortBy: e.target.value as SortBy })} style={{ ...inputStyle, width: 'auto', padding: '6px 8px' }}>
               <option value="least">Least used</option>

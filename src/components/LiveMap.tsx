@@ -341,6 +341,8 @@ const kv = (k: string, v: string) =>
   `<div><div style="font-size:11px;color:${C.faint}">${k}</div><div style="font-weight:600;font-variant-numeric:tabular-nums">${v}</div></div>`;
 const progressBar = (pct: number, color: string) =>
   `<div style="height:4px;border-radius:2px;background:${C.line};overflow:hidden;margin:4px 0 2px"><div style="width:${pct}%;height:100%;background:${color}"></div></div>`;
+/** One end of a route: the code, then the city (on a phone, the code big with the city under it). */
+const routeEnd = (code: string, city: string) => `<span class="bp-pop-end"><span class="bp-pop-code">${code}</span> <span class="bp-pop-city" style="color:${C.muted}">${city}</span></span>`;
 const altLabel = (ft: number) => (ft >= 18000 ? `FL${Math.round(ft / 100)}` : ft <= 0 ? 'Ground' : `${(Math.round(ft / 100) * 100).toLocaleString()} ft`);
 
 function buildAiPopupHtml(t: AiTraffic, f: AiFlight, pos: AiPosition): string {
@@ -358,13 +360,13 @@ function buildAiPopupHtml(t: AiTraffic, f: AiFlight, pos: AiPosition): string {
     <div class="bp-pop-head" style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
       <b style="font-size:15px">${e(f.flightNumber)}</b>${muted(e(al.name))}
     </div>
-    <div style="margin:2px 0 8px">${muted(f.friend ? `${e(f.friend.reg)}, ${e(type)}` : `${e(al.callsign)} ${e(f.flightNumber.replace(/^\D+/, ''))}, ${e(type)}`)}</div>
-    <div style="display:flex;justify-content:space-between;font-weight:600"><span>${e(O.iata)} ${muted(e(O.city))}</span><span>${e(D.iata)} ${muted(e(D.city))}</span></div>
+    <div class="bp-pop-sub" style="margin:2px 0 8px">${muted(f.friend ? `${e(f.friend.reg)}, ${e(type)}` : `${e(al.callsign)} ${e(f.flightNumber.replace(/^\D+/, ''))}, ${e(type)}`)}</div>
+    <div class="bp-pop-route" style="display:flex;justify-content:space-between;font-weight:600">${routeEnd(e(O.iata), e(O.city))}${routeEnd(e(D.iata), e(D.city))}</div>
     ${progressBar(pct, C.textDim)}
-    <div style="display:flex;justify-content:space-between;font-size:11.5px;color:${C.muted};font-variant-numeric:tabular-nums"><span>${hhmm(f.depUtcMin)} UTC</span><span>${formatDurationHm(pos.remainingMin)} to go</span><span>${hhmm(f.depUtcMin + f.blockMin)} UTC</span></div>
-    <div style="margin:8px 0 2px;color:${C.textDim}">${e(phase)}</div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px">${kv('Altitude', altLabel(pos.altitudeFt))}${kv('Speed', `${pos.groundSpeedKts} kt`)}${kv('Distance', `${f.distanceNm.toLocaleString()} nm`)}</div>
-    <div style="margin-top:8px;font-size:11px;color:${C.faint}">${f.friend ? friendLine(f.friend.owner) : 'Other airline, shown for atmosphere'}</div>
+    <div class="bp-pop-times" style="display:flex;justify-content:space-between;font-size:11.5px;color:${C.muted};font-variant-numeric:tabular-nums"><span>${hhmm(f.depUtcMin)} UTC</span><span>${formatDurationHm(pos.remainingMin)} to go</span><span>${hhmm(f.depUtcMin + f.blockMin)} UTC</span></div>
+    <div class="bp-pop-more" style="margin:8px 0 2px;color:${C.textDim}">${e(phase)}</div>
+    <div class="bp-pop-stats" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px">${kv('Altitude', altLabel(pos.altitudeFt))}${kv('Speed', `${pos.groundSpeedKts} kt`)}${kv('Distance', `${f.distanceNm.toLocaleString()} nm`)}</div>
+    <div class="bp-pop-more" style="margin-top:8px;font-size:11px;color:${C.faint}">${f.friend ? friendLine(f.friend.owner) : 'Other airline, shown for atmosphere'}</div>
   </div>`;
 }
 
@@ -489,14 +491,14 @@ function buildPlanePopupHtml(raw: Record<string, any>): string {
     <div class="bp-pop-head" style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
       <b style="font-size:15px;color:${C.brand}">${p.callsign}</b>${muted(`${p.flightNumber}, ${p.tailNumber}`)}
     </div>
-    <div style="margin:2px 0 8px">${muted(p.operatedBy ? `${p.operatedBy} · ${p.modelName}` : p.modelName)}</div>
-    <div style="display:flex;justify-content:space-between;font-weight:600"><span>${p.originIata} ${muted(p.originCity)}</span><span>${p.destIata} ${muted(p.destCity)}</span></div>
+    <div class="bp-pop-sub" style="margin:2px 0 8px">${muted(p.operatedBy ? `${p.operatedBy} · ${p.modelName}` : p.modelName)}</div>
+    <div class="bp-pop-route" style="display:flex;justify-content:space-between;font-weight:600">${routeEnd(p.originIata, p.originCity)}${routeEnd(p.destIata, p.destCity)}</div>
     ${progressBar(Number(raw.progressPct), C.brand)}
-    <div style="display:flex;justify-content:space-between;font-size:11.5px;color:${C.muted};font-variant-numeric:tabular-nums"><span>${p.depClock} UTC</span><span>${p.etaText} to go</span><span>${p.arrClock} UTC</span></div>
-    <div style="margin:8px 0 2px;color:${C.textDim}">${p.phaseLabel}</div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0 10px">${kv('Altitude', p.altitudeText)}${kv('Speed', `${p.groundSpeedKts} kt`)}${kv('Runways', `${p.depRunway} → ${p.arrRunway}`)}</div>
-    <div style="border-top:1px solid ${C.line};padding-top:8px">${load}</div>
-    ${p.bonusSummary ? `<div style="margin-top:6px;font-size:11.5px;color:${C.green}">${p.bonusSummary}</div>` : ''}
+    <div class="bp-pop-times" style="display:flex;justify-content:space-between;font-size:11.5px;color:${C.muted};font-variant-numeric:tabular-nums"><span>${p.depClock} UTC</span><span>${p.etaText} to go</span><span>${p.arrClock} UTC</span></div>
+    <div class="bp-pop-more" style="margin:8px 0 2px;color:${C.textDim}">${p.phaseLabel}</div>
+    <div class="bp-pop-stats" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0 10px">${kv('Altitude', p.altitudeText)}${kv('Speed', `${p.groundSpeedKts} kt`)}${kv('Runways', `${p.depRunway} → ${p.arrRunway}`)}</div>
+    <div class="bp-pop-more" style="border-top:1px solid ${C.line};padding-top:8px">${load}</div>
+    ${p.bonusSummary ? `<div class="bp-pop-more" style="margin-top:6px;font-size:11.5px;color:${C.green}">${p.bonusSummary}</div>` : ''}
   </div>`;
 }
 
@@ -1151,6 +1153,7 @@ function attachOrbit(map: any, popup: any) {
     root.classList.add('bp-sheet-popup');
     if (layout !== 'phone') root.classList.add('bp-sheet-side');
     popup.setOffset?.([0, 0]);
+    if (layout === 'phone') attachPhoneSheet(popup, root);
     return;
   }
   const ns = 'http://www.w3.org/2000/svg';
@@ -1222,6 +1225,85 @@ function attachOrbit(map: any, popup: any) {
     } catch {
       /* storage unavailable */
     }
+  });
+}
+
+/**
+ * Phones, like FR24: a short card above the tab bar (who, where from and to,
+ * how far along, height and speed). Swipe it up, tap its handle or More for
+ * everything else; swipe down to shrink it again, or to close it when short.
+ */
+function attachPhoneSheet(popup: any, root: HTMLElement) {
+  const box = root.querySelector('.maplibregl-popup-content') as HTMLElement | null;
+  if (!box) return;
+  root.classList.add('bp-sheet-phone');
+  const grab = document.createElement('div');
+  grab.className = 'bp-sheet-grab';
+  grab.setAttribute('role', 'button');
+  grab.setAttribute('aria-label', 'Show more about this flight');
+  grab.innerHTML = '<span></span>';
+  box.prepend(grab);
+  const moreBtn = box.querySelector('.bp-pop-more-btn') as HTMLElement | null;
+  const setOpen = (on: boolean) => {
+    root.classList.toggle('bp-sheet-open', on);
+    box.scrollTop = 0;
+    grab.setAttribute('aria-label', on ? 'Show less' : 'Show more about this flight');
+    if (moreBtn) {
+      moreBtn.setAttribute('aria-expanded', String(on));
+      const label = moreBtn.querySelector('span');
+      if (label) label.textContent = on ? 'Less' : 'More';
+      const svg = moreBtn.querySelector('svg') as SVGElement | null;
+      if (svg) svg.style.transform = on ? 'rotate(180deg)' : '';
+    }
+  };
+  const isOpen = () => root.classList.contains('bp-sheet-open');
+  for (const ev of ['mousedown', 'touchstart', 'pointerdown']) moreBtn?.addEventListener(ev, (e) => e.stopPropagation());
+  moreBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setOpen(!isOpen());
+  });
+
+  let y0 = 0;
+  let dy = 0;
+  let id = -1;
+  let fromGrab = false;
+  box.addEventListener('pointerdown', (e: PointerEvent) => {
+    const t = e.target as HTMLElement;
+    if (t.closest('button, a, input, .maplibregl-popup-close-button')) return;
+    fromGrab = Boolean(t.closest('.bp-sheet-grab'));
+    // Opened and scrolled down: the finger scrolls the details, except on the handle
+    if (isOpen() && !fromGrab && box.scrollTop > 0) return;
+    id = e.pointerId;
+    y0 = e.clientY;
+    dy = 0;
+  });
+  const end = (e: PointerEvent) => {
+    if (e.pointerId !== id) return;
+    id = -1;
+    box.style.transform = '';
+    box.style.transition = '';
+    if (dy < -40) setOpen(true);
+    else if (dy > 50) {
+      if (isOpen()) setOpen(false);
+      else popup.remove();
+    } else if (Math.abs(dy) < 6 && fromGrab) setOpen(!isOpen());
+  };
+  const move = (e: PointerEvent) => {
+    if (e.pointerId !== id) return;
+    dy = e.clientY - y0;
+    // follows the finger down; resists a little going up
+    if (Math.abs(dy) > 4) {
+      box.style.transition = 'none';
+      box.style.transform = `translateY(${dy > 0 ? dy : dy * 0.25}px)`;
+    }
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', end);
+  window.addEventListener('pointercancel', end);
+  popup.on?.('close', () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', end);
+    window.removeEventListener('pointercancel', end);
   });
 }
 
@@ -1487,7 +1569,7 @@ export function LiveMap(props: LiveMapProps) {
             })
               .setLngLat(coords)
               .setHTML(
-                `${plane ? planeHeroHtml(plane) : ''}<div class="bp-live-popup-body">${html}</div><div style="display:flex;gap:8px;margin-top:10px"><button type="button" class="bp-pop-follow" style="flex:1;min-width:0;padding:7px 10px;border:0;border-radius:8px;background:${C.brand};color:#0c1320;font:inherit;font-weight:650;cursor:pointer">${stillFollowing ? 'Stop following' : 'Follow'}</button>${
+                `${plane ? planeHeroHtml(plane) : ''}<div class="bp-live-popup-body">${html}</div><div class="bp-pop-actions" style="display:flex;gap:8px;margin-top:10px"><button type="button" class="bp-pop-follow" style="flex:1;min-width:0;padding:7px 10px;border:0;border-radius:8px;background:${C.brand};color:#0c1320;font:inherit;font-weight:650;cursor:pointer">${stillFollowing ? 'Stop following' : 'Follow'}</button>${
                   plane?.friendOf
                     ? `<button type="button" class="bp-pop-info" aria-label="About this airline" title="About this airline" style="flex:none;display:flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid ${C.line};border-radius:8px;background:${C.raised};color:${C.text};font:inherit;font-weight:650;cursor:pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r=".6" fill="currentColor"/></svg>Airline</button>`
                     : ''
@@ -1495,7 +1577,7 @@ export function LiveMap(props: LiveMapProps) {
                   plane && !plane.friendOf && plane.tailNumber && latest.current.onOpenSchedule && latest.current.fleet.some((a) => a.tailNumber === plane.tailNumber)
                     ? `<button type="button" class="bp-pop-sched" aria-label="Open this aircraft's schedule" title="Open this aircraft's schedule" style="flex:none;display:flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid ${C.line};border-radius:8px;background:${C.raised};color:${C.text};font:inherit;font-weight:650;cursor:pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>Schedule</button>`
                     : ''
-                }</div>`
+                }<button type="button" class="bp-pop-more-btn" aria-expanded="false" style="flex:none;align-items:center;gap:6px;padding:7px 12px;border:1px solid ${C.line};border-radius:8px;background:${C.raised};color:${C.text};font:inherit;font-weight:650;cursor:pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg><span>More</span></button></div>`
               )
               .addTo(map);
             const schedBtn = popup.getElement?.()?.querySelector('.bp-pop-sched') as HTMLElement | null;
