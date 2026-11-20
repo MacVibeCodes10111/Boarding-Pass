@@ -190,13 +190,11 @@ export const globalCss = () => `
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-corner { background: transparent; }
   /* Window view: the wing flexes a little (more in the climb, the descent and taxiing), the tip light flashes */
-  @keyframes bpWingFlex { 0%, 100% { transform: translateY(0); } 27% { transform: translateY(calc(var(--bp-flex) * -1)); } 55% { transform: translateY(calc(var(--bp-flex) * 0.6)); } 80% { transform: translateY(calc(var(--bp-flex) * -0.3)); } }
   @keyframes bpStrobe { 0%, 5% { opacity: .95; } 6%, 100% { opacity: 0; } }
-  .bp-win-wing { animation: bpWingFlex 3.4s ease-in-out infinite; }
   .bp-win-strobe { opacity: 0; animation: bpStrobe 1.4s linear infinite; }
   @keyframes bpProp { 0%, 100% { opacity: .1; } 50% { opacity: .17; } }
   .bp-win-prop { animation: bpProp .18s linear infinite; }
-  @media (prefers-reduced-motion: reduce) { .bp-win-wing, .bp-win-strobe, .bp-win-prop { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .bp-win-strobe, .bp-win-prop { animation: none; } }
   html:has(.bp-window-view) :is(.bp-layers-fab, .bp-zoom, .bp-camera-alt, .maplibregl-popup) { visibility: hidden !important; }
   html[data-layout=phone] .bp-window-stats { display: none; }
   @media (max-width: 430px) { .bp-window-label { display: none; } .bp-window-hud button { padding-left: 8px !important; padding-right: 8px !important; } }

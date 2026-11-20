@@ -1,6 +1,6 @@
 import { typeMaxCruiseFt } from '../game/altitude';
 import { artIdFor } from '../game/wingtips';
-import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { FlightEconomics } from '../game/economics';
 import { interpolateCoordPair, offsetLatLonNm } from '../game/geo';
 import {
@@ -17,7 +17,7 @@ import {
   type PlaneIcon,
 } from '../game/icons';
 import { aiDepartureDay, densityBucket, findAirborneAi, type AiFlight, type AiPosition, type AiTraffic } from '../game/aiTraffic';
-import { AiPathModel } from '../game/aiProcedures';
+import { AiPathModel, airportFromAi } from '../game/aiProcedures';
 import { RunwaySequencer } from '../game/runwaySequence';
 import { runwayLanes, setPlayerRunwayLanes, type RunwaySlots } from '../game/navdata';
 import { aerowayFromGeoJson, groundPoses, taxiPath, TaxiRegistry, type GroundMove, type GroundPose, type TaxiAirportRef } from '../game/taxi';
@@ -64,7 +64,7 @@ import { openFriendAirline } from './FriendAirline';
 import { paintedPhoto } from '../game/liveryPaint';
 import { specialLabel } from '../game/livery';
 import { LiveryContext, paintOf } from './AircraftPhoto';
-import { WindowView, type WindowHud } from './WindowView';
+import { WINDOW_FOV_DEG, WindowView, type WindowHud, type WindowRoute } from './WindowView';
 import { addWindowSample, newWindowState, placeWindowCamera, skyFor, sunElevationDeg, windowEyeM, windowLight, wingTipFor, type WindowLight, type WindowSide, type WindowState, type WingParts, type WingTip } from '../game/windowView';
 import { aircraftMeshBounds } from '../game/aircraftMeshes';
 import { AI_TYPES } from '../game/aiFleets';
@@ -258,7 +258,17 @@ export class TrustedCredits {
   private eox?: HTMLElement;
   private update = () => {
     if (this.eox) this.eox.hidden = !this.map?.getSource?.('s2cloudless');
+    if (this.nasa) {
+      let on = false;
+      try {
+        on = Boolean(this.map?.getLayer?.('night-lights')) && Number(this.map.getPaintProperty('night-lights', 'raster-opacity') || 0) > 0;
+      } catch {
+        /* style changing */
+      }
+      this.nasa.hidden = !on;
+    }
   };
+  private nasa?: HTMLElement;
   onAdd(map: any) {
     this.map = map;
     const box = document.createElement('details');
@@ -287,6 +297,10 @@ export class TrustedCredits {
     const eox = document.createElement('span');
     eox.append(' | ', link('https://cloudless.eox.at', 'EOxCloudless https://cloudless.eox.at'), ' by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2024)');
     inner.append(eox);
+    const nasa = document.createElement('span');
+    nasa.append(' | Night lights: ', link('https://earthobservatory.nasa.gov', 'NASA Earth Observatory'));
+    inner.append(nasa);
+    this.nasa = nasa;
     box.append(btn, inner);
     this.box = box;
     this.eox = eox;
@@ -432,6 +446,8 @@ export interface LiveMapProps {
   /** Radio navigation beacons (VOR, DME…). */
   showNavaids: boolean;
   mapStyle: MapStyleId;
+  /** Day, night, or by the sun where you're looking (the map and the window view). */
+  mapTime?: MapTime;
   /** 3D globe instead of the flat map (MapLibre 5). */
   globe: boolean;
   /** Tilted view with aircraft drawn in 3D at their altitude. */
@@ -553,6 +569,76 @@ export function airportLodFilter(detail: AirportDetail = 'normal', flown: FlownA
   ];
 }
 const AIRPORT_LOD_FILTER = airportLodFilter();
+
+// ---------------------------------------------------------------------------
+// Night (v3.6): the Earth at night from NASA (city lights, public domain),
+// street lights along the roads up close, and airport lights: runway edge and
+// centre lights, taxiway lights, lit aprons. Day, night, or by the sun where
+// you're looking. One set of layers, faded in and out (nothing is reloaded).
+// ---------------------------------------------------------------------------
+export type MapTime = 'day' | 'night' | 'auto';
+const NIGHT_SRC = 'bp-night-lights';
+const NIGHT_TILES = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/default/2016-01-01/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png';
+const isLine = ['==', ['geometry-type'], 'LineString'];
+function addNightLayers(map: any) {
+  if (map.getLayer?.('night-lights')) return;
+  try {
+    if (!map.getSource?.(NIGHT_SRC))
+      map.addSource(NIGHT_SRC, { type: 'raster', tiles: [NIGHT_TILES], tileSize: 256, maxzoom: 8, attribution: 'NASA Earth Observatory / GIBS' });
+    if (!map.getSource?.(AERO_SOURCE)) map.addSource(AERO_SOURCE, { type: 'vector', url: AERO_TILES });
+    // Under the place names (they stay readable), over the ground
+    const firstLabel = (map.getStyle?.()?.layers ?? []).find((l: any) => l.type === 'symbol')?.id;
+    const add = (layer: any) => map.addLayer(layer, firstLabel);
+    // The ground goes dark under the lights (one full-screen fill: works on every map style)
+    add({ id: 'night-shade', type: 'background', paint: { 'background-color': '#030712', 'background-opacity': 0 } });
+    add({ id: 'night-lights', type: 'raster', source: NIGHT_SRC, paint: { 'raster-opacity': 0, 'raster-fade-duration': 0 } });
+    add({ id: 'night-apron', type: 'fill', source: AERO_SOURCE, 'source-layer': 'aeroway', minzoom: 12, filter: ['all', ['==', ['geometry-type'], 'Polygon'], ['==', ['get', 'class'], 'apron']], paint: { 'fill-color': '#ffd59a', 'fill-opacity': 0 } });
+    add({
+      id: 'night-roads', type: 'line', source: AERO_SOURCE, 'source-layer': 'transportation', minzoom: 9,
+      filter: ['in', ['get', 'class'], ['literal', ['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'minor', 'service']]],
+      paint: { 'line-color': '#ffb259', 'line-blur': ['interpolate', ['linear'], ['zoom'], 9, 0.6, 15, 2.5], 'line-width': ['interpolate', ['linear'], ['zoom'], 9, 0.35, 13, 1, 16, 3, 18, 6], 'line-opacity': 0 },
+    });
+    add({ id: 'night-taxiway', type: 'line', source: AERO_SOURCE, 'source-layer': 'aeroway', minzoom: 12, filter: ['all', isLine, ['==', ['get', 'class'], 'taxiway']], layout: { 'line-cap': 'round' }, paint: { 'line-color': '#4dff9e', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 0.6, 16, 2, 18, 3.5], 'line-blur': 0.8, 'line-dasharray': [0.3, 2.2], 'line-opacity': 0 } });
+    // Two rows of edge lights either side of the runway, and its centre line
+    add({
+      id: 'night-runway-edge', type: 'line', source: AERO_SOURCE, 'source-layer': 'aeroway', minzoom: 10, filter: ['all', isLine, ['==', ['get', 'class'], 'runway']], layout: { 'line-cap': 'round' },
+      paint: { 'line-color': '#fff1c4', 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 0.8, 14, 1.6, 18, 4], 'line-gap-width': ['interpolate', ['exponential', 2], ['zoom'], 10, 0.4, 14, 6, 18, 96], 'line-blur': 0.7, 'line-dasharray': [0.4, 2], 'line-opacity': 0 },
+    });
+    add({ id: 'night-runway-centre', type: 'line', source: AERO_SOURCE, 'source-layer': 'aeroway', minzoom: 13, filter: ['all', isLine, ['==', ['get', 'class'], 'runway']], layout: { 'line-cap': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 13, 0.6, 18, 2.5], 'line-blur': 0.5, 'line-dasharray': [0.3, 3], 'line-opacity': 0 } });
+  } catch {
+    /* style not ready */
+  }
+}
+/** Turns the night up or down: 0 day … 1 full night. */
+function applyNight(map: any, n: number, styleId: MapStyleId, base: { buildings?: unknown }) {
+  try {
+    const k = Math.max(0, Math.min(1, n));
+    if (map.getLayer?.('night-shade')) map.setPaintProperty('night-shade', 'background-opacity', k * (styleId === 'dark' ? 0.55 : 0.85));
+    // NASA's picture is sharp to about zoom 8; closer in, the street and airport lights take over
+    const lights = k * 0.9;
+    if (map.getLayer?.('night-lights')) map.setPaintProperty('night-lights', 'raster-opacity', ['interpolate', ['linear'], ['zoom'], 7.5, lights, 10, 0]);
+    if (map.getLayer?.('night-apron')) map.setPaintProperty('night-apron', 'fill-opacity', k * 0.16);
+    if (map.getLayer?.('night-roads')) map.setPaintProperty('night-roads', 'line-opacity', k * 0.75);
+    if (map.getLayer?.('night-taxiway')) map.setPaintProperty('night-taxiway', 'line-opacity', k * 0.9);
+    if (map.getLayer?.('night-runway-edge')) map.setPaintProperty('night-runway-edge', 'line-opacity', k);
+    if (map.getLayer?.('night-runway-centre')) map.setPaintProperty('night-runway-centre', 'line-opacity', k * 0.85);
+    // Buildings go dark too (they'd glow grey in the night otherwise)
+    if (map.getLayer?.('buildings-3d')) {
+      if (base.buildings === undefined) base.buildings = map.getPaintProperty('buildings-3d', 'fill-extrusion-color');
+      const c = typeof base.buildings === 'string' ? base.buildings : '#dfe3ea';
+      map.setPaintProperty('buildings-3d', 'fill-extrusion-color', k > 0.01 ? mixHexColor(c, '#0c1424', k * 0.85) : c);
+    }
+  } catch {
+    /* style changing */
+  }
+}
+const mixHexColor = (a: string, b: string, f: number) => {
+  const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+  const ch = (sh: number) => Math.round(((pa >> sh) & 255) + (((pb >> sh) & 255) - ((pa >> sh) & 255)) * f);
+  return `#${((ch(16) << 16) | (ch(8) << 8) | ch(0)).toString(16).padStart(6, '0')}`;
+};
+/** How dark it is: 0 day … 1 night, from the sun's height (dusk between +3° and −6°). */
+const nightFromSun = (elevDeg: number) => Math.max(0, Math.min(1, (3 - elevDeg) / 9));
 
 /** 3D buildings from the basemap's own vector tiles (free), when zoomed into cities. */
 function addBuildings(map: any, styleId: MapStyleId) {
@@ -1511,6 +1597,7 @@ function installMapContent(map: any, styleId: MapStyleId, threeD: boolean) {
   RADAR_GROUPS.forEach((g) => putImage(map, `ai-${g}`, createRadarGroupImageData(g, aiTintFor(styleId)), MAP_ICON_PIXEL_RATIO));
   RADAR_GROUPS.forEach((g) => putImage(map, `friend-${g}`, createRadarGroupImageData(g, friendTintFor(styleId)), MAP_ICON_PIXEL_RATIO));
   (Object.keys(WX_TAG_COLORS) as (keyof typeof WX_TAG_COLORS)[]).forEach((c) => putImage(map, `wx-${c}`, createWxTagImageData(c), 2));
+  addNightLayers(map); // under everything of the game's
   addBuildings(map, styleId); // first, so the game's layers draw over them
   addLayers(map);
   // Airports draw over the aircraft, so a busy airport's badge is never hidden under its traffic
@@ -1628,10 +1715,45 @@ export function LiveMap(props: LiveMapProps) {
 
   // Window view: the 3D map from a passenger window of the selected aircraft (game/windowView.ts)
   const windowRef = useRef<WindowState | null>(null);
-  const windowSaved = useRef<{ cam: Record<string, unknown>; turned3dOn: boolean; background: [string, unknown][]; maxZoom: number; fov: number; sky: unknown; hidden: [string, unknown][]; handlers: [string, boolean][]; saw3d: boolean; missing: number; hudAt: number; skyKey: string; wingAt: number; wingShown: WingParts; pixelRatio: number; repaint: boolean; night: number; nearAi: AiFlight[]; nearAt: number } | null>(null);
-  const [windowUi, setWindowUi] = useState<{ side: WindowSide; light: WindowLight; hud: WindowHud; wing: WingParts; group: RadarIconGroup; tip: WingTip; basePitch: number } | null>(null);
+  const windowSaved = useRef<{ cam: Record<string, unknown>; turned3dOn: boolean; background: [string, unknown][]; maxZoom: number; fov: number; sky: unknown; hidden: [string, unknown][]; handlers: [string, boolean][]; saw3d: boolean; missing: number; hudAt: number; skyKey: string; wingAt: number; wingShown: WingParts; baseShown: number; ends: [string, string]; box: { w: number; h: number; vh: number } | null; pixelRatio: number; repaint: boolean; night: number; nearAi: AiFlight[]; nearAt: number } | null>(null);
+  const [windowUi, setWindowUi] = useState<{ side: WindowSide; light: WindowLight; hud: WindowHud; wing: WingParts; group: RadarIconGroup; tip: WingTip; basePitch: number; route?: WindowRoute } | null>(null);
   /** Other aircraft out of the window: true size, true height, wheels down on the ground. */
   const windowAc = useRef<AircraftLayerHandle | null>(null);
+  // The wing's flex, read every screen frame by the window (stable, so it isn't re-subscribed)
+  const windowFlex = useCallback(() => windowRef.current?.last?.flex ?? 0, []);
+  // The map draws only the part of the screen the window shows (the cabin wall
+  // covers the rest): a smaller canvas, centred, with the field of view narrowed to
+  // match, so the world through the window looks exactly the same
+  const windowBox = useCallback((box: { w: number; h: number; vh: number } | null) => {
+    const map = mapRef.current;
+    const el = containerRef.current;
+    const ws = windowSaved.current;
+    if (!map || !el) return;
+    if (box && !ws) return;
+    if (ws) ws.box = box;
+    const parent = el.parentElement;
+    const pw = parent?.clientWidth ?? box?.w ?? 0, ph = parent?.clientHeight ?? box?.h ?? 0;
+    if (box && pw > 0 && ph > 0) {
+      el.style.width = `${box.w}px`;
+      el.style.height = `${box.h}px`;
+      el.style.marginLeft = `${Math.round((pw - box.w) / 2)}px`;
+      el.style.marginTop = `${Math.round((ph - box.h) / 2)}px`;
+    } else {
+      el.style.width = '100%';
+      el.style.height = '100%';
+      el.style.marginLeft = '';
+      el.style.marginTop = '';
+    }
+    try {
+      map.resize?.();
+      if (ws) {
+        const fov = box ? (2 * Math.atan((box.h / box.vh) * Math.tan((WINDOW_FOV_DEG / 2) * (Math.PI / 180)))) / (Math.PI / 180) : WINDOW_FOV_DEG;
+        map.setVerticalFieldOfView?.(fov);
+      }
+    } catch {
+      /* older map engine */
+    }
+  }, []);
   const enterWindow = (map: any, flightId: string, label: string) => {
     if (windowRef.current || !map?.calculateCameraOptionsFromCameraLngLatAltRotation) return;
     const turned3dOn = !latest.current.threeD;
@@ -1641,7 +1763,12 @@ export function LiveMap(props: LiveMapProps) {
     const hidden: [string, unknown][] = [];
     // (the map's own place names too: they'd float in the sky; and the flat aircraft
     // pictures on the ground: right under the window they'd be huge outlines)
-    const basemapLabels: string[] = (map.getStyle?.()?.layers ?? []).filter((l: any) => l.type === 'symbol').map((l: any) => l.id);
+    // Everything a window can't show is switched off, so the map doesn't draw it:
+    // labels, dots, lines drawn on the map (borders, routes), the map's own aircraft
+    // (the window has its own). Kept: the ground, water, buildings, the sky.
+    const basemapLabels: string[] = (map.getStyle?.()?.layers ?? [])
+      .filter((l: any) => ['symbol', 'circle', 'heatmap', 'custom'].includes(l.type) || (l.type === 'line' && /boundar|admin|border|route|track|ils|navaid/i.test(l.id)))
+      .map((l: any) => l.id);
     for (const id of new Set([...WINDOW_HIDDEN_LAYERS, ...basemapLabels]))
       if (map.getLayer?.(id)) {
         hidden.push([id, map.getLayoutProperty?.(id, 'visibility') ?? 'visible']);
@@ -1665,6 +1792,9 @@ export function LiveMap(props: LiveMapProps) {
       skyKey: '',
       wingAt: 0,
       wingShown: { flaps: 0, spoilers: 0, aileron: 0 },
+      baseShown: 88,
+      ends: ['', ''],
+      box: null,
       pixelRatio: 0,
       repaint: false,
       night: 0,
@@ -1683,7 +1813,7 @@ export function LiveMap(props: LiveMapProps) {
       if (windowSaved.current.pixelRatio > 1.25) map.setPixelRatio?.(1.25);
       map.setMaxZoom?.(24);
       map.setMaxPitch?.(100);
-      map.setVerticalFieldOfView?.(50);
+      map.setVerticalFieldOfView?.(WINDOW_FOV_DEG);
     } catch {
       /* older map engine */
     }
@@ -1711,6 +1841,7 @@ export function LiveMap(props: LiveMapProps) {
       /* the map is going */
     }
     if (!w || !s || !map) return;
+    windowBox(null); // the map's full size again
     try {
       if (s.pixelRatio > 1.25) map.setPixelRatio?.(s.pixelRatio);
       map.repaint = s.repaint;
@@ -2648,6 +2779,11 @@ export function LiveMap(props: LiveMapProps) {
     let ingestLast = -Infinity;
     let aerowayDirty = true;
     let groundHasData = false;
+    let ground3dOn = false;
+    let nightShown = -1;
+    let nightAt = 0;
+    let nightBase: { buildings?: unknown } = {};
+    let groundIconOpacity: unknown = undefined;
     let lastGroundZoom = false;
     let lastView: { coords: [number, number]; flown: LonLat[]; remaining: LonLat[]; html: () => string } | null = null;
     let lastViewAt = 0;
@@ -2995,6 +3131,8 @@ export function LiveMap(props: LiveMapProps) {
         groundLast = 0;
         route3dDrawn = '';
         ai3dZoom = -1;
+        nightShown = -1;
+        nightBase = {};
       }
 
       // Detail level changed: new budget and dot/icon switch-over zoom
@@ -3099,9 +3237,49 @@ export function LiveMap(props: LiveMapProps) {
           }
         }
       }
+      // Night: faded in and out with the sun where you're looking (or always day / night)
+      const mapTime = latest.current.mapTime ?? 'day';
+      if (t - nightAt > 1000 || (mapTime !== 'auto' && nightShown !== (mapTime === 'night' ? 1 : 0))) {
+        nightAt = t;
+        let n = mapTime === 'night' ? 1 : 0;
+        if (mapTime === 'auto') {
+          const at = windowRef.current?.last ?? map.getCenter?.() ?? { lng: 0, lat: 0 };
+          const d = new Date();
+          n = nightFromSun(sunElevationDeg(at.lat, at.lng, Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) + clock.min * 60_000));
+        }
+        if (Math.abs(n - nightShown) > 0.01) {
+          nightShown = n;
+          applyNight(map, n, latest.current.mapStyle, nightBase);
+        }
+      }
+      let groundFresh = false;
       if (t - groundLast >= (latest.current.mapRate >= TIMELAPSE_MIN_RATE ? 150 : GROUND_MS)) {
         groundLast = t;
         updateGround(clock, st, groundZoom);
+        groundFresh = true;
+      }
+      // In 3D the aircraft on the ground are 3D too, true to size with their wheels
+      // down (the flat pictures stay underneath, invisible, for clicking)
+      const ground3d = detailed && groundZoom && !windowRef.current;
+      if (ground3d && (groundFresh || !ground3dOn)) {
+        const out = new Map<RadarIconGroup, Aircraft3d[]>();
+        const aiRgbG = hexToRgb(aiTintFor(latest.current.mapStyle));
+        const put = (group: RadarIconGroup, at: [number, number], heading: number, rgb: [number, number, number]) => {
+          const half = (GROUP_LENGTH_M[group] ?? 38) / 2;
+          addInstance(out, group, { lng: at[0], lat: at[1], elevM: -aircraftMeshBounds(group).gearZ * half, halfLenM: half, headingDeg: heading, pitchDeg: 0, rgb, vScale: 1, gear: true });
+        };
+        for (const e of groundRef.current.ai.values()) put(e.info.flight.group, e.pose.coordinates, e.pose.bearing, aiRgbG);
+        const fr = hexToRgb(C.fleet);
+        for (const g of groundRef.current.player.values()) put(getRadarIconGroup(infoById.map.get(g.info.flight.id)?.model), g.pose.coordinates, g.pose.bearing, fr);
+        acLayer.set('ground', out);
+      }
+      if (ground3d !== ground3dOn) {
+        ground3dOn = ground3d;
+        if (!ground3d) acLayer.set('ground', new Map());
+        if (map.getLayer?.('ground-planes-symbol')) {
+          if (groundIconOpacity === undefined) groundIconOpacity = map.getPaintProperty?.('ground-planes-symbol', 'icon-opacity');
+          map.setPaintProperty?.('ground-planes-symbol', 'icon-opacity', ground3d ? 0 : groundIconOpacity);
+        }
       }
       const groundPlayer = groundRef.current.player;
       const groundTails = new Set([...groundPlayer.values()].map((g) => g.info.flight.tailNumber));
@@ -3636,10 +3814,13 @@ export function LiveMap(props: LiveMapProps) {
           }
           // The wing's moving parts redraw five times a second while they move
           const wp = win.last?.wing;
-          if (wp && t - ws.wingAt > 200 && (Math.abs(wp.flaps - ws.wingShown.flaps) > 0.01 || Math.abs(wp.spoilers - ws.wingShown.spoilers) > 0.01 || Math.abs(wp.aileron - ws.wingShown.aileron) > 0.02)) {
+          // (and the wing's tilt follows the camera's in small steps, so it never jumps)
+          const bp = win.last ? Math.round(win.last.base * 50) / 50 : ws.baseShown;
+          if (wp && t - ws.wingAt > 200 && (Math.abs(wp.flaps - ws.wingShown.flaps) > 0.01 || Math.abs(wp.spoilers - ws.wingShown.spoilers) > 0.01 || Math.abs(wp.aileron - ws.wingShown.aileron) > 0.02 || bp !== ws.baseShown)) {
             ws.wingAt = t;
             ws.wingShown = wp;
-            setWindowUi((u) => (u ? { ...u, wing: wp } : u));
+            ws.baseShown = bp;
+            setWindowUi((u) => (u ? { ...u, wing: wp, basePitch: bp } : u));
           }
           if (t - ws.hudAt > 1000) {
             // What it is: the wing, the wingtip and the seat height
@@ -3658,6 +3839,33 @@ export function LiveMap(props: LiveMapProps) {
               typeCode = m?.name;
             }
             win.eyeM = windowEyeM(group);
+            // The weather it flies through: the nearer of its two airports'
+            try {
+              let ends: Airport[] = [];
+              if (tid.startsWith('ai:') || tid.startsWith('aig:')) {
+                const f = tid.startsWith('ai:') ? traffic?.flights[Number(tid.slice(3))] : groundRef.current.ai.get(tid.slice(4))?.info.flight;
+                if (f && traffic) ends = [airportFromAi(traffic.airports[f.o], f.o), airportFromAi(traffic.airports[f.d], f.d)];
+                if (f && traffic) ws.ends = [traffic.airports[f.o]?.iata ?? '', traffic.airports[f.d]?.iata ?? ''];
+              } else {
+                const fl = infoById.map.get(tid)?.flight;
+                if (fl?.origin && fl?.destination) ends = [fl.origin, fl.destination];
+                if (fl?.origin && fl?.destination) ws.ends = [fl.origin.iata_code, fl.destination.iata_code];
+              }
+              if (ends.length) {
+                const kx = Math.cos(view.coords[1] * (Math.PI / 180));
+                const d2 = (ap: Airport) => ((ap.longitude_deg - view.coords[0]) * kx) ** 2 + (ap.latitude_deg - view.coords[1]) ** 2;
+                const ap = d2(ends[0]) < d2(ends[1]) ? ends[0] : ends[1];
+                const wx = getAirportWeather(ap, clock.day, clock.min);
+                const gust = wx.gustKts ? wx.gustKts - wx.windSpeedKts : 0;
+                win.wx = {
+                  turb: Math.max(0, Math.min(1, 0.03 + Math.max(0, wx.windSpeedKts - 12) * 0.022 + gust * 0.025 + wx.precipIntensity * 0.1)),
+                  windFrom: wx.windDirDeg,
+                  windKts: wx.windSpeedKts,
+                };
+              }
+            } catch {
+              /* no weather: calm */
+            }
             const tip = wingTipFor(typeCode, group);
             const cam = win.last;
             const fpm = cam?.fpm ?? 0;
@@ -3665,7 +3873,9 @@ export function LiveMap(props: LiveMapProps) {
             ws.hudAt = t;
             const day = new Date();
             const ms = Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()) + clock.min * 60_000;
-            const light = windowLight(sunElevationDeg(view.coords[1], view.coords[0], ms));
+            const mt = latest.current.mapTime ?? 'day';
+            const sunEl = sunElevationDeg(view.coords[1], view.coords[0], ms);
+            const light = windowLight(mt === 'day' ? Math.max(sunEl, 40) : mt === 'night' ? Math.min(sunEl, -18) : sunEl);
             const key = light.sky + light.horizon;
             if (key !== ws.skyKey) {
               ws.skyKey = key;
@@ -3681,8 +3891,13 @@ export function LiveMap(props: LiveMapProps) {
             }
             const bump = shownAgl < 8 ? (gsKts > 60 ? 0.5 : gsKts > 3 ? 0.2 : 0) : Math.abs(fpm) > 600 ? 0.6 : 0.12;
             ws.night = light.night;
-            const basePitch = Math.round((cam?.base ?? 88) * 4) / 4;
-            setWindowUi((u) => (u ? { ...u, light, group, tip, basePitch, hud: { label: u.hud.label, altText: altLabel(Math.round(shownAgl)), gsKts, bump } } : u));
+            // The small route map (thinned out: it's a few hundred pixels across)
+            const thin = (qs: [number, number][]) => {
+              const k = Math.max(1, Math.ceil(qs.length / 80));
+              return qs.filter((_, i) => i % k === 0 || i === qs.length - 1).map((q) => [q[0], q[1]] as [number, number]);
+            };
+            const route = { flown: thin(view.flown ?? []), ahead: thin(view.remaining ?? []), at: [view.coords[0], view.coords[1]] as [number, number], heading: win.track, from: ws.ends[0], to: ws.ends[1] };
+            setWindowUi((u) => (u ? { ...u, light, group, tip, route, hud: { label: u.hud.label, altText: altLabel(Math.round(shownAgl)), gsKts, bump } } : u));
           }
         }
       }
@@ -3691,8 +3906,11 @@ export function LiveMap(props: LiveMapProps) {
       if (view) {
         const line = (coordinates: [number, number][]) => ({ type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'LineString', coordinates }, properties: {} }] });
         // In 3D the route is the ribbon in the air, with no second copy on the ground
-        flownSrc?.setData(k3 ? EMPTY_FC : line(view.flown));
-        aheadSrc?.setData(k3 ? EMPTY_FC : line(view.remaining));
+        // (not in the window view: they're hidden, and setting them every frame costs)
+        if (!windowRef.current) {
+          flownSrc?.setData(k3 ? EMPTY_FC : line(view.flown));
+          aheadSrc?.setData(k3 ? EMPTY_FC : line(view.remaining));
+        }
         const lifted = k3 && viewAgl > 0 ? labelHeightM(viewAgl, viewSize, k3, view.coords[1]) : 0;
         if (followRef.current) {
           // Following: keep the aircraft in the middle of the screen. In 3D that is the point on
@@ -3715,7 +3933,7 @@ export function LiveMap(props: LiveMapProps) {
             map.easeTo?.({ center: view.coords, duration: 1100 });
           }
         }
-        if (popupRef.current) {
+        if (popupRef.current && !windowRef.current) {
           popupRef.current.setLngLat((lifted && groundUnder(map, view.coords, lifted, vw, vh)) || view.coords);
           if (t - lastPopup >= POPUP_MS) {
             lastPopup = t;
@@ -3782,6 +4000,9 @@ export function LiveMap(props: LiveMapProps) {
           group={windowUi.group}
           tip={windowUi.tip}
           basePitch={windowUi.basePitch}
+          getFlex={windowFlex}
+          onBox={windowBox}
+          route={windowUi.route}
           onSide={(side) => {
             const w = windowRef.current;
             if (w) (w.side = side), (w.smooth = undefined);

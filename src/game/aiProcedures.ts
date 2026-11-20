@@ -66,13 +66,75 @@ interface Track {
   lenNm: number;
 }
 
-function makeTrack(pts: LonLat[], speedAt: (alongNm: number, lenNm: number) => number): Track {
+/**
+ * Rounds each corner of a path into the turn an airliner flies there: an arc of
+ * the radius a 25° bank gives at that speed (about 0.6 nm at 140 kt, 2 nm at
+ * 250 kt), shrunk where the legs are too short. Slow parts (the runway) stay as
+ * they are. `idx[i]` is where corner i ended up in the new list.
+ */
+function roundCorners(pts: LonLat[], speedAt: (alongNm: number, lenNm: number) => number): { pts: LonLat[]; idx: number[] } {
+  if (pts.length < 3) return { pts, idx: pts.map((_, i) => i) };
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + calcCoordDistanceNm(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]));
+  const len = cum[cum.length - 1];
+  const out: LonLat[] = [pts[0]];
+  const idx = [0];
+  const TAN25 = Math.tan((25 * Math.PI) / 180);
+  for (let i = 1; i < pts.length - 1; i++) {
+    const B = pts[i];
+    const kx = Math.cos((B[1] * Math.PI) / 180);
+    // Flat (nm) around the corner
+    const toXY = (q: LonLat) => [(q[0] - B[0]) * kx * 60, (q[1] - B[1]) * 60] as const;
+    const A = toXY(pts[i - 1]), C = toXY(pts[i + 1]);
+    const la = Math.hypot(A[0], A[1]), lc = Math.hypot(C[0], C[1]);
+    const kts = speedAt(cum[i], len);
+    if (la < 1e-4 || lc < 1e-4 || kts < 100) {
+      idx.push(out.length);
+      out.push(B);
+      continue;
+    }
+    const ua = [-A[0] / la, -A[1] / la]; // direction of travel into the corner
+    const uc = [C[0] / lc, C[1] / lc]; // and out of it
+    const turn = Math.acos(Math.max(-1, Math.min(1, ua[0] * uc[0] + ua[1] * uc[1])));
+    if (turn < (2 * Math.PI) / 180) {
+      idx.push(out.length);
+      out.push(B);
+      continue;
+    }
+    const v = kts * 0.514444;
+    let r = (v * v) / (9.81 * TAN25) / 1852;
+    let tl = r * Math.tan(turn / 2);
+    const maxT = 0.45 * Math.min(la, lc);
+    if (tl > maxT) {
+      tl = maxT;
+      r = tl / Math.tan(turn / 2);
+    }
+    const p1 = [-ua[0] * tl, -ua[1] * tl];
+    const side = ua[0] * uc[1] - ua[1] * uc[0] > 0 ? 1 : -1; // left (+) or right turn
+    const nrm = [-ua[1] * side, ua[0] * side];
+    const cx = p1[0] + nrm[0] * r, cy = p1[1] + nrm[1] * r;
+    const a0 = Math.atan2(p1[1] - cy, p1[0] - cx);
+    const steps = Math.max(2, Math.ceil(turn / ((3 * Math.PI) / 180)));
+    for (let k = 0; k <= steps; k++) {
+      const a = a0 + side * turn * (k / steps);
+      const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
+      if (k === steps >> 1) idx.push(out.length);
+      out.push([B[0] + x / (kx * 60), B[1] + y / 60]);
+    }
+  }
+  idx.push(out.length);
+  out.push(pts[pts.length - 1]);
+  return { pts: out, idx };
+}
+
+function makeTrack(raw: LonLat[], speedAt: (alongNm: number, lenNm: number) => number): Track & { idx: number[] } {
+  const { pts, idx } = roundCorners(raw, speedAt);
   const cumNm = [0];
   for (let i = 1; i < pts.length; i++) cumNm.push(cumNm[i - 1] + Math.max(0.01, calcCoordDistanceNm(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1])));
   const lenNm = cumNm[cumNm.length - 1];
   const t = [0];
   for (let i = 1; i < pts.length; i++) t.push(t[i - 1] + (cumNm[i] - cumNm[i - 1]) / speedAt((cumNm[i] + cumNm[i - 1]) / 2, lenNm));
-  return { pts, cumNm, cumT: t.map((x) => x / t[t.length - 1]), lenNm };
+  return { pts, cumNm, cumT: t.map((x) => x / t[t.length - 1]), lenNm, idx };
 }
 
 /** Point at a distance (nm) along a track, and its heading. */
@@ -90,7 +152,16 @@ function atDistance(tr: Track, nm: number): { at: LonLat; brg: number } {
   const b = tr.pts[lo + 1] ?? a;
   const span = (C[lo + 1] ?? C[lo]) - C[lo];
   const k = span > 0 ? (d - C[lo]) / span : 0;
-  return { at: [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k], brg: a[0] !== b[0] || a[1] !== b[1] ? calcBearingDeg(a, b) : 0 };
+  const at: LonLat = [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
+  // The heading turns smoothly along a rounded corner (between this short leg's and the next one's)
+  let brg = a[0] !== b[0] || a[1] !== b[1] ? calcBearingDeg(a, b) : 0;
+  const c = tr.pts[lo + 2];
+  if (c && span > 0 && span < 0.5 && (b[0] !== c[0] || b[1] !== c[1])) {
+    const next = calcBearingDeg(b, c);
+    const d2 = ((next - brg + 540) % 360) - 180;
+    if (Math.abs(d2) < 10) brg = (brg + d2 * k * 0.5 + 360) % 360;
+  }
+  return { at, brg };
 }
 
 /** Per-flight constants that don't depend on weather (cached by flight id). */
@@ -154,7 +225,7 @@ const PLAN_LIMIT = 70_000;
 const PROC_LIMIT = 12_000;
 
 /** Synthetic airport for an OpenFlights airport that isn't in the OurAirports list. */
-function airportFromAi(ap: AiAirport, i: number): Airport {
+export function airportFromAi(ap: AiAirport, i: number): Airport {
   return {
     id: -1 - i,
     iata_code: ap.iata,
@@ -243,7 +314,7 @@ export class AiPathModel {
     const tp = buildTerminalPaths(this.airports[f.o], this.airports[f.d], depDay, f.depUtcMin + aiTaxiMin(f), depDay, arrMin, { dep: f.depLane ?? 0, arr: f.arrLane ?? 0, minFt: aiRunwayFt(f) });
     const liftIdx = tp.liftoffIdx;
     const dep = makeTrack(tp.dep, (s) => (s < 0.6 ? 70 : 160 + Math.min(1, s / 30) * 90));
-    const liftoffNm = dep.cumNm[liftIdx] ?? 0;
+    const liftoffNm = dep.cumNm[dep.idx[liftIdx] ?? liftIdx] ?? 0;
     const rollNm = landingRollNm(tp.arrRwy);
     const arr = makeTrack(tp.arr, (s, len) => (s > len - rollNm ? 50 : 250 - Math.min(1, s / Math.max(1, len - rollNm)) * 110));
     let finalNm = arr.lenNm - rollNm - 8;

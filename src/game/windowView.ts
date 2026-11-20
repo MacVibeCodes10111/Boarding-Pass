@@ -89,10 +89,92 @@ export interface WindowState {
   lastT: number;
   /** The last camera placed (the readout and the wing read it). */
   last?: ReturnType<typeof windowCamera>;
+  /** The weather where it's flying (set from the airports' weather once a second). */
+  wx: WindowWeather;
+  /** How this landing goes (one of LANDINGS, picked per flight and day). */
+  style: LandingStyle;
+  /** Track over the ground (eased) and its rate of turn (deg per map second, eased). */
+  track: number;
+  turn: number;
+  /** Nose off the track into a crosswind, degrees. */
+  crab: number;
+  /** In the flare: its own height (ft) and the sink rate it started with (ft/min); then landed. */
+  flaring: boolean;
+  flareH: number;
+  flareV0: number;
+  landed: boolean;
+  /** Main wheels on (ms), nose wheel on, a bounce, and the nose angle at touchdown. */
+  touchAt: number;
+  noseAt: number;
+  bounceAt: number;
+  touchAtt: number;
+  /** Random phases for the turbulence. */
+  phase: number[];
 }
 
+/** The weather the window flies through. */
+export interface WindowWeather {
+  /** 0 calm … 1 rough. */
+  turb: number;
+  /** Wind (from, degrees) and speed, kt. */
+  windFrom: number;
+  windKts: number;
+}
+
+/**
+ * How a landing goes: when the flare starts, how firmly it touches, the nose
+ * angles, how long the nose takes to come down, how hard the thump is. Real
+ * landings: a 3° approach at about 700 ft/min, the flare from 20-50 ft, touchdown
+ * at 60-300 ft/min, the nose lowered over 3-7 s.
+ */
+export interface LandingStyle {
+  name: string;
+  flareFt: number;
+  touchFpm: number;
+  /** Nose up on the approach, and how much more in the flare, degrees. */
+  approachPitch: number;
+  flarePitch: number;
+  /** Held on the main wheels, then the nose lowered over, seconds. */
+  holdS: number;
+  lowerS: number;
+  /** How hard the wheels thump (1 = firm). */
+  thump: number;
+  /** A little skip back into the air, m (0: none). */
+  bounceM: number;
+  /** Rocking the wings on the approach, degrees. */
+  rock: number;
+}
+export const LANDINGS: LandingStyle[] = [
+  { name: 'Standard', flareFt: 30, touchFpm: 150, approachPitch: 2.8, flarePitch: 2.4, holdS: 1.2, lowerS: 3.4, thump: 0.45, bounceM: 0, rock: 0.3 },
+  { name: 'Butter', flareFt: 36, touchFpm: 70, approachPitch: 2.6, flarePitch: 3, holdS: 2, lowerS: 4, thump: 0.18, bounceM: 0, rock: 0.2 },
+  { name: 'Firm', flareFt: 22, touchFpm: 300, approachPitch: 3, flarePitch: 1.8, holdS: 0.6, lowerS: 2.8, thump: 1, bounceM: 0, rock: 0.3 },
+  { name: 'Long float', flareFt: 42, touchFpm: 60, approachPitch: 2.5, flarePitch: 3.4, holdS: 1.8, lowerS: 4.4, thump: 0.15, bounceM: 0, rock: 0.4 },
+  { name: 'Late flare', flareFt: 18, touchFpm: 240, approachPitch: 3.2, flarePitch: 2, holdS: 0.8, lowerS: 3, thump: 0.75, bounceM: 0, rock: 0.3 },
+  { name: 'Early flare', flareFt: 50, touchFpm: 120, approachPitch: 2.7, flarePitch: 2.8, holdS: 1.4, lowerS: 3.8, thump: 0.35, bounceM: 0, rock: 0.25 },
+  { name: 'Small bounce', flareFt: 25, touchFpm: 260, approachPitch: 2.9, flarePitch: 2.2, holdS: 1, lowerS: 3.2, thump: 0.7, bounceM: 0.45, rock: 0.35 },
+  { name: 'Nose high', flareFt: 32, touchFpm: 130, approachPitch: 3.4, flarePitch: 3.6, holdS: 2.2, lowerS: 4.6, thump: 0.35, bounceM: 0, rock: 0.2 },
+  { name: 'Flat', flareFt: 24, touchFpm: 200, approachPitch: 2.2, flarePitch: 1.2, holdS: 0.5, lowerS: 2.4, thump: 0.6, bounceM: 0, rock: 0.3 },
+  { name: 'Heavy and steady', flareFt: 35, touchFpm: 180, approachPitch: 2.4, flarePitch: 2, holdS: 1.5, lowerS: 4.2, thump: 0.55, bounceM: 0, rock: 0.1 },
+  { name: 'Wing rocking', flareFt: 30, touchFpm: 170, approachPitch: 2.8, flarePitch: 2.5, holdS: 1, lowerS: 3.4, thump: 0.5, bounceM: 0, rock: 1.3 },
+  { name: 'Quick nose down', flareFt: 28, touchFpm: 210, approachPitch: 2.9, flarePitch: 2.3, holdS: 0.4, lowerS: 2, thump: 0.65, bounceM: 0, rock: 0.3 },
+];
+const hashStr = (x: string) => {
+  let h = 2166136261;
+  for (let i = 0; i < x.length; i++) h = Math.imul(h ^ x.charCodeAt(i), 16777619);
+  return h >>> 0;
+};
+/** This flight's landing today. */
+export const landingFor = (flightId: string, dayKey: number) => LANDINGS[hashStr(`${flightId}:${dayKey}`) % LANDINGS.length];
+
 export function newWindowState(flightId: string, side: WindowSide, heading = 0): WindowState {
-  return { flightId, side, eyeM: 3.4, samples: [], heading, bank: 0, attitude: 0, fpm: 0, accel: 0, agl: null, parts: { flaps: 0, spoilers: 0, aileron: 0 }, wasAir: false, shakeAt: -1e9, off: { lng: 0, lat: 0, agl: 0 }, lastPlace: 0, lastT: 0 };
+  const seed = hashStr(flightId);
+  const phase = Array.from({ length: 24 }, (_, i) => ((Math.imul(seed ^ (i * 2654435761), 2246822519) >>> 0) / 4294967296) * Math.PI * 2);
+  return {
+    flightId, side, eyeM: 3.4, samples: [], heading, bank: 0, attitude: 0, fpm: 0, accel: 0, agl: null,
+    parts: { flaps: 0, spoilers: 0, aileron: 0 }, wasAir: false, shakeAt: -1e9, off: { lng: 0, lat: 0, agl: 0 }, lastPlace: 0, lastT: 0,
+    wx: { turb: 0.06, windFrom: 0, windKts: 0 }, style: landingFor(flightId, Math.floor(Date.now() / 86_400_000)),
+    track: heading, turn: 0, crab: 0, flaring: false, flareH: 0, flareV0: 700, landed: false, touchAt: -1e9, noseAt: -1e9, bounceAt: -1e9, touchAtt: 0, phase,
+  };
 }
 
 /** The wing's moving parts: 0 … 1 (aileron −1 down … 1 up). */
@@ -210,51 +292,155 @@ export function windowCamera(w: WindowState, t: number, mapRate: number) {
   lng += w.off.lng;
   lat += w.off.lat;
   rawAgl = Math.max(0, rawAgl + w.off.agl);
-  // Height eased a little: level-offs and step climbs round off instead of kinking
+  // Height: the positions are to the foot, so no easing here (the last smoothing pass rounds off level-offs)
   const prevAgl = w.agl ?? rawAgl;
-  w.agl = rawAgl < 1 ? rawAgl : prevAgl + (rawAgl - prevAgl) * (dt ? 1 - Math.exp(-dt / 450) : 1);
-  const agl = w.agl;
-  const airborne = agl > 8;
+  w.agl = rawAgl;
+  const dataAgl = rawAgl;
+  const st = w.style;
 
   // Climb rate and speed change in map time, eased
   const mapMinNow = (dtS / 60) * rate;
-  if (mapMinNow > 0) w.fpm += ((agl - prevAgl) / mapMinNow - w.fpm) * (1 - Math.exp(-dt / 1500));
+  if (mapMinNow > 0 && !w.flaring) w.fpm += ((dataAgl - prevAgl) / mapMinNow - w.fpm) * (1 - Math.exp(-dt / 1500));
+
+  // The flare, like a real one: from the flare height the sink rate bleeds off (the
+  // nearer the ground, the slower), so it floats for a few seconds and the wheels
+  // touch gently a little further down the runway (after the map's own touchdown)
+  if (!w.flaring && !w.landed && dataAgl > 0.5 && dataAgl < st.flareFt && w.fpm < -200) {
+    w.flaring = true;
+    w.flareH = dataAgl;
+    w.flareV0 = Math.min(1500, -w.fpm);
+  }
+  if (w.flaring) {
+    const sink = st.touchFpm + (w.flareV0 - st.touchFpm) * Math.max(0, w.flareH / st.flareFt); // ft/min
+    w.flareH = Math.max(0, w.flareH - (sink / 60) * dtS * rate);
+    if (dataAgl > w.flareH + 40) w.flaring = false; // (climbing away: back to the map's height)
+    else if (w.flareH <= 0) {
+      w.flaring = false;
+      w.landed = true;
+    }
+  }
+  if (w.landed && dataAgl > 30) w.landed = false; // airborne again (a new flight)
+  const agl = w.flaring ? w.flareH : w.landed ? 0 : dataAgl;
+  const airborne = agl > 0.5;
   const accelNow = (b.gsKts - a.gsKts) / ((span / 1000) * rate);
   if (dt) w.accel += (accelNow - w.accel) * (1 - Math.exp(-dt / 1200));
+  const gs = b.gsKts;
 
-  const target = b.heading ?? trackBetween(a, b) ?? w.heading;
-  const prevHeading = w.heading;
-  // Slower on the ground: taxiway corners are sharp points in the path
-  const e = 1 - Math.exp(-dt / (airborne ? 300 : 700));
-  w.heading = (w.heading + angDiff(target, w.heading) * (dt ? e : 1) + 360) % 360;
-
-  // Bank from the rate of turn (map time): a 3°/s turn is about 25°
-  const mapSecs = dtS * rate;
-  const turnRate = mapSecs > 0 ? angDiff(w.heading, prevHeading) / mapSecs : 0;
-  const bankTarget = agl > 60 ? Math.max(-25, Math.min(25, turnRate * 8.3)) * Math.min(1, agl / 400) : 0;
-
-  // Nose angle: up on the takeoff roll (rotation), well up in the climb, a little
-  // up in cruise and on the approach, a flare just before touchdown, then down
-  let attTarget: number;
-  if (!airborne) {
-    attTarget = b.gsKts > 115 && w.accel > 0.4 ? Math.min(8, ((b.gsKts - 115) / 25) * 8) : 0;
-  } else {
-    attTarget = 2.5 + Math.min(11, (Math.max(0, w.fpm) / 3000) * 9) + Math.max(-3, (Math.min(0, w.fpm) / 2500) * 3);
-    if (agl < 70 && w.fpm < 300) attTarget += (1 - agl / 70) * 3.5; // flare
+  // Track over the ground: from where it's been over the last second (smooth along
+  // the rounded turns, where the reported heading moves in whole degrees); on the
+  // ground at taxi speeds, the reported heading
+  let trackNow: number | null = null;
+  if (gs > 40 && n > 1) {
+    let k = n - 2;
+    while (k > 0 && b.t - ss[k].t < 800) k--;
+    const dM = Math.hypot((b.lng - ss[k].lng) * Math.cos(b.lat * DEG) * M_PER_DEG, (b.lat - ss[k].lat) * M_PER_DEG);
+    if (dM > 15) trackNow = trackBetween(ss[k], b);
   }
-  w.bank += (bankTarget - w.bank) * (1 - Math.exp(-dt / 1100));
-  w.attitude += (attTarget - w.attitude) * (1 - Math.exp(-dt / (airborne ? 1100 : 700)));
+  const target = trackNow ?? b.heading ?? trackBetween(a, b) ?? w.track;
+  const prevTrack = w.track;
+  const e = 1 - Math.exp(-dt / (airborne ? 600 : 700));
+  w.track = (w.track + angDiff(target, w.track) * (dt ? e : 1) + 360) % 360;
+  w.heading = w.track;
 
-  // Touchdown: a short jolt that dies away (and a smaller one at liftoff)
-  if (w.wasAir !== airborne && dt) w.shakeAt = airborne ? t - 350 : t;
+  // Bank as a real turn needs it: tan(bank) = speed × rate of turn / g (a standard-rate
+  // turn at 250 kt is about 25°), rolled in and out at a few degrees a second
+  const mapSecs = dtS * rate;
+  const turnNow = mapSecs > 0 ? angDiff(w.track, prevTrack) / mapSecs : 0;
+  if (dt) w.turn += (turnNow - w.turn) * (1 - Math.exp(-dt / 900));
+  const bankPhys = (Math.atan((gs * 0.514444 * w.turn * DEG) / 9.81) / DEG) * Math.min(1, agl / 300);
+  // Crosswind: the nose points a little into the wind, straightened just before
+  // touchdown with the into-wind wing a touch low
+  const xw = w.wx.windKts * Math.sin((w.wx.windFrom - w.track) * DEG); // + from the right
+  const crabTarget = airborne && gs > 60 ? Math.max(-12, Math.min(12, Math.atan2(xw, Math.max(gs, 100)) / DEG)) * Math.max(0, Math.min(1, (agl - 6) / 30)) : 0;
+  if (dt) w.crab += (crabTarget - w.crab) * (1 - Math.exp(-dt / (agl < 40 ? 900 : 2500)));
+  const wingLow = airborne && agl < 80 ? Math.max(-3, Math.min(3, xw * 0.12)) * Math.max(0, 1 - agl / 80) : 0;
+  const bankTarget = Math.max(-27, Math.min(27, bankPhys + wingLow));
+  const bankStep = 6 * dtS; // degrees a second, at most
+  w.bank += Math.max(-bankStep, Math.min(bankStep, (bankTarget - w.bank) * (dt ? 1 - Math.exp(-dt / 500) : 1)));
+
+  const shown = agl;
+  const flareU = w.flaring ? Math.max(0, Math.min(1, 1 - agl / st.flareFt)) : 0; // 0 above the flare … 1 at touchdown
+
+  // Touchdown and lowering the nose
+  if (w.wasAir && !airborne && dt) {
+    w.touchAt = t;
+    w.touchAtt = w.attitude;
+    w.noseAt = -1e9;
+    if (st.bounceM > 0) w.bounceAt = t;
+  }
+  if (!w.wasAir && airborne && dt) w.shakeAt = t; // liftoff
   w.wasAir = airborne;
-  const since = t - w.shakeAt;
-  let shakeP = 0, shakeZ = 0, shakeR = 0;
-  if (since >= 0 && since < 900) {
-    const k = Math.exp(-since / 220);
-    shakeP = (Math.sin(since / 17) * 1.1 + Math.sin(since / 7.3) * 0.5) * k;
-    shakeR = Math.sin(since / 23 + 1) * 0.6 * k;
-    shakeZ = (since < 60 ? -0.25 : Math.sin(since / 31) * 0.12) * k;
+  const sinceTouch = (t - w.touchAt) / 1000;
+
+  // Nose angle: rotation on the takeoff roll, well up in the climb, a little up in
+  // cruise and on the approach, more in the flare; after touchdown held, then lowered
+  let attTarget: number;
+  let attTau = airborne ? 1200 : 700;
+  if (!airborne) {
+    if (sinceTouch < st.holdS + st.lowerS + 0.5) {
+      const u = Math.max(0, Math.min(1, (sinceTouch - st.holdS) / st.lowerS));
+      attTarget = w.touchAtt * (1 - u * u * (3 - 2 * u));
+      attTau = 200;
+      if (u >= 1 && w.noseAt < w.touchAt) w.noseAt = t;
+    } else attTarget = gs > 115 && w.accel > 0.4 ? Math.min(8, ((gs - 115) / 25) * 8) : 0;
+  } else if (w.fpm > 300) {
+    attTarget = 2.5 + Math.min(12, (w.fpm / 3000) * 10);
+  } else if (w.flaring || (agl < 2500 && w.fpm < -300 && gs < 200)) {
+    attTarget = st.approachPitch + st.flarePitch * flareU * flareU * (3 - 2 * flareU);
+    if (w.flaring) attTau = 450;
+  } else {
+    attTarget = 2.5 + Math.max(-2, (Math.min(0, w.fpm) / 2500) * 2);
+  }
+  w.attitude += (attTarget - w.attitude) * (dt ? 1 - Math.exp(-dt / attTau) : 1);
+
+  // Bumps that aren't smoothed: turbulence (by the weather, most of it low down,
+  // hardly any up high), the wheels thumping on, the runway's rumble
+  const tS = t / 1000;
+  const ph = w.phase;
+  const noise = (c: number) => {
+    const o = c * 4;
+    // Mostly slow sway; only a touch of the quicker jiggle (that read as shake)
+    return (Math.sin(tS * 0.61 + ph[o]) + 0.55 * Math.sin(tS * 1.37 + ph[o + 1]) + 0.18 * Math.sin(tS * 2.6 + ph[o + 2]) + 0.05 * Math.sin(tS * 4.7 + ph[o + 3])) / 1.78;
+  };
+  const altK = !airborne ? 0 : agl < 3000 ? Math.min(1, 0.55 + agl / 600) : agl < 12_000 ? 1 - ((agl - 3000) / 9000) * 0.65 : Math.max(0.05, 0.35 - ((agl - 12_000) / 13_000) * 0.3);
+  const turb = w.wx.turb * altK;
+  let bumpPitch = turb * 0.25 * noise(0); // the aircraft's nose
+  let bumpBank = turb * 0.55 * noise(1) + (airborne && agl < 1500 ? st.rock * Math.sin(tS * 0.7 + ph[20]) * Math.min(1, agl / 200) : 0);
+  let bumpZ = turb * 0.8 * noise(2);
+  const bumpYaw = turb * 0.2 * noise(3);
+  let flex = turb * 0.9 * noise(4);
+  // Main wheels: a short sink as the gear takes the weight, a little rock, the wings flex down
+  const thump = (since: number, k: number) => {
+    if (since < 0 || since > 1.6) return;
+    const d = Math.exp(-since / 0.22);
+    bumpZ += -0.07 * k * d * Math.cos(since * 2 * Math.PI * 2.1);
+    bumpPitch += 0.18 * k * d * Math.sin(since * 2 * Math.PI * 1.7);
+    bumpBank += 0.12 * k * d * Math.sin(since * 2 * Math.PI * 1.3 + 1);
+    flex += -0.8 * k * Math.exp(-since / 0.4) * Math.cos(since * 2 * Math.PI * 1.5);
+  };
+  // A bounce: back up a little, then down again more softly
+  let bounceZ = 0;
+  const sinceBounce = (t - w.bounceAt) / 1000;
+  if (sinceBounce >= 0 && sinceBounce < 1.1) bounceZ = st.bounceM * Math.sin((Math.PI * sinceBounce) / 1.1);
+  if (!airborne) {
+    thump(sinceTouch, st.thump);
+    if (st.bounceM > 0) thump(sinceBounce - 1.1, st.thump * 0.55);
+    // Nose wheel: a smaller one, the nose settling
+    const sinceNose = (t - w.noseAt) / 1000;
+    if (sinceNose >= 0 && sinceNose < 1) {
+      const d = Math.exp(-sinceNose / 0.18);
+      bumpZ += -0.03 * st.thump * d * Math.cos(sinceNose * 2 * Math.PI * 2.4);
+      bumpPitch += -0.12 * st.thump * d * Math.cos(sinceNose * 2 * Math.PI * 2);
+    }
+    // The runway (and taxiways) rumbling under the wheels
+    const r = Math.min(1, gs / 140);
+    bumpZ += r * 0.006 * (Math.sin(tS * 46) + 0.6 * Math.sin(tS * 71 + 1));
+    bumpPitch += r * 0.018 * Math.sin(tS * 32 + 2);
+    flex += r * 0.06 * Math.sin(tS * 38);
+  } else {
+    // Liftoff: the wheels leave and the wings take the weight
+    const sinceLift = (t - w.shakeAt) / 1000;
+    if (sinceLift >= 0 && sinceLift < 2) flex += 0.35 * Math.exp(-sinceLift / 0.6) * Math.sin(sinceLift * 2 * Math.PI * 0.9);
   }
 
   const s = w.side === 'right' ? 1 : -1;
@@ -263,13 +449,13 @@ export function windowCamera(w: WindowState, t: number, mapRate: number) {
 
   // A last smoothing pass over everything the camera does: it glides after where
   // it should be (like a spring with no bounce), so small kinks in the path, late
-  // positions and wobbles in the readings don't reach the screen. The touchdown
-  // jolt is added after it, so it stays sharp.
+  // positions and wobbles in the readings don't reach the screen. The bumps are
+  // added after it, so they stay crisp.
   const sm = w.smooth;
   const wantPitch = base - s * w.bank;
-  const wantBearing = w.heading + s * 90;
+  const wantBearing = w.track + w.crab + s * 90;
   const wantRoll = s * w.attitude;
-  const wantAlt = agl * 0.3048 + w.eyeM;
+  const wantAlt = shown * 0.3048 + w.eyeM;
   if (!sm || !dt) {
     w.smooth = { lng: [lng, 0], lat: [lat, 0], alt: [wantAlt, 0], pitch: [wantPitch, 0], bearing: [wantBearing, 0], roll: [wantRoll, 0] };
   } else {
@@ -277,7 +463,7 @@ export function windowCamera(w: WindowState, t: number, mapRate: number) {
     damp(sm.lat, lat, SMOOTH_POS_S, dtS);
     // Never let it lag far on a long frame or a jump it wasn't told about
     if (Math.abs(sm.lng[0] - lng) > 0.02 || Math.abs(sm.lat[0] - lat) > 0.02) (sm.lng = [lng, 0]), (sm.lat = [lat, 0]);
-    damp(sm.alt, wantAlt, agl < 30 ? SMOOTH_POS_S * 0.6 : SMOOTH_POS_S, dtS);
+    damp(sm.alt, wantAlt, agl < 60 ? 0.12 : SMOOTH_POS_S, dtS);
     damp(sm.pitch, wantPitch, SMOOTH_ANGLE_S, dtS);
     // (the heading unwrapped, so turning through north doesn't spin round)
     damp(sm.bearing, sm.bearing[0] + angDiff(wantBearing, sm.bearing[0]), SMOOTH_ANGLE_S, dtS);
@@ -286,16 +472,16 @@ export function windowCamera(w: WindowState, t: number, mapRate: number) {
   const f2 = w.smooth!;
   lng = f2.lng[0];
   lat = f2.lat[0];
-  const pitch = Math.max(50, Math.min(100, f2.pitch[0] + shakeP));
-  const bearing = ((f2.bearing[0] % 360) + 360) % 360;
-  const roll = f2.roll[0] + shakeR;
+  const pitch = Math.max(50, Math.min(100, f2.pitch[0] - s * bumpBank));
+  const bearing = (((f2.bearing[0] + bumpYaw) % 360) + 360) % 360;
+  const roll = f2.roll[0] + s * bumpPitch;
 
   // The wing: flaps out low and slow, spoilers up on the landing roll, ailerons in roll
-  const slow = b.gsKts < 230;
+  const slow = gs < 230;
   const want: WingParts = {
-    flaps: airborne ? (agl < 6000 && slow ? Math.min(1, 0.35 + (1 - agl / 6000) * 0.8) : 0) : b.gsKts > 30 ? 0.45 : 0,
-    spoilers: !airborne && b.gsKts > 30 && w.accel < -0.3 ? 1 : 0,
-    aileron: Math.max(-1, Math.min(1, (s * (bankTarget - w.bank)) / 8)),
+    flaps: airborne ? (agl < 6000 && slow ? Math.min(1, 0.35 + (1 - agl / 6000) * 0.8) : 0) : gs > 30 ? 0.45 : 0,
+    spoilers: !airborne && gs > 30 && (w.accel < -0.3 || sinceTouch < 25) && sinceTouch > 0.4 ? 1 : 0,
+    aileron: Math.max(-1, Math.min(1, (s * (bankTarget - w.bank + bumpBank * 2)) / 8)),
   };
   // Flaps run out slowly, spoilers pop up quickly
   const ease = (k: keyof WingParts, tau: number) => {
@@ -305,7 +491,7 @@ export function windowCamera(w: WindowState, t: number, mapRate: number) {
   ease('spoilers', 350);
   ease('aileron', 700);
   const wing: WingParts = { ...w.parts };
-  return { lng, lat, altM: Math.max(0.5, Math.max(f2.alt[0], w.eyeM * 0.8) + shakeZ), bearing, pitch, roll, base, aglFt: agl, gsKts: b.gsKts, wing, fpm: w.fpm };
+  return { lng, lat, altM: Math.max(0.5, Math.max(f2.alt[0], w.eyeM * 0.8) + bumpZ + bounceZ), bearing, pitch, roll, base, aglFt: shown, gsKts: gs, wing, fpm: w.fpm, flex: Math.max(-1, Math.min(1, flex)), style: st.name };
 }
 
 /** Moves the map's camera to the window (at most ~30 times a second). */

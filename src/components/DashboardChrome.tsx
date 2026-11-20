@@ -753,6 +753,8 @@ export type FriendsCap = '100' | '300' | '1000' | 'all';
 export function LayersMenu(props: {
   mapStyle: MapStyleChoice;
   onMapStyle: (v: MapStyleChoice) => void;
+  mapTime: 'day' | 'night' | 'auto';
+  onMapTime: (v: 'day' | 'night' | 'auto') => void;
   globe: boolean;
   onGlobe: (v: boolean) => void;
   threeD: boolean;
@@ -892,6 +894,20 @@ export function LayersMenu(props: {
               { value: 'satellite', label: 'Satellite' },
             ]}
           />
+          {/* Night: city lights, street lights and airport lights (Auto: by the sun where you're looking) */}
+          <div style={{ marginTop: 6 }}>
+            <Segmented<'day' | 'night' | 'auto'>
+              size="sm"
+              block
+              value={props.mapTime}
+              onChange={props.onMapTime}
+              options={[
+                { value: 'day', label: 'Day' },
+                { value: 'night', label: 'Night' },
+                { value: 'auto', label: 'By the sun' },
+              ]}
+            />
+          </div>
           <div style={{ marginTop: 6 }}>
             {props.globeAvailable && <Switch on={props.globe} onChange={props.onGlobe} label="Globe" />}
             <Switch on={props.threeD} onChange={props.onThreeD} label="3D" />

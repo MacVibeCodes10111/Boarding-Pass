@@ -57,6 +57,9 @@ export function CreditsModal({ onClose }: { onClose: () => void }) {
             EOxCloudless {link('https://cloudless.eox.at')} by EOX IT Services GmbH (contains modified Copernicus Sentinel data 2024), under CC BY-NC-SA 4.0. Used for
             non-commercial purposes only. Place names and borders on it: © CARTO, © OpenStreetMap contributors.
           </Item>
+          <Item name="Night lights:">
+            The Earth at night (Black Marble) from {link('https://earthobservatory.nasa.gov', 'NASA Earth Observatory')}, served by NASA GIBS. NASA imagery is free to use.
+          </Item>
           <Item name="Map engine:">{link('https://maplibre.org', 'MapLibre GL JS')}, © MapLibre contributors, under the BSD 3-Clause licence.</Item>
         </Section>
 

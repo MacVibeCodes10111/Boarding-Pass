@@ -64,7 +64,7 @@ jobs:
           <IfModule mod_headers.c>
             # Security (v2.50): no framing by other sites, no type guessing
             # Only the game's own scripts run, and it only talks to its map tiles, Supabase and the logo Worker (the same list as the apps, tauri.conf.json)
-            Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.cartocdn.com https://basemaps.cartocdn.com https://tiles.maps.eox.at; font-src 'self' data:; connect-src 'self' https://*.cartocdn.com https://basemaps.cartocdn.com https://tiles.maps.eox.at https://dlgkdknfxhmtkhpegufq.supabase.co wss://dlgkdknfxhmtkhpegufq.supabase.co https://bp-logos.boardingpass-game.workers.dev; worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+            Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.cartocdn.com https://basemaps.cartocdn.com https://tiles.maps.eox.at https://gibs.earthdata.nasa.gov; font-src 'self' data:; connect-src 'self' https://*.cartocdn.com https://basemaps.cartocdn.com https://tiles.maps.eox.at https://gibs.earthdata.nasa.gov https://dlgkdknfxhmtkhpegufq.supabase.co wss://dlgkdknfxhmtkhpegufq.supabase.co https://bp-logos.boardingpass-game.workers.dev; worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
             Header always set X-Frame-Options "DENY"
             Header always set X-Content-Type-Options "nosniff"
             Header always set Referrer-Policy "strict-origin-when-cross-origin"

@@ -14,6 +14,10 @@
 import { AIRCRAFT_GROUPS, MESH_STRIDE, aircraftMesh } from './aircraftMeshes';
 import type { RadarIconGroup } from './types';
 
+/** The layer's sets of aircraft: yours, other airlines' in the air, and everyone's on the ground. */
+export type AcSet = 'player' | 'ai' | 'ground';
+const AC_SETS: readonly AcSet[] = ['ground', 'ai', 'player'];
+
 export interface Aircraft3d {
   lng: number;
   lat: number;
@@ -113,7 +117,7 @@ export interface AircraftLayerHandle {
   /** False until added to a map with WebGL2 (or when that is missing). */
   supported: () => boolean;
   /** Replaces one set of aircraft (your fleet or other airlines') and redraws. */
-  set: (which: 'player' | 'ai', aircraft: Map<RadarIconGroup, Aircraft3d[]>) => void;
+  set: (which: AcSet, aircraft: Map<RadarIconGroup, Aircraft3d[]>) => void;
   clear: () => void;
 }
 
@@ -130,8 +134,8 @@ export function createAircraftLayer(id = 'aircraft-3d', opts: { near?: boolean }
   let ok = false;
   const programs = new Map<string, { prog: WebGLProgram; u: Record<string, WebGLUniformLocation | null> }>();
   const groups = new Map<RadarIconGroup, GroupGl>();
-  const sets: Record<'player' | 'ai', SetGl> = { player: { vao: new Map(), inst: new Map() }, ai: { vao: new Map(), inst: new Map() } };
-  const pending: Partial<Record<'player' | 'ai', Map<RadarIconGroup, Aircraft3d[]>>> = {};
+  const sets: Record<AcSet, SetGl> = { player: { vao: new Map(), inst: new Map() }, ai: { vao: new Map(), inst: new Map() }, ground: { vao: new Map(), inst: new Map() } };
+  const pending: Partial<Record<AcSet, Map<RadarIconGroup, Aircraft3d[]>>> = {};
 
   const compile = (gl: WebGL2RenderingContext, type: number, src: string) => {
     const sh = gl.createShader(type)!;
@@ -161,7 +165,7 @@ export function createAircraftLayer(id = 'aircraft-3d', opts: { near?: boolean }
     return p;
   };
 
-  const vaoFor = (gl: WebGL2RenderingContext, which: 'player' | 'ai', group: RadarIconGroup) => {
+  const vaoFor = (gl: WebGL2RenderingContext, which: AcSet, group: RadarIconGroup) => {
     const s = sets[which];
     let vao = s.vao.get(group);
     const inst = s.inst.get(group);
@@ -188,7 +192,7 @@ export function createAircraftLayer(id = 'aircraft-3d', opts: { near?: boolean }
     return vao;
   };
 
-  const upload = (which: 'player' | 'ai', aircraft: Map<RadarIconGroup, Aircraft3d[]>) => {
+  const upload = (which: AcSet, aircraft: Map<RadarIconGroup, Aircraft3d[]>) => {
     const gl = gl2!;
     const s = sets[which];
     if (opts.near) {
@@ -234,8 +238,8 @@ export function createAircraftLayer(id = 'aircraft-3d', opts: { near?: boolean }
   };
 
   const counts = () => {
-    const n = (w: 'player' | 'ai') => [...sets[w].inst.values()].reduce((a, i) => a + i.n, 0);
-    return { player: n('player'), ai: n('ai'), supported: ok };
+    const n = (w: AcSet) => [...sets[w].inst.values()].reduce((a, i) => a + i.n, 0);
+    return { player: n('player'), ai: n('ai'), ground: n('ground'), supported: ok };
   };
   const layer = {
     id,
@@ -258,7 +262,7 @@ export function createAircraftLayer(id = 'aircraft-3d', opts: { near?: boolean }
         groups.set(g, { mesh: buf, count: data.length / MESH_STRIDE });
       }
       gl2.bindBuffer(gl2.ARRAY_BUFFER, null);
-      for (const which of ['player', 'ai'] as const) {
+      for (const which of AC_SETS) {
         const p = pending[which];
         if (p) upload(which, p);
         delete pending[which];
@@ -328,7 +332,7 @@ export function createAircraftLayer(id = 'aircraft-3d', opts: { near?: boolean }
       gl.depthMask(true);
       gl.disable(gl.CULL_FACE);
       gl.disable(gl.BLEND);
-      for (const which of ['ai', 'player'] as const)
+      for (const which of AC_SETS)
         for (const [g, inst] of sets[which].inst) {
           if (!inst.n) continue;
           const vao = vaoFor(gl, which, g);
@@ -353,7 +357,7 @@ export function createAircraftLayer(id = 'aircraft-3d', opts: { near?: boolean }
       map?.triggerRepaint?.();
     },
     clear() {
-      for (const which of ['player', 'ai'] as const) {
+      for (const which of AC_SETS) {
         delete pending[which];
         for (const i of sets[which].inst.values()) i.n = 0;
       }

@@ -9,6 +9,7 @@ Boarding Pass is a game. It is not affiliated with, endorsed or sponsored by any
 - **CARTO basemaps** (Dark Matter and Positron styles, vector tiles): © CARTO, https://carto.com/attributions. Used under the CARTO basemap terms (free for non-commercial use, with attribution): https://carto.com/legal/basemap-terms/
 - **Map data:** © OpenStreetMap contributors, under the Open Database Licence (ODbL), https://www.openstreetmap.org/copyright
 - **Satellite imagery:** EOxCloudless https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2024), under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International licence (CC BY-NC-SA 4.0), https://cloudless.eox.at/license-non-commercial. Used for non-commercial purposes only.
+- **Night lights:** VIIRS Black Marble (the Earth at night) from NASA Earth Observatory, served by NASA's Global Imagery Browse Services (GIBS), https://earthdata.nasa.gov/gibs. NASA imagery is not copyrighted and is free to use; credit: NASA Earth Observatory.
 
 The map credits are shown on the map itself (the (i) in the corner).
 

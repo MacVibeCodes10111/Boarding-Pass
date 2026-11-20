@@ -23,6 +23,52 @@ export interface WindowHud {
 
 const SHOW_KEY = 'bp_window_show_v1';
 
+/** The flight's route for the small map: where it's been, where it's going, where it is. */
+export interface WindowRoute {
+  flown: [number, number][];
+  ahead: [number, number][];
+  at: [number, number];
+  heading: number;
+  from: string;
+  to: string;
+}
+
+/** A small map of the route in the corner: drawn by hand (no second map to run). */
+function RouteMap({ route, phone }: { route: WindowRoute; phone: boolean }) {
+  const w = phone ? 150 : 210, h = phone ? 104 : 140, pad = 14;
+  const all = [...route.flown, ...route.ahead, route.at];
+  // Unwrapped across the date line, from the first point
+  const ref0 = all[0]?.[0] ?? 0;
+  const un = (q: [number, number]): [number, number] => [ref0 + ((((q[0] - ref0) % 360) + 540) % 360) - 180, q[1]];
+  const pts = all.map(un);
+  const lat0 = pts.reduce((a, q) => a + q[1], 0) / Math.max(1, pts.length);
+  const kx = Math.cos(lat0 * DEG);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const q of pts) (x0 = Math.min(x0, q[0] * kx)), (x1 = Math.max(x1, q[0] * kx)), (y0 = Math.min(y0, q[1])), (y1 = Math.max(y1, q[1]));
+  const sc = Math.min((w - pad * 2) / Math.max(1e-6, x1 - x0), (h - pad * 2) / Math.max(1e-6, y1 - y0));
+  const ox = (w - (x1 - x0) * sc) / 2, oy = (h - (y1 - y0) * sc) / 2;
+  const P = (q: [number, number]): V2 => { const u = un(q); return [ox + (u[0] * kx - x0) * sc, h - (oy + (u[1] - y0) * sc)]; };
+  const line = (qs: [number, number][]) => qs.map((q, i) => `${i ? 'L' : 'M'}${P(q)[0].toFixed(1)},${P(q)[1].toFixed(1)}`).join('');
+  const me = P(route.at);
+  const first = route.flown[0] ?? route.at, last = route.ahead[route.ahead.length - 1] ?? route.at;
+  const a = P(first), b = P(last);
+  return (
+    <div style={{ position: 'absolute', right: 12, top: 'calc(var(--bp-top-h, 60px) + 12px)', width: w, height: h, borderRadius: 14, background: C.panel, border: `1px solid ${C.line}`, boxShadow: '0 8px 24px rgba(0,0,0,.25)', overflow: 'hidden' }} aria-label={`Route ${route.from} to ${route.to}`}>
+      <svg width={w} height={h} style={{ display: 'block' }}>
+        <path d={line(route.flown.length ? [...route.flown, route.at] : [route.at])} fill="none" stroke={C.accent} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d={line([route.at, ...route.ahead])} fill="none" stroke={C.muted} strokeWidth="1.8" strokeDasharray="4 4" strokeLinecap="round" />
+        <circle cx={a[0]} cy={a[1]} r="3" fill={C.text} />
+        <circle cx={b[0]} cy={b[1]} r="3" fill={C.text} />
+        <text x={a[0]} y={a[1] - 6} textAnchor="middle" fontSize="10" fontWeight="700" fill={C.textDim} style={{ fontFamily: DISPLAY }}>{route.from}</text>
+        <text x={b[0]} y={b[1] - 6} textAnchor="middle" fontSize="10" fontWeight="700" fill={C.textDim} style={{ fontFamily: DISPLAY }}>{route.to}</text>
+        <g transform={`translate(${me[0].toFixed(1)} ${me[1].toFixed(1)}) rotate(${route.heading.toFixed(0)})`}>
+          <path d="M0,-7 L5,5 L0,2.5 L-5,5 Z" fill={C.accent} stroke={C.panel} strokeWidth="1.2" strokeLinejoin="round" />
+        </g>
+      </svg>
+    </div>
+  );
+}
+
 /** The map camera's vertical field of view in the window view (LiveMap sets the same). */
 export const WINDOW_FOV_DEG = 50;
 
@@ -63,20 +109,27 @@ export function WindowView(props: {
   tip: WingTip;
   /** The camera's pitch from straight down (90 = level), without the bank. */
   basePitch: number;
+  /** How far the wing flexes right now, −1 (tip down) … 1 (tip up): read every screen frame. */
+  getFlex?: () => number;
+  /** The part of the screen the window shows, centred (null: all of it), for the map to draw only that. */
+  onBox?: (box: { w: number; h: number; vh: number } | null) => void;
+  /** The flight's route, for the small map. */
+  route?: WindowRoute;
   onSide: (s: WindowSide) => void;
   onExit: () => void;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   // What's drawn over the world: the window frame and the wing, each can be switched off (remembered on this device)
-  const [show, setShow] = useState<{ wing: boolean; frame: boolean }>(() => {
+  const [show, setShow] = useState<{ wing: boolean; frame: boolean; route: boolean }>(() => {
     try {
       const v = JSON.parse(localStorage.getItem(SHOW_KEY) || '{}');
-      return { wing: v.wing !== false, frame: v.frame !== false };
+      return { wing: v.wing !== false, frame: v.frame !== false, route: v.route === true };
     } catch {
-      return { wing: true, frame: true };
+      return { wing: true, frame: true, route: false };
     }
   });
-  const toggle = (k: 'wing' | 'frame') =>
+  const showRoute = show.route;
+  const toggle = (k: 'wing' | 'frame' | 'route') =>
     setShow((v) => {
       const n = { ...v, [k]: !v[k] };
       try {
@@ -86,6 +139,28 @@ export function WindowView(props: {
       }
       return n;
     });
+  // The wing flexes with the bumps: turned a hair about its root every screen frame
+  const wingRef = useRef<HTMLDivElement | null>(null);
+  const flexAt = useRef({ root: [0, 0], dir: 1, maxDeg: 0.8 });
+  const getFlex = props.getFlex;
+  useEffect(() => {
+    if (!getFlex) return;
+    let raf = 0;
+    let shown = 0;
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      const g = wingRef.current;
+      if (!g) return;
+      const f = flexAt.current;
+      const a = Math.round(getFlex() * f.maxDeg * f.dir * 1000) / 1000;
+      if (a === shown) return;
+      shown = a;
+      g.style.transformOrigin = `${f.root[0].toFixed(1)}px ${f.root[1].toFixed(1)}px`;
+      g.style.transform = `rotate(${a}deg)`;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [getFlex]);
   const topProbe = useRef<HTMLDivElement | null>(null);
   const botProbe = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ w: 0, h: 0, top: 0, bottom: 0 });
@@ -285,7 +360,12 @@ export function WindowView(props: {
 
   const navAt = pt(raked ? rakeTip : up(tipLE, 0, c * 0.1, 0.004)) ?? [x + W * 0.8, y + H * 0.6];
   const navColor = right ? '#3ef08a' : '#ff3b3b';
-  const flex = (0.0025 + props.hud.bump * 0.008) * H; // px the wing flexes up and down
+  {
+    // Where the wing turns from as it flexes, and which way is tip up
+    const root = pt(at(0, 0.5)) ?? [x, y + H];
+    const tipAt = navAt;
+    flexAt.current = { root, dir: tipAt[0] > root[0] ? -1 : 1, maxDeg: 0.8 };
+  }
   const surface = high ? mixHex(l.wingDark, l.wing, 0.35) : l.wing; // the underside of a high wing is in shadow
   const g1 = pt(at(0.5, 0)) ?? [0, 0], g2 = pt(at(0.5, 1)) ?? [0, 1];
 
@@ -294,121 +374,153 @@ export function WindowView(props: {
       {e.pylon && <path d={e.pylon} fill={mixHex(l.wing, l.wingDark, 0.6)} />}
       <path d={e.body} fill="url(#bp-win-nacelle)" stroke={l.wingDark} strokeOpacity="0.4" strokeWidth="1" />
       <path d={e.inlet} fill={mixHex(l.wingDark, '#000000', 0.55)} opacity="0.85" />
-      {e.disc && <path className="bp-win-prop" d={e.disc} fill="#1b1f26" stroke="#1b1f26" strokeOpacity="0.35" strokeWidth="2" filter="url(#bp-win-blur)" />}
     </g>
   ));
+  // Propeller blur: its own layer, flickering by itself (the wing isn't painted again for it)
+  const discs = engines.filter((e) => e.disc);
+  const propSvg = discs.length ? (
+    <svg className="bp-win-prop" width={vw} height={vh} style={{ position: 'absolute', inset: 0, display: 'block', willChange: 'opacity' }} aria-hidden="true">
+      <defs>
+        <filter id="bp-win-blur" x="-10%" y="-10%" width="120%" height="120%">
+          <feGaussianBlur stdDeviation="3" />
+        </filter>
+      </defs>
+      {discs.map((e, i) => (
+        <path key={i} d={e.disc} fill="#1b1f26" stroke="#1b1f26" strokeOpacity="0.35" strokeWidth="2" filter="url(#bp-win-blur)" />
+      ))}
+    </svg>
+  ) : null;
+
+  // Tell the map how much of the screen the window shows (it draws only that much)
+  const boxW = show.frame ? Math.min(vw, Math.ceil(W + 6)) : vw;
+  const boxH = show.frame ? Math.min(vh, Math.ceil(2 * Math.max(vh / 2 - y, y + H - vh / 2) + 6)) : vh;
+  const onBox = props.onBox;
+  useEffect(() => {
+    if (vw > 0) onBox?.(show.frame ? { w: boxW, h: boxH, vh } : null);
+  }, [onBox, boxW, boxH, vh, vw, show.frame]);
+  useEffect(() => () => onBox?.(null), [onBox]);
 
   return (
     <div
       ref={ref}
       className="bp-window-view"
-      style={{ position: 'absolute', inset: 0, zIndex: 6, touchAction: 'none', cursor: 'default', userSelect: 'none', ['--bp-flex' as any]: `${flex.toFixed(1)}px` }}
+      style={{ position: 'absolute', inset: 0, zIndex: 6, touchAction: 'none', cursor: 'default', userSelect: 'none', }}
     >
       {/* the bars' heights, to fit the window between them */}
       <div ref={topProbe} style={{ position: 'absolute', visibility: 'hidden', height: 'var(--bp-top-h, 60px)', width: 1 }} />
       <div ref={botProbe} style={{ position: 'absolute', visibility: 'hidden', height: 'var(--bp-bottom-h, 80px)', width: 1 }} />
       {vw > 0 && (
-        <svg width={vw} height={vh} style={{ position: 'absolute', inset: 0, display: 'block' }} aria-hidden="true">
-          <defs>
-            <clipPath id="bp-win-hole">
-              <path d={hole} />
-            </clipPath>
-            <linearGradient id="bp-win-wall" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0" stopColor={l.wallShade} />
-              <stop offset="0.5" stopColor={l.wall} />
-              <stop offset="1" stopColor={l.wallShade} />
-            </linearGradient>
-            <radialGradient id="bp-win-glow" cx="0.5" cy="0.45" r="0.6">
-              <stop offset="0.55" stopColor="#000" stopOpacity="0" />
-              <stop offset="1" stopColor="#000" stopOpacity={0.28 + l.night * 0.3} />
-            </radialGradient>
-            <linearGradient id="bp-win-bevel" x1="0" y1="0" x2="0.3" y2="1">
-              <stop offset="0" stopColor={l.wall} />
-              <stop offset="0.55" stopColor={l.wallShade} />
-              <stop offset="1" stopColor={l.wall} />
-            </linearGradient>
-            {/* lit from the sky: lighter at the leading edge, darker towards the flaps */}
-            <linearGradient id="bp-win-wing" gradientUnits="userSpaceOnUse" x1={g1[0]} y1={g1[1]} x2={g2[0]} y2={g2[1]}>
-              <stop offset="0" stopColor={surface} />
-              <stop offset="0.6" stopColor={mixHex(surface, l.wingDark, 0.3)} />
-              <stop offset="1" stopColor={mixHex(surface, l.wingDark, 0.6)} />
-            </linearGradient>
-            <linearGradient id="bp-win-winglet" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor={l.wingDark} />
-              <stop offset="1" stopColor={mixHex(l.wing, l.wingDark, 0.5)} />
-            </linearGradient>
-            <linearGradient id="bp-win-nacelle" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor={mixHex(l.wing, '#ffffff', 0.15)} />
-              <stop offset="0.55" stopColor={l.wing} />
-              <stop offset="1" stopColor={l.wingDark} />
-            </linearGradient>
-            <linearGradient id="bp-win-glass" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stopColor="#fff" stopOpacity="0.1" />
-              <stop offset="0.4" stopColor="#fff" stopOpacity="0" />
-              <stop offset="1" stopColor="#9fc4ff" stopOpacity="0.06" />
-            </linearGradient>
-            <linearGradient id="bp-win-shade" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor={l.wallShade} />
-              <stop offset="1" stopColor={l.wall} />
-            </linearGradient>
-            <filter id="bp-win-soft" x="-10%" y="-10%" width="120%" height="120%">
-              <feGaussianBlur stdDeviation={Math.max(2, W * 0.012)} />
-            </filter>
-            <filter id="bp-win-blur" x="-10%" y="-10%" width="120%" height="120%">
-              <feGaussianBlur stdDeviation="3" />
-            </filter>
-            <radialGradient id="bp-win-nav">
-              <stop offset="0" stopColor="#fff" />
-              <stop offset="0.25" stopColor={navColor} />
-              <stop offset="1" stopColor={navColor} stopOpacity="0" />
-            </radialGradient>
-          </defs>
-
-          {/* outside: the wing */}
-          <g clipPath={show.frame ? 'url(#bp-win-hole)' : undefined}>
-            {/* the world gets darker with the sky (the map itself is drawn the same day and night) */}
-            {l.night > 0.02 && <rect x={0} y={0} width={vw} height={vh} fill="#0a1330" opacity={l.night * 0.74} style={{ mixBlendMode: 'multiply' }} />}
-            {show.wing && <g className="bp-win-wing">
-              {/* under a low wing: the engines show ahead of it; under a high wing they hang in front of it */}
-              {!high && engineEls}
-              {/* the wing without its flaps and aileron; they hang off its back edge, moving in 3D */}
-              <path d={wingTop} fill="url(#bp-win-wing)" />
-              {flapPanels.map((d, i) => (
-                <path key={i} d={d} fill={mixHex(surface, l.wingDark, 0.2 + fl * 0.25)} stroke={l.wingDark} strokeOpacity="0.55" strokeWidth="1" strokeLinejoin="round" />
-              ))}
-              {fl < 0.03 && <path d={flapLines} fill="none" stroke={l.wingDark} strokeOpacity="0.5" strokeWidth="1" />}
-              <path d={aileron} fill={mixHex(surface, l.wingDark, 0.2)} stroke={l.wingDark} strokeOpacity="0.55" strokeWidth="1" strokeLinejoin="round" />
-              {Math.abs(props.wing.aileron) < 0.05 && <path d={aileronLines} fill="none" stroke={l.wingDark} strokeOpacity="0.4" strokeWidth="1" />}
-              {spoilerLines && <path d={spoilerLines} fill="none" stroke={l.wingDark} strokeOpacity="0.45" strokeWidth="1" />}
-              {spoilersUp && <path d={spoilersUp} fill={mixHex(surface, '#ffffff', 0.2)} stroke="#0b0e12" strokeOpacity="0.55" strokeWidth="1.5" strokeLinejoin="round" />}
-              {slats && <path d={slats} fill={l.wingDark} fillOpacity="0.25" stroke={l.wingDark} strokeOpacity="0.4" strokeWidth="0.8" />}
-              {tipDown && <path d={tipDown} fill="url(#bp-win-winglet)" />}
-              {tipUp && <path d={tipUp} fill="url(#bp-win-winglet)" />}
-              {high && engineEls}
-              <circle cx={navAt[0]} cy={navAt[1]} r={W * (0.035 + l.night * 0.04)} fill="url(#bp-win-nav)" opacity={0.55 + l.night * 0.45} />
-              <circle className="bp-win-strobe" cx={navAt[0]} cy={navAt[1]} r={W * 0.12} fill="url(#bp-win-nav)" style={{ mixBlendMode: 'screen' }} />
-            </g>}
-            {/* a little light on the glass, and the blind pulled down a bit */}
-            {show.frame && (
-              <>
+        <>
+          {/* Drawn in layers the screen can move without painting again: a little night
+              shade over the world (the map itself goes dark, with its lights); the wing (turned as a whole as it flexes); its propeller
+              blur and strobe (they flicker on their own); the cabin wall (still) */}
+          {l.night > 0.02 && <div style={{ position: 'absolute', inset: 0, background: '#0a1330', opacity: l.night * 0.35, mixBlendMode: 'multiply' }} />}
+          {show.wing && (
+            <div ref={wingRef} style={{ position: 'absolute', inset: 0, transformOrigin: `${flexAt.current.root[0]}px ${flexAt.current.root[1]}px`, willChange: 'transform' }}>
+              {!high && propSvg}
+              <svg width={vw} height={vh} style={{ position: 'absolute', inset: 0, display: 'block' }} aria-hidden="true">
+                <defs>
+                  {/* lit from the sky: lighter at the leading edge, darker towards the flaps */}
+                  <linearGradient id="bp-win-wing" gradientUnits="userSpaceOnUse" x1={g1[0]} y1={g1[1]} x2={g2[0]} y2={g2[1]}>
+                    <stop offset="0" stopColor={surface} />
+                    <stop offset="0.6" stopColor={mixHex(surface, l.wingDark, 0.3)} />
+                    <stop offset="1" stopColor={mixHex(surface, l.wingDark, 0.6)} />
+                  </linearGradient>
+                  <linearGradient id="bp-win-winglet" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stopColor={l.wingDark} />
+                    <stop offset="1" stopColor={mixHex(l.wing, l.wingDark, 0.5)} />
+                  </linearGradient>
+                  <linearGradient id="bp-win-nacelle" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stopColor={mixHex(l.wing, '#ffffff', 0.15)} />
+                    <stop offset="0.55" stopColor={l.wing} />
+                    <stop offset="1" stopColor={l.wingDark} />
+                  </linearGradient>
+                  <radialGradient id="bp-win-nav">
+                    <stop offset="0" stopColor="#fff" />
+                    <stop offset="0.25" stopColor={navColor} />
+                    <stop offset="1" stopColor={navColor} stopOpacity="0" />
+                  </radialGradient>
+                </defs>
+                {/* under a low wing: the engines show ahead of it; under a high wing they hang in front of it */}
+                {!high && engineEls}
+                {/* the wing without its flaps and aileron; they hang off its back edge, moving in 3D */}
+                <path d={wingTop} fill="url(#bp-win-wing)" />
+                {flapPanels.map((d, i) => (
+                  <path key={i} d={d} fill={mixHex(surface, l.wingDark, 0.2 + fl * 0.25)} stroke={l.wingDark} strokeOpacity="0.55" strokeWidth="1" strokeLinejoin="round" />
+                ))}
+                {fl < 0.03 && <path d={flapLines} fill="none" stroke={l.wingDark} strokeOpacity="0.5" strokeWidth="1" />}
+                <path d={aileron} fill={mixHex(surface, l.wingDark, 0.2)} stroke={l.wingDark} strokeOpacity="0.55" strokeWidth="1" strokeLinejoin="round" />
+                {Math.abs(props.wing.aileron) < 0.05 && <path d={aileronLines} fill="none" stroke={l.wingDark} strokeOpacity="0.4" strokeWidth="1" />}
+                {spoilerLines && <path d={spoilerLines} fill="none" stroke={l.wingDark} strokeOpacity="0.45" strokeWidth="1" />}
+                {spoilersUp && <path d={spoilersUp} fill={mixHex(surface, '#ffffff', 0.2)} stroke="#0b0e12" strokeOpacity="0.55" strokeWidth="1.5" strokeLinejoin="round" />}
+                {slats && <path d={slats} fill={l.wingDark} fillOpacity="0.25" stroke={l.wingDark} strokeOpacity="0.4" strokeWidth="0.8" />}
+                {tipDown && <path d={tipDown} fill="url(#bp-win-winglet)" />}
+                {tipUp && <path d={tipUp} fill="url(#bp-win-winglet)" />}
+                {high && engineEls}
+                <circle cx={navAt[0]} cy={navAt[1]} r={W * (0.035 + l.night * 0.04)} fill="url(#bp-win-nav)" opacity={0.55 + l.night * 0.45} />
+              </svg>
+              {high && propSvg}
+              <svg className="bp-win-strobe" width={vw} height={vh} style={{ position: 'absolute', inset: 0, display: 'block', mixBlendMode: 'screen', willChange: 'opacity' }} aria-hidden="true">
+                <defs>
+                  <radialGradient id="bp-win-strobe-g">
+                    <stop offset="0" stopColor="#fff" />
+                    <stop offset="0.25" stopColor={navColor} />
+                    <stop offset="1" stopColor={navColor} stopOpacity="0" />
+                  </radialGradient>
+                </defs>
+                <circle cx={navAt[0]} cy={navAt[1]} r={W * 0.12} fill="url(#bp-win-strobe-g)" />
+              </svg>
+            </div>
+          )}
+          {show.frame && (
+            <svg width={vw} height={vh} style={{ position: 'absolute', inset: 0, display: 'block' }} aria-hidden="true">
+              <defs>
+                <clipPath id="bp-win-hole">
+                  <path d={hole} />
+                </clipPath>
+                <linearGradient id="bp-win-wall" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0" stopColor={l.wallShade} />
+                  <stop offset="0.5" stopColor={l.wall} />
+                  <stop offset="1" stopColor={l.wallShade} />
+                </linearGradient>
+                <radialGradient id="bp-win-glow" cx="0.5" cy="0.45" r="0.6">
+                  <stop offset="0.55" stopColor="#000" stopOpacity="0" />
+                  <stop offset="1" stopColor="#000" stopOpacity={0.28 + l.night * 0.3} />
+                </radialGradient>
+                <linearGradient id="bp-win-bevel" x1="0" y1="0" x2="0.3" y2="1">
+                  <stop offset="0" stopColor={l.wall} />
+                  <stop offset="0.55" stopColor={l.wallShade} />
+                  <stop offset="1" stopColor={l.wall} />
+                </linearGradient>
+                <linearGradient id="bp-win-glass" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stopColor="#fff" stopOpacity="0.1" />
+                  <stop offset="0.4" stopColor="#fff" stopOpacity="0" />
+                  <stop offset="1" stopColor="#9fc4ff" stopOpacity="0.06" />
+                </linearGradient>
+                <linearGradient id="bp-win-shade" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stopColor={l.wallShade} />
+                  <stop offset="1" stopColor={l.wall} />
+                </linearGradient>
+                <filter id="bp-win-soft" x="-10%" y="-10%" width="120%" height="120%">
+                  <feGaussianBlur stdDeviation={Math.max(2, W * 0.012)} />
+                </filter>
+              </defs>
+              {/* a little light on the glass, and the blind pulled down a bit */}
+              <g clipPath="url(#bp-win-hole)">
                 <rect x={x} y={y} width={W} height={H} fill="url(#bp-win-glass)" />
                 <rect x={x} y={y - 1} width={W} height={H * 0.13} fill="url(#bp-win-shade)" />
                 <rect x={x + W * 0.38} y={y + H * 0.105} width={W * 0.24} height={H * 0.018} rx={H * 0.009} fill={l.wallShade} />
-              </>
-            )}
-          </g>
-
-          {/* the wall, its rounded recess, and the shadow inside the frame */}
-          {show.frame && (
-            <>
+              </g>
+              {/* the wall, its rounded recess, and the shadow inside the frame */}
               <path d={`${page} ${outer}`} fillRule="evenodd" fill="url(#bp-win-wall)" />
               <path d={`${outer} ${hole}`} fillRule="evenodd" fill="url(#bp-win-bevel)" />
               <path d={hole} fill="none" stroke="#000" strokeOpacity={0.35} strokeWidth={W * 0.03} filter="url(#bp-win-soft)" clipPath="url(#bp-win-hole)" />
               <path d={hole} fill="none" stroke={l.wallShade} strokeWidth="2" />
               <path d={`${page} ${outer}`} fillRule="evenodd" fill="url(#bp-win-glow)" />
-            </>
+            </svg>
           )}
-        </svg>
+          {showRoute && props.route && <RouteMap route={props.route} phone={phone} />}
+        </>
       )}
 
       <div
@@ -436,16 +548,16 @@ export function WindowView(props: {
           {props.hud.altText} · {Math.round(props.hud.gsKts)} kt
         </span>
         <span style={{ display: 'inline-flex', gap: 2, background: C.raised, borderRadius: 999, padding: 2 }}>
-          {(['wing', 'frame'] as const).map((k) => (
+          {(['wing', 'frame', 'route'] as const).map((k) => (
             <button
               key={k}
               type="button"
               aria-pressed={show[k]}
-              title={k === 'wing' ? 'Show the wing' : 'Show the window frame'}
+              title={k === 'wing' ? 'Show the wing' : k === 'frame' ? 'Show the window frame' : 'Show a small map of the route'}
               onClick={() => toggle(k)}
               style={{ padding: '5px 10px', border: 0, borderRadius: 999, background: show[k] ? C.panel : 'transparent', color: show[k] ? C.text : C.muted, font: 'inherit', fontSize: 13, fontWeight: 650, cursor: 'pointer', textDecoration: show[k] ? 'none' : 'line-through' }}
             >
-              {k === 'wing' ? 'Wing' : 'Frame'}
+              {k === 'wing' ? 'Wing' : k === 'frame' ? 'Frame' : 'Route'}
             </button>
           ))}
         </span>
