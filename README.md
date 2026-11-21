@@ -4,7 +4,7 @@ A small airline manager game for Mac and Windows. Start an airline at a hub, buy
 
 Join the Discord! **[Discord](https://discord.gg/zCk6hcFkzf)**:
 
-Version 3.6.0. Free to play. See [Credits and licences](#credits-and-licences).
+Version 3.6.1. Free to play. See [Credits and licences](#credits-and-licences).
 
 ## Play
 
@@ -20,6 +20,11 @@ Or get the app for Mac or Windows from **[Releases](https://github.com/MacVibeCo
 The downloads aren't code-signed, so the first time you open the game, macOS or Windows asks whether to trust it. The release notes say what to click. After that, the game updates itself: see [What's new](#whats-new). You can also build the game yourself, as below.
 
 ## What's new
+
+Version 3.6.1, round the world:
+
+- **Day and night across the date line:** flights over the Pacific keep the right light on the flat map, as the map repeats round the world.
+- **Room for long sessions:** the cloud lets you sync much more each hour and each day, and if you ever do reach the limit, the message says syncing is paused for a while instead of "too many tries".
 
 Version 3.6.0, the window seat and the night:
 
