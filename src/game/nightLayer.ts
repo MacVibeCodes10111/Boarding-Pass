@@ -42,10 +42,11 @@ const VERTEX = (prelude: string, define: string) => `#version 300 es
 ${prelude}
 ${define}
 layout(location = 0) in vec2 a_merc;
+uniform float u_wrap;     // which copy of the world (the flat map repeats east and west)
 out vec2 v_merc;
 void main() {
-  v_merc = a_merc;
-  vec4 p = projectTileFor3D(a_merc, 0.0); // (the globe's far side is cut away pixel by pixel, below)
+  v_merc = a_merc + vec2(u_wrap, 0.0);
+  vec4 p = projectTileFor3D(v_merc, 0.0); // (the globe's far side is cut away pixel by pixel, below)
   // Never cut at the map's far distance: the grid's big cells were cut short of the
   // horizon there, leaving a strip of daylight ground. This keeps the near cut exactly
   // where it was (z + w is only scaled, so it's still 0 at the near plane) and keeps
@@ -84,14 +85,16 @@ void main() {
   // Dusk from the sun at +2° to −10°; the lights come on from −2° to −9°
   float dark = smoothstep(2.0, -10.0, el) * u_shade;
   float on = smoothstep(-2.0, -9.0, el) * u_glow * u_ready;
-  vec3 lights = texture(u_lights, v_merc).rgb;
+  vec3 lights = texture(u_lights, vec2(fract(v_merc.x), v_merc.y)).rgb;
   // Warm sodium glow, a little stronger than the picture so it reads on screen
   vec3 glow = pow(lights, vec3(1.15)) * vec3(1.15, 1.0, 0.78) * 1.25 * on;
   // Haze: aerosols thin out with height (scale height ~1.3 km), so the air you look
   // through is the slant distance times how much of it is low down
   float h = 0.0;
   if (u_haze.a > 0.0) {
-    float d = length(v_merc - u_cam.xy) * u_cam.w;
+    vec2 dm = v_merc - u_cam.xy;
+    dm.x -= floor(dm.x + 0.5); // the nearest way round the world
+    float d = length(dm) * u_cam.w;
     float H = max(u_cam.z, 30.0);
     float thin = 1300.0 / H * (1.0 - exp(-H / 1300.0));
     float tau = sqrt(d * d + H * H) * thin / 22000.0; // ~22 km visibility at the ground
@@ -154,7 +157,7 @@ export function createNightLayer(id: string): NightLayerHandle {
     gl.deleteShader(fs);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error('night program: ' + gl.getProgramInfoLog(prog));
     const u: Record<string, WebGLUniformLocation | null> = {};
-    for (const name of ['u_projection_fallback_matrix', 'u_projection_matrix', 'u_projection_tile_mercator_coords', 'u_projection_clipping_plane', 'u_projection_transition', 'u_lights', 'u_sun', 'u_shade', 'u_glow', 'u_ready', 'u_globe', 'u_cam', 'u_haze'])
+    for (const name of ['u_projection_fallback_matrix', 'u_projection_matrix', 'u_projection_tile_mercator_coords', 'u_projection_clipping_plane', 'u_projection_transition', 'u_lights', 'u_sun', 'u_shade', 'u_glow', 'u_ready', 'u_globe', 'u_cam', 'u_haze', 'u_wrap'])
       u[name] = gl.getUniformLocation(prog, name);
     p = { prog, u };
     programs.set(key, p);
@@ -225,7 +228,7 @@ export function createNightLayer(id: string): NightLayerHandle {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, WORLD_PX, WORLD_PX, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT); // (round the world)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.bindTexture(gl.TEXTURE_2D, null);
     const n = 1 << LIGHTS_Z;
@@ -307,7 +310,8 @@ export function createNightLayer(id: string): NightLayerHandle {
       gl.uniform1f(u.u_shade, shade);
       gl.uniform1f(u.u_glow, glow);
       gl.uniform1f(u.u_ready, tex && loaded > 0 ? 1 : 0);
-      gl.uniform1f(u.u_globe, shaderData.variantName === 'globe' && pd.projectionTransition > 0.001 ? 1 : 0);
+      const onGlobe = shaderData.variantName === 'globe' && pd.projectionTransition > 0.001;
+      gl.uniform1f(u.u_globe, onGlobe ? 1 : 0);
       const hz = eye ? haze : [0, 0, 0, 0];
       const cam = eye ?? [0, 0, 0, 1];
       gl.uniform4f(u.u_cam, cam[0], cam[1], cam[2], cam[3]);
@@ -322,7 +326,29 @@ export function createNightLayer(id: string): NightLayerHandle {
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
       const grid = eye && eyeLngLat ? nearGrid(gl, eyeLngLat[0], eyeLngLat[1]) : { vao, count };
       gl.bindVertexArray(grid.vao);
-      gl.drawArrays(gl.TRIANGLES, 0, grid.count);
+      // Every copy of the world the flat map shows (across the date line), as its tiles do;
+      // the globe goes round by itself
+      let w0 = 0, w1 = 0;
+      if (!onGlobe) {
+        try {
+          const b = map?.getBounds?.();
+          if (b) {
+            w0 = Math.max(-4, Math.floor((b.getWest() + 180) / 360));
+            w1 = Math.min(4, Math.floor((b.getEast() + 180) / 360));
+          }
+        } catch {
+          /* just the one */
+        }
+        // (the fine grid round the eye can reach over the date line: one more each side)
+        if (eye) {
+          w0 = Math.min(w0, -1);
+          w1 = Math.max(w1, 1);
+        }
+      }
+      for (let w = w0; w <= w1; w++) {
+        gl.uniform1f(u.u_wrap, w);
+        gl.drawArrays(gl.TRIANGLES, 0, grid.count);
+      }
       gl.bindVertexArray(null);
       gl.bindTexture(gl.TEXTURE_2D, null);
     },
