@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Boarding Pass: a free airline manager game</title>
+    <meta name="description" content="Run an airline and watch it fly. Boarding Pass is a free airline manager game: play in your browser on any device, or download it for Mac and Windows." />
+    <meta name="theme-color" content="#0c1320" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Boarding Pass" />
+    <meta property="og:description" content="A free airline manager game. Build an airline and watch it fly the world." />
+    <meta property="og:image" content="https://boardingpass.my/og-image.png" />
+    <meta property="og:url" content="https://boardingpass.my/" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to the page</a>
+    <header class="site-head">
+      <a class="brand" href="/" aria-label="Boarding Pass home">
+        <img src="/src/icon.png" alt="" width="34" height="34" />
+        <span>Boarding Pass</span>
+      </a>
+      <nav aria-label="Site">
+        <a href="#features">The game</a>
+        <a href="#pass">Your airline</a>
+        <a href="#route">Route planner</a>
+        <a href="#download">Download</a>
+        <a href="#whats-new">What's new</a>
+        <a href="#community">Community</a>
+      </nav>
+      <a class="btn btn-play btn-small" href="https://play.boardingpass.my" data-play>Play now</a>
+    </header>
+
+    <main id="main">
+      <!-- Hero: the boarding pass. Its stub is the way in. -->
+      <section class="hero">
+        <div class="worldmap" aria-hidden="true"><!--worldmap--></div>
+        <div class="hero-inner">
+          <div class="hero-copy">
+            <h1>Run an airline.<br />Watch it fly.</h1>
+            <p class="lede">
+              Boarding Pass is a free airline manager game. Pick a hub, buy your first aircraft and build a schedule, then watch every flight taxi out, take off
+              and cross a live map of the world, among thousands of other airlines' flights.
+            </p>
+            <div class="cta">
+              <a class="btn btn-play" href="https://play.boardingpass.my" data-play>Play in your browser</a>
+              <a class="btn btn-ghost" href="#download" data-os-download>Download the app</a>
+            </div>
+            <p class="fineprint">Free, no ads, no account needed. Works on phones, tablets and computers. Your careers save in your browser, and an optional account carries them between devices.</p>
+          </div>
+
+          <a class="ticket" href="https://play.boardingpass.my" data-play data-ticket>
+            <span class="ticket-main" aria-hidden="true">
+              <span class="ticket-livery" aria-hidden="true"></span>
+              <span class="ticket-airline">
+                <span class="ticket-logo" data-t-logo><img src="/src/icon.png" alt="" width="30" height="30" /></span>
+                <span data-t-airline>Boarding Pass</span>
+              </span>
+              <span class="ticket-route">
+                <span class="code" data-t-from>HUB</span>
+                <span class="flightline" aria-hidden="true"><span class="ticket-plane" data-takeoff title="Clear for takeoff"></span></span>
+                <span class="code" data-t-to>ANY</span>
+              </span>
+              <span class="ticket-places"><span data-t-from-city>Your hub</span><span>Anywhere</span></span>
+              <span class="ticket-fields">
+                <span><small>Passenger</small><b data-t-passenger>You</b></span>
+                <span><small>Flight</small><b data-t-flight data-version-flight>BP 230</b></span>
+                <span><small>Fare</small>Free</span>
+                <span><small>Seat</small>Any device</span>
+              </span>
+            </span>
+            <span class="ticket-stub">
+              <small aria-hidden="true">Gate</small>
+              <span class="gate" aria-hidden="true">play.<wbr />boardingpass.my</span>
+              <span class="stub-cta">Board now</span><span class="sr-only">: play Boarding Pass in your browser</span>
+              <svg class="barcode" data-t-barcode viewBox="0 0 140 40" preserveAspectRatio="none" aria-hidden="true"></svg>
+            </span>
+          </a>
+        </div>
+      </section>
+
+      <!-- The game -->
+      <section id="features" class="section">
+        <h2>What you'll be doing</h2>
+        <p class="section-lede">A tycoon game with a flight tracker built in. The money side is a real business to run; the map side is the reward for running it well.</p>
+        <div class="features">
+          <article>
+            <h3>Start at a real airport</h3>
+            <p><span data-airports>3,244</span> airports with scheduled service, each with its real runways, sized by the largest aircraft they take. Buy or lease from 98 aircraft types and fit out the cabin.</p>
+          </article>
+          <article>
+            <h3>Build the schedule</h3>
+            <p>Pick routes, departure times, days and fares. Demand depends on the cities, the distance and what you charge; the week view shows every aircraft's day at a glance.</p>
+          </article>
+          <article>
+            <h3>Watch every flight</h3>
+            <p>Your aircraft push back, taxi on the airport's real taxiways, take off from the runway the wind favours and land with the weather. Tilt into 3D to see them at cruising altitude.</p>
+          </article>
+          <article>
+            <h3>Share the sky</h3>
+            <p>Up to 10,000 other aircraft fly real airline routes around you, queue at the same runways and fight you for gates.</p>
+          </article>
+          <article>
+            <h3>Keep the books</h3>
+            <p>Weekly profit and cash flow, loans you can pay down a bit at a time, a bank that rewards milestones, and bankruptcy if you overreach.</p>
+          </article>
+          <article>
+            <h3>Play anywhere</h3>
+            <p>In the browser on a phone, tablet or computer, or as an app for Mac and Windows that keeps itself up to date. Add it to your home screen to play full screen.</p>
+          </article>
+        </div>
+      </section>
+
+      <!-- Print your boarding pass: name the airline, pick the hub, paint the livery; the game starts with it -->
+      <section id="pass" class="section pass">
+        <h2>Print your boarding pass</h2>
+        <p class="section-lede">Name your airline, pick the airport it flies from and paint the livery. Board, and the game starts with all of it filled in.</p>
+        <div class="kiosk">
+          <form class="kiosk-form" data-pass-form autocomplete="off" onsubmit="return false">
+            <fieldset class="step">
+              <legend><span class="step-n" aria-hidden="true">1</span> Name your airline</legend>
+              <div class="field-row">
+                <label class="field field-grow"><span>Airline name</span><input name="airline" maxlength="40" placeholder="Jetstream Airlines" /></label>
+                <label class="field field-code"><span>Code</span><input name="code" maxlength="3" placeholder="JT" autocapitalize="characters" /></label>
+              </div>
+            </fieldset>
+            <fieldset class="step">
+              <legend><span class="step-n" aria-hidden="true">2</span> Pick your hub</legend>
+              <div class="field combo" data-combo="hub">
+                <span>Airport</span>
+                <input name="hub" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="hub-list" placeholder="Search by city or airport code, e.g. Lisbon or LIS" />
+                <ul class="combo-list" id="hub-list" role="listbox" hidden></ul>
+              </div>
+            </fieldset>
+            <fieldset class="step">
+              <legend><span class="step-n" aria-hidden="true">3</span> Paint the livery</legend>
+              <div class="liveries" role="radiogroup" aria-label="Livery" data-liveries></div>
+              <div class="wells">
+                <button type="button" class="well" data-well="bg" aria-expanded="false"><span class="well-swatch"></span><span><b>Background</b><small data-well-hex="bg"></small></span></button>
+                <button type="button" class="well" data-well="hl" aria-expanded="false"><span class="well-swatch"></span><span><b>Highlight</b><small data-well-hex="hl"></small></span></button>
+              </div>
+              <div class="picker" data-picker hidden>
+                <div class="pk-sv" role="slider" tabindex="0" aria-label="Saturation and brightness"><span class="pk-knob"></span></div>
+                <div class="pk-hue" role="slider" tabindex="0" aria-label="Hue" aria-valuemin="0" aria-valuemax="360"><span class="pk-knob"></span></div>
+                <div class="pk-row">
+                  <input class="pk-hex" aria-label="Colour code" maxlength="7" spellcheck="false" />
+                  <div class="pk-pops" data-pops></div>
+                </div>
+              </div>
+              <p class="fineprint">The game uses these colours for its whole interface, and your aircraft fly in the highlight. You can change them any time in the game's Appearance menu.</p>
+            </fieldset>
+          </form>
+          <div class="kiosk-out">
+            <div class="kiosk-slot" aria-hidden="true"></div>
+            <a class="ticket ticket-print" href="https://play.boardingpass.my" data-play data-ticket>
+              <span class="ticket-main" aria-hidden="true">
+                <span class="ticket-livery" aria-hidden="true"></span>
+                <span class="ticket-airline">
+                  <span class="ticket-logo" data-t-logo><img src="/src/icon.png" alt="" width="30" height="30" /></span>
+                  <span data-t-airline>Boarding Pass</span>
+                </span>
+                <span class="ticket-route">
+                  <span class="code" data-t-from>HUB</span>
+                  <span class="flightline" aria-hidden="true"><span class="ticket-plane" data-takeoff title="Clear for takeoff"></span></span>
+                  <span class="code" data-t-to>ANY</span>
+                </span>
+                <span class="ticket-places"><span data-t-from-city>Your hub</span><span>Anywhere</span></span>
+                <span class="ticket-fields">
+                  <span><small>Passenger</small><b data-t-passenger>You</b></span>
+                  <span><small>Flight</small><b data-t-flight data-version-flight>BP 230</b></span>
+                  <span><small>Fare</small>Free</span>
+                  <span><small>Seat</small>Any device</span>
+                </span>
+              </span>
+              <span class="ticket-stub">
+                <small aria-hidden="true">Gate</small>
+                <span class="gate" aria-hidden="true">play.<wbr />boardingpass.my</span>
+                <span class="stub-cta">Board now</span><span class="sr-only">: play Boarding Pass in your browser</span>
+                <svg class="barcode" data-t-barcode viewBox="0 0 140 40" preserveAspectRatio="none" aria-hidden="true"></svg>
+              </span>
+            </a>
+            <div class="kiosk-actions">
+              <a class="btn btn-play" href="https://play.boardingpass.my" data-board-link>Board now</a>
+              <button type="button" class="btn btn-ghost" data-save-png>Save as image</button>
+              <button type="button" class="btn btn-ghost" data-copy-link>Copy link</button>
+            </div>
+            <p class="fineprint kiosk-note" data-pass-note aria-live="polite">Your pass is kept in this browser, so the ticket at the top of the page is yours too.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Route planner: two airports, the great circle, and the aircraft that can fly it -->
+      <section id="route" class="section route">
+        <h2>Plan a route</h2>
+        <p class="section-lede">Pick any two of the game's <span data-airports>3,244</span> airports to see how far apart they are and which aircraft can fly between them.</p>
+        <div class="planner">
+          <div class="planner-controls">
+            <div class="field combo" data-combo="from">
+              <span>From</span>
+              <input role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="from-list" placeholder="City or code" value="" />
+              <ul class="combo-list" id="from-list" role="listbox" hidden></ul>
+            </div>
+            <button type="button" class="swap" data-swap aria-label="Swap the airports" title="Swap">⇄</button>
+            <div class="field combo" data-combo="to">
+              <span>To</span>
+              <input role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="to-list" placeholder="City or code" value="" />
+              <ul class="combo-list" id="to-list" role="listbox" hidden></ul>
+            </div>
+            <button type="button" class="btn btn-ghost btn-small" data-surprise>Surprise me</button>
+          </div>
+          <div class="planner-body">
+            <div class="route-map" data-route-map aria-hidden="true"></div>
+            <div class="readout" data-readout aria-live="polite">
+              <p class="readout-empty">Choose two airports. Try New York to Singapore, or press Surprise me.</p>
+            </div>
+          </div>
+          <div class="fleet-fit" data-fleet-fit></div>
+        </div>
+      </section>
+
+      <!-- Download -->
+      <section id="download" class="section">
+        <h2>Play or download</h2>
+        <p class="section-lede">The browser version is the quickest way in. The apps are the same game, with saves that live on your computer.</p>
+        <div class="downloads">
+          <a class="dl dl-web" href="https://play.boardingpass.my" data-play>
+            <span class="dl-name">In your browser</span>
+            <span class="dl-meta">Phones, tablets and computers. Nothing to install.</span>
+            <span class="dl-go">Play now</span>
+          </a>
+          <a class="dl" href="https://github.com/MacVibeCodes10111/Boarding-Pass/releases/latest" data-asset="mac">
+            <span class="dl-name">Mac</span>
+            <span class="dl-meta">Apple-chip and Intel, macOS 11 or later. <span data-asset-file="mac">.dmg</span></span>
+            <span class="dl-go">Download for Mac</span>
+          </a>
+          <a class="dl" href="https://github.com/MacVibeCodes10111/Boarding-Pass/releases/latest" data-asset="win">
+            <span class="dl-name">Windows</span>
+            <span class="dl-meta">64-bit Windows 10 or 11. <span data-asset-file="win">Installer (.exe)</span></span>
+            <span class="dl-go">Download for Windows</span>
+          </a>
+        </div>
+        <p class="fineprint dl-note">
+          <span data-release-line>The latest version is on the <a href="https://github.com/MacVibeCodes10111/Boarding-Pass/releases/latest">Releases page</a>.</span>
+          The apps aren't code-signed yet, so the first time you open one your computer asks whether to trust it: on a Mac, System Settings → Privacy &amp; Security → Open Anyway; on
+          Windows, More info → Run anyway.
+        </p>
+      </section>
+
+      <!-- What's new: from the README on GitHub, shown as a departures board -->
+      <section id="whats-new" class="section">
+        <h2>What's new</h2>
+        <div class="board" role="table" aria-label="Recent versions">
+          <div class="board-top" aria-hidden="true"><span>Departures</span><span class="board-clock"><span data-utc>00:00:00</span> UTC</span></div>
+          <div class="board-row board-head" role="row">
+            <span role="columnheader">Flight</span>
+            <span role="columnheader">What's on board</span>
+            <span role="columnheader">Status</span>
+          </div>
+          <div class="board-rows" data-board>
+            <div class="board-row" role="row">
+              <span role="cell" class="flight">BP 230</span>
+              <span role="cell">Play on any device, and the Boarding Pass website</span>
+              <span role="cell" class="status now">Boarding</span>
+            </div>
+          </div>
+        </div>
+        <div class="notes" data-notes></div>
+      </section>
+
+      <!-- Community -->
+      <section id="community" class="section community">
+        <div>
+          <h2>Fly with other players</h2>
+          <p class="section-lede">Share your airline, report a bug, or ask for the feature you want next. New versions are announced on the Discord first.</p>
+        </div>
+        <div class="community-links">
+          <a class="btn btn-play" href="https://discord.gg/zCk6hcFkzf" rel="noopener">Join the Discord</a>
+          <a class="btn btn-ghost" href="https://github.com/MacVibeCodes10111/Boarding-Pass/issues" rel="noopener">Report a bug</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-foot">
+      <div class="foot-brand">
+        <img src="/src/icon.png" alt="" width="28" height="28" />
+        <span>Boarding Pass is free and stays free. © 2026 Mac. All rights reserved.</span>
+      </div>
+      <nav aria-label="Footer">
+        <a href="https://play.boardingpass.my" data-play>Play</a>
+        <a href="#download">Download</a>
+        <a href="/credits.html">Credits and licences</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+        <a href="/cookies.html">Cookies</a>
+        <a href="/accessibility.html">Accessibility</a>
+        <a href="https://discord.gg/zCk6hcFkzf" rel="noopener">Discord</a>
+        <a href="https://github.com/MacVibeCodes10111/Boarding-Pass" rel="noopener">GitHub</a>
+      </nav>
+      <p class="foot-small">
+        Maps © CARTO, © OpenStreetMap contributors. Satellite imagery EOxCloudless by EOX IT Services GmbH. Airport data from OurAirports, routes from airline-route-data, population from GeoNames. Not
+        affiliated with any airline, aircraft maker or airport.
+      </p>
+    </footer>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
